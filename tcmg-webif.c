@@ -713,6 +713,7 @@ static int check_auth(const char *auth_header)
 #define ICO_LOG     "<svg class='nav-icon' viewBox='0 0 20 20' fill='currentColor'><path fill-rule='evenodd' d='M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h4a1 1 0 110 2H4a1 1 0 01-1-1z' clip-rule='evenodd'/></svg>"
 #define ICO_CFG     "<svg class='nav-icon' viewBox='0 0 20 20' fill='currentColor'><path fill-rule='evenodd' d='M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z' clip-rule='evenodd'/></svg>"
 #define ICO_STOP    "<svg class='nav-icon' viewBox='0 0 20 20' fill='currentColor'><path fill-rule='evenodd' d='M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z' clip-rule='evenodd'/></svg>"
+#define ICO_RESTART "<svg class='nav-icon' viewBox='0 0 20 20' fill='currentColor'><path fill-rule='evenodd' d='M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z' clip-rule='evenodd'/></svg>"
 #define ICO_TVCAS   "<svg class='nav-icon' viewBox='0 0 20 20' fill='currentColor'><path fill-rule='evenodd' d='M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z' clip-rule='evenodd'/></svg>"
 
 /* ── Nav item type (shared across all nav groups) ── */
@@ -761,8 +762,9 @@ static int emit_header(char **buf, int *bsz, int pos,
 		{ NULL, NULL, NULL, NULL }
 	};
 	static const NavItem pages3[] = {
-		{ "config",   "/config",   ICO_CFG,    "Config"   },
-		{ "shutdown", "/shutdown", ICO_STOP,   "Shutdown" },
+		{ "config",   "/config",   ICO_CFG,     "Config"   },
+		{ "restart",  "/restart",  ICO_RESTART, "Restart"  },
+		{ "shutdown", "/shutdown", ICO_STOP,    "Shutdown" },
 		{ NULL, NULL, NULL, NULL }
 	};
 	static const NavItem pages4[] = {
@@ -1863,6 +1865,74 @@ static void send_page_shutdown(int fd, const char *qs)
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+ *  RESTART PAGE
+ * ═══════════════════════════════════════════════════════════════════════════ */
+static void send_page_restart(int fd, const char *qs)
+{
+	char confirm[8];
+	get_param(qs, "confirm", confirm, sizeof(confirm));
+
+	int bsz = 8192, pos = 0;
+	char *buf = (char *)malloc(bsz);
+	if (!buf) return;
+
+	pos = emit_header(&buf, &bsz, pos, "Restart", "restart");
+
+	if (strcmp(confirm, "yes") == 0)
+	{
+		tcmg_log("restart requested via webif");
+		g_restart = 1;
+		g_running = 0;
+		pos = buf_printf(&buf, &bsz, pos,
+			"<div style='background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);"
+			"border-radius:10px;padding:28px 32px;text-align:center'>"
+			"<div style='font-size:32px;margin-bottom:12px'>🔄</div>"
+			"<div style='font-size:16px;font-weight:600;color:var(--accent2);margin-bottom:8px'>"
+			"Restart Initiated</div>"
+			"<div style='color:var(--text2);margin-bottom:20px'>"
+			"The server is restarting. This page will refresh automatically.</div>"
+			"<script>"
+			"setTimeout(function(){"
+			"  var t=setInterval(function(){"
+			"    fetch('/api/status',{cache:'no-store'})"
+			"      .then(function(){clearInterval(t);location.href='/status';})"
+			"      .catch(function(){});"
+			"  },1500);"
+			"},3000);"
+			"</script>"
+			"<div class='status-pill' style='display:inline-flex'>"
+			"<div class='pulse-dot pulse-sm'></div>"
+			"Waiting for server to come back online...</div>"
+			"</div>");
+	}
+	else
+	{
+		pos = buf_printf(&buf, &bsz, pos,
+			"<div style='background:var(--bg2);border:1px solid var(--border);"
+			"border-radius:10px;padding:32px;max-width:440px'>"
+			"<div style='font-size:18px;font-weight:600;margin-bottom:8px'>"
+			"🔄 Restart tcmg?</div>"
+			"<div style='color:var(--text2);margin-bottom:16px;line-height:1.6'>"
+			"This will safely stop all services and restart the process. "
+			"Active connections will be dropped and re-established by clients. "
+			"The config will be reloaded from disk on startup.</div>"
+			"<div class='info-box' style='margin-bottom:20px'>"
+			"Restart uses <span class='mono'>execv()</span> on Linux/macOS "
+			"and <span class='mono'>CreateProcess()</span> on Windows — "
+			"same binary, same arguments.</div>"
+			"<div class='flex gap-8'>"
+			"<a href='/restart?confirm=yes' class='btn btn-primary'>🔄 Confirm Restart</a>"
+			"<a href='/status' class='btn btn-ghost'>Cancel</a>"
+			"</div>"
+			"</div>");
+	}
+
+	pos = emit_footer(&buf, &bsz, pos);
+	send_response(fd, 200, "OK", "text/html", buf, pos);
+	free(buf);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
  *  TVCAS TOOL PAGE  (pure-JS DES/3DES + TVCAS key transform, no ext libs)
  * ═══════════════════════════════════════════════════════════════════════════ */
 static void send_page_tvcas(int fd)
@@ -2450,12 +2520,20 @@ static void handle_request(int fd, const char *client_ip)
 	}
 	else if (strcmp(path, "/livelog")  == 0) send_page_livelog(fd);
 	else if (strcmp(path, "/logpoll")  == 0) send_logpoll(fd, qs ? qs : "");
+	else if (strcmp(path, "/restart")  == 0) send_page_restart(fd, qs ? qs : "");
 	else if (strcmp(path, "/shutdown") == 0) send_page_shutdown(fd, qs ? qs : "");
 	else if (strcmp(path, "/tvcas")    == 0) send_page_tvcas(fd);
 	else if (strcmp(path, "/api/status") == 0) send_api_status(fd);
 	else if (strcmp(path, "/api/reload") == 0) {
 		g_reload_cfg = 1;
 		const char *j = "{\"ok\":true,\"msg\":\"reload scheduled\"}";
+		send_response(fd, 200, "OK", "application/json", j, (int)strlen(j));
+	}
+	else if (strcmp(path, "/api/restart") == 0) {
+		tcmg_log("restart requested via API");
+		g_restart = 1;
+		g_running = 0;
+		const char *j = "{\"ok\":true,\"msg\":\"restart initiated\"}";
 		send_response(fd, 200, "OK", "application/json", j, (int)strlen(j));
 	}
 	else if (strcmp(path, "/api/resetstats") == 0) {

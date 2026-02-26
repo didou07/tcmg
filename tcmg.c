@@ -1,10 +1,17 @@
 #define MODULE_LOG_PREFIX "main"
 #include "tcmg-globals.h"
+#if !defined(_WIN32) && !defined(_WIN64) && !defined(__MINGW32__) && !defined(__MINGW64__)
+#  include <unistd.h>
+#endif
 
 /* Globals */
 S_CONFIG         g_cfg;
 volatile int32_t g_running       = 1;
 volatile int32_t g_reload_cfg    = 0;
+volatile int32_t g_restart       = 0;
+
+/* saved for restart */
+static char **g_argv_saved = NULL;
 volatile int32_t g_active_conns = 0;
 time_t           g_start_time   = 0;
 char             g_cfgdir[CFGPATH_LEN] = ".";
@@ -551,6 +558,7 @@ int main(int argc, char *argv[])
 	char           srvidpath[CFGPATH_LEN];
 
 	g_start_time = time(NULL);
+	g_argv_saved = argv;
 	tcmg_winsock_init();
 	setup_signals();
 
@@ -766,5 +774,34 @@ int main(int argc, char *argv[])
 	pthread_mutex_destroy(&g_cfg.ban_lock);
 
 	tcmg_winsock_cleanup();
+
+	/* ── Restart if requested ── */
+	if (g_restart)
+	{
+		tcmg_log("restarting process...");
+#if defined(_WIN32) || defined(_WIN64) || defined(__MINGW32__) || defined(__MINGW64__)
+		/* Windows: spawn a new process and exit */
+		STARTUPINFOA si;
+		PROCESS_INFORMATION pi;
+		ZeroMemory(&si, sizeof(si));
+		si.cb = sizeof(si);
+		ZeroMemory(&pi, sizeof(pi));
+		char cmdline[4096] = "";
+		for (int i = 0; g_argv_saved[i]; i++) {
+			if (i > 0) strncat(cmdline, " ", sizeof(cmdline)-1);
+			strncat(cmdline, g_argv_saved[i], sizeof(cmdline)-1);
+		}
+		if (CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+			CloseHandle(pi.hThread);
+			CloseHandle(pi.hProcess);
+		}
+#else
+		/* Unix: re-exec same binary with same args — clean and portable */
+		execv(g_argv_saved[0], g_argv_saved);
+		/* execv only returns on error */
+		perror("execv restart failed");
+#endif
+	}
+
 	return 0;
 }
