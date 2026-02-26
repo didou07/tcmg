@@ -122,7 +122,7 @@ static inline void tcmg_winsock_cleanup(void)
 #endif
 
 /* Build-time constants */
-#define TCMG_VERSION         "4.0"
+#define TCMG_VERSION         "4.1"
 #define TCMG_BANNER          "tcmg v" TCMG_VERSION
 #define CW_LEN               16
 #define NC_MSG_MAX           400

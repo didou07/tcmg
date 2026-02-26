@@ -213,6 +213,14 @@ static const char CSS[] =
 "  color:var(--text1);font-family:var(--font-mono);"
 "}"
 ".topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}"
+".poll-ctrl{display:flex;align-items:center;gap:3px;background:var(--bg3);"
+"  border:1px solid var(--border2);border-radius:5px;padding:2px 5px;}"
+".poll-ctrl label{font-size:10px;color:var(--text2);white-space:nowrap;margin-right:2px}"
+".poll-ctrl input{width:32px;background:none;border:none;color:var(--text1);"
+"  font-family:var(--font-mono);font-size:12px;text-align:center;outline:none;}"
+".poll-ctrl button{background:none;border:none;cursor:pointer;color:var(--text2);"
+"  font-size:13px;line-height:1;padding:0 2px;border-radius:3px;}"
+".poll-ctrl button:hover{color:var(--text0);background:var(--bg4)}"
 ".status-pill{"
 "  display:flex;align-items:center;gap:6px;"
 "  background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.25);"
@@ -723,8 +731,6 @@ static int emit_header(char **buf, int *bsz, int pos,
                         const char *title, const char *active)
 {
 	int is_status = (strcmp(active, "status") == 0);
-	int poll_ms   = (is_status && g_cfg.webif_refresh > 0)
-	                ? (g_cfg.webif_refresh * 1000) : 5000;
 
 	char upstr[32];
 	format_uptime(time(NULL) - g_start_time, upstr, sizeof(upstr));
@@ -830,30 +836,67 @@ static int emit_header(char **buf, int *bsz, int pos,
 		"      <span id='tb_conns'>%d</span> online"
 		"    </div>"
 		"    <span class='topbar-badge' id='sb_up'>%s</span>"
-		"    <span class='topbar-badge' id='tb_hitrate'>—</span>"
+		"    <div class='poll-ctrl' title='Auto-refresh interval (seconds)'>"
+		"      <label>REFRESH</label>"
+		"      <button onclick='_adjPoll(-1)'>&#8722;</button>"
+		"      <input id='poll_sec' type='text' value='%d' readonly>"
+		"      <button onclick='_adjPoll(1)'>+</button>"
+		"    </div>"
 		"  </div>"
 		"</div>"
 		"<div id='content'>",
 		title, srv_addr,
-		g_active_conns, upstr);
+		g_active_conns, upstr,
+		g_cfg.webif_refresh > 0 ? g_cfg.webif_refresh : 5);
 
-	/* Sidebar collapse JS */
+	/* Sidebar collapse JS + global poll control + topbar live update (all pages) */
 	pos = buf_printf(buf, bsz, pos,
 		"<script>"
+		"(function(){"
+		"  var s=document.getElementById('sidebar');"
+		"  var m=document.getElementById('main');"
+		"  if(sessionStorage.tcmg_sb=='1'){s.classList.add('collapsed');m.classList.add('expanded');}"
+		"})();"
 		"function toggleSidebar(){"
 		"  var s=document.getElementById('sidebar');"
 		"  var m=document.getElementById('main');"
 		"  s.classList.toggle('collapsed');"
 		"  m.classList.toggle('expanded');"
+		"  sessionStorage.tcmg_sb=s.classList.contains('collapsed')?'1':'0';"
 		"}"
-		"</script>");
+		"var _pm=(function(){"
+		"  var v=parseInt(sessionStorage.tcmg_poll)||%d;"
+		"  document.getElementById('poll_sec').value=v;"
+		"  return v*1000;"
+		"})();"
+		"function _adjPoll(d){"
+		"  var el=document.getElementById('poll_sec');"
+		"  var v=Math.max(1,Math.min(99,parseInt(el.value)||5)+d);"
+		"  el.value=v;"
+		"  _pm=v*1000;"
+		"  sessionStorage.tcmg_poll=v;"
+		"}"
+		/* topbar updater: runs on ALL pages */
+		"(function _tbpoll(){"
+		"  fetch('/api/status',{cache:'no-store'})"
+		"    .then(function(r){return r.json();})"
+		"    .then(function(d){"
+		"      var e;"
+		"      e=document.getElementById('sb_up');    if(e)e.textContent=d.uptime_str;"
+		"      e=document.getElementById('tb_conns'); if(e)e.textContent=d.active_connections;"
+		"      setTimeout(_tbpoll,_pm);"
+		"    })"
+		"    .catch(function(){setTimeout(_tbpoll,_pm*3);});"
+		"})();"
+		"</script>",
+		g_cfg.webif_refresh > 0 ? g_cfg.webif_refresh : 5);
 
 	/* Status auto-poll JS (only on status page) */
 	if (is_status)
 	{
 		pos = buf_printf(buf, bsz, pos,
 			"<script>"
-			"var _pm=%d,_pl=false;"
+			"var _pl=false;"
 			"function _esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}"
 			"function _poll(){"
 			"  if(_pl){setTimeout(_poll,_pm);return;}"
@@ -879,11 +922,6 @@ static int emit_header(char **buf, int *bsz, int pos,
 			"  set('p_ban',d.banned_ips);"
 			"  set('p_ecm',_numFmt(d.ecm_total));"
 			"  set('tb_conns',d.active_connections);"
-			"  var hr=d.hit_rate_pct?d.hit_rate_pct.toFixed(1)+'%%':'—';"
-			"  set('p_hrate',hr);"
-			"  set('tb_hitrate',hr);"
-			"  var bar=document.getElementById('p_hbar');"
-			"  if(bar)bar.style.width=(d.hit_rate_pct||0)+'%%';"
 			"  var tb=document.getElementById('p_clients');"
 			"  if(!tb)return;"
 			"  var rows='';"
@@ -896,14 +934,13 @@ static int emit_header(char **buf, int *bsz, int pos,
 			"      +'<td>'+_esc(cl.channel||'—')+'</td>'"
 			"      +'<td class=\"mono text-muted\">'+_esc(cl.connected)+'</td>'"
 			"      +'<td class=\"mono text-muted\">'+_esc(cl.idle)+'</td>'"
-			"      +'<td><button class=\"kill-btn\" onclick=\"_kill('+cl.thread_id+',\\''+_esc(cl.user)+'\\')\">&#10005;</button></td>'"
+			"      +'<td><button class=\"kill-btn\" onclick=\"_kill('+cl.thread_id+',\\''+_esc(cl.user)+'\\')\" title=\"Disconnect\"><svg width=\"13\" height=\"13\" viewBox=\"0 0 20 20\" fill=\"currentColor\"><path fill-rule=\"evenodd\" d=\"M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z\" clip-rule=\"evenodd\"/></svg></button></td>'"
 			"      +'</tr>';"
 			"  });"
 			"  tb.innerHTML=rows||'<tr class=\"empty-row\"><td colspan=\"8\">No active connections</td></tr>';"
 			"}"
 			"document.addEventListener('DOMContentLoaded',function(){setTimeout(_poll,_pm);});"
-			"</script>",
-			poll_ms);
+			"</script>");
 	}
 
 	return pos;
@@ -1092,17 +1129,6 @@ static void send_page_status(int fd)
 		cw_not > 0 ? "red" : "",
 		(long long)cw_not);
 
-	/* Hit Rate */
-	pos = buf_printf(&buf, &bsz, pos,
-		"<div class='card %s' style='min-width:200px'>"
-		"<div class='card-label'>Hit Rate</div>"
-		"<div class='card-value %s' id='p_hrate'>%s</div>"
-		"<div class='hitbar-wrap' style='margin-top:8px'>"
-		"<div class='hitbar-fill' id='p_hbar' style='width:%.0f%%'></div>"
-		"</div></div>",
-		hitrate >= 80 ? "green" : hitrate >= 50 ? "" : "red",
-		hitrate >= 80 ? "green" : hitrate >= 50 ? "" : "red",
-		hrstr, hitrate);
 
 	/* Bans */
 	pos = buf_printf(&buf, &bsz, pos,
@@ -1163,7 +1189,7 @@ static void send_page_status(int fd)
 			"<td><button class='kill-btn' onclick=\"if(confirm('Disconnect %s?')){"
 			"fetch('/status?kill=%u&user=%s');"
 			"var r=document.getElementById('row_%u');if(r)r.remove();"
-			"}\" >&#10005;</button></td>"
+			"}\"  title='Disconnect'><svg width='13' height='13' viewBox='0 0 20 20' fill='currentColor'><path fill-rule='evenodd' d='M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z' clip-rule='evenodd'/></svg></button></td>"
 			"</tr>",
 			cl->thread_id,
 			cl->user, cl->ip,
@@ -1835,25 +1861,22 @@ static void send_page_shutdown(int fd, const char *qs)
 		g_running = 0;
 		pos = buf_printf(&buf, &bsz, pos,
 			"<div style='background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);"
-			"border-radius:10px;padding:28px 32px;text-align:center'>"
-			"<div style='font-size:32px;margin-bottom:12px'>⏹</div>"
-			"<div style='font-size:16px;font-weight:600;color:var(--red2);margin-bottom:8px'>"
-			"Shutdown Initiated</div>"
-			"<div style='color:var(--text2)'>The server is stopping. You can close this window.</div>"
+			"border-radius:10px;padding:28px 32px;text-align:center;max-width:380px'>"
+			"<div style='font-size:28px;margin-bottom:10px'>⏹</div>"
+			"<div style='font-size:15px;font-weight:600;color:var(--red2)'>Shutdown Initiated</div>"
+			"<div style='color:var(--text2);margin-top:6px;font-size:13px'>Server is stopping.</div>"
 			"</div>");
 	}
 	else
 	{
 		pos = buf_printf(&buf, &bsz, pos,
 			"<div style='background:var(--bg2);border:1px solid var(--border);"
-			"border-radius:10px;padding:32px;max-width:440px'>"
-			"<div style='font-size:18px;font-weight:600;margin-bottom:8px'>"
-			"⚠ Shutdown tcmg?</div>"
-			"<div style='color:var(--text2);margin-bottom:24px;line-height:1.6'>"
-			"This will stop the server immediately. All active connections will be dropped."
-			"</div>"
+			"border-radius:10px;padding:28px 32px;max-width:360px'>"
+			"<div style='font-size:16px;font-weight:600;margin-bottom:10px'>⚠ Shutdown tcmg?</div>"
+			"<div style='color:var(--text2);margin-bottom:20px;font-size:13px'>"
+			"All active connections will be dropped.</div>"
 			"<div class='flex gap-8'>"
-			"<a href='/shutdown?confirm=yes' class='btn btn-danger'>✕ Confirm Shutdown</a>"
+			"<a href='/shutdown?confirm=yes' class='btn btn-danger'><svg width='13' height='13' viewBox='0 0 20 20' fill='currentColor' style='margin-right:5px;vertical-align:-2px'><path fill-rule='evenodd' d='M10 2a1 1 0 011 1v6a1 1 0 11-2 0V3a1 1 0 011-1zm3.293 2.293a1 1 0 011.414 1.414 7 7 0 11-9.414 0 1 1 0 011.414-1.414 5 5 0 106.586 0z' clip-rule='evenodd'/></svg>Confirm Shutdown</a>"
 			"<a href='/status' class='btn btn-ghost'>Cancel</a>"
 			"</div>"
 			"</div>");
@@ -1885,12 +1908,11 @@ static void send_page_restart(int fd, const char *qs)
 		g_running = 0;
 		pos = buf_printf(&buf, &bsz, pos,
 			"<div style='background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);"
-			"border-radius:10px;padding:28px 32px;text-align:center'>"
-			"<div style='font-size:32px;margin-bottom:12px'>🔄</div>"
-			"<div style='font-size:16px;font-weight:600;color:var(--accent2);margin-bottom:8px'>"
-			"Restart Initiated</div>"
-			"<div style='color:var(--text2);margin-bottom:20px'>"
-			"The server is restarting. This page will refresh automatically.</div>"
+			"border-radius:10px;padding:28px 32px;text-align:center;max-width:380px'>"
+			"<div style='font-size:28px;margin-bottom:10px'>🔄</div>"
+			"<div style='font-size:15px;font-weight:600;color:var(--accent2)'>Restart Initiated</div>"
+			"<div style='color:var(--text2);margin-top:6px;font-size:13px;margin-bottom:16px'>"
+			"Redirecting when back online...</div>"
 			"<script>"
 			"setTimeout(function(){"
 			"  var t=setInterval(function(){"
@@ -1901,25 +1923,17 @@ static void send_page_restart(int fd, const char *qs)
 			"},3000);"
 			"</script>"
 			"<div class='status-pill' style='display:inline-flex'>"
-			"<div class='pulse-dot pulse-sm'></div>"
-			"Waiting for server to come back online...</div>"
+			"<div class='pulse-dot pulse-sm'></div>Waiting...</div>"
 			"</div>");
 	}
 	else
 	{
 		pos = buf_printf(&buf, &bsz, pos,
 			"<div style='background:var(--bg2);border:1px solid var(--border);"
-			"border-radius:10px;padding:32px;max-width:440px'>"
-			"<div style='font-size:18px;font-weight:600;margin-bottom:8px'>"
-			"🔄 Restart tcmg?</div>"
-			"<div style='color:var(--text2);margin-bottom:16px;line-height:1.6'>"
-			"This will safely stop all services and restart the process. "
-			"Active connections will be dropped and re-established by clients. "
-			"The config will be reloaded from disk on startup.</div>"
-			"<div class='info-box' style='margin-bottom:20px'>"
-			"Restart uses <span class='mono'>execv()</span> on Linux/macOS "
-			"and <span class='mono'>CreateProcess()</span> on Windows — "
-			"same binary, same arguments.</div>"
+			"border-radius:10px;padding:28px 32px;max-width:360px'>"
+			"<div style='font-size:16px;font-weight:600;margin-bottom:10px'>🔄 Restart tcmg?</div>"
+			"<div style='color:var(--text2);margin-bottom:20px;font-size:13px'>"
+			"Active connections will be dropped. Config reloaded on startup.</div>"
 			"<div class='flex gap-8'>"
 			"<a href='/restart?confirm=yes' class='btn btn-primary'>🔄 Confirm Restart</a>"
 			"<a href='/status' class='btn btn-ghost'>Cancel</a>"

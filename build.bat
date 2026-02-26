@@ -30,10 +30,16 @@ for %%A in (%*) do (
     if /i "%%A"=="/?"    goto :help
 )
 
+:: -- Read version from tcmg-globals.h ----------------------------------------
+set TCMG_VERSION=unknown
+for /f "tokens=3 delims= " %%V in ('findstr /c:"#define TCMG_VERSION" tcmg-globals.h 2^>nul') do (
+    set TCMG_VERSION=%%~V
+)
+
 :: -- Banner ------------------------------------------------------------------
 echo.
 echo ==================================================
-echo   tcmg v4.0  ^|  Windows %ARCH% build
+echo   tcmg v%TCMG_VERSION%  ^|  Windows %ARCH% build
 echo ==================================================
 echo.
 
