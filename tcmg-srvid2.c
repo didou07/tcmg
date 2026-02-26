@@ -165,6 +165,28 @@ const char *srvid_lookup(uint16_t caid, uint16_t sid)
 	return found;
 }
 
+/* ── Write default tcmg.srvid2 ───────────────────────────── */
+int srvid_write_default(const char *path)
+{
+	FILE *f = fopen(path, "w");
+	if (!f) return 0;
+
+	fprintf(f,
+	"# tcmg.srvid2 — channel name database\n"
+	"# Format: SID:CAID[,CAID2,...]|Channel Name|type||provider\n"
+	"# Generated automatically. Add or edit entries as needed.\n"
+	"# SID and CAID values are hexadecimal.\n"
+	"\n"
+	"# ── beIN SPORTS ─────────────────────────────────────────────────────────────\n"
+	"0101:0B00,0B01,0B02|beIN SPORTS HD 1|TV||beIN SPORTS\n"
+	"0102:0B00,0B01,0B02|beIN SPORTS HD 2|TV||beIN SPORTS\n"
+	"0103:0B00,0B01,0B02|beIN SPORTS HD 3|TV||beIN SPORTS\n"
+	);
+
+	fclose(f);
+	return 1;
+}
+
 /* ── Free (call on shutdown) ─────────────────────────────── */
 void srvid_free(void)
 {

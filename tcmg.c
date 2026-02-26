@@ -5,7 +5,6 @@
 S_CONFIG         g_cfg;
 volatile int32_t g_running       = 1;
 volatile int32_t g_reload_cfg    = 0;
-volatile int32_t g_normalize_cfg = 0;
 volatile int32_t g_active_conns = 0;
 time_t           g_start_time   = 0;
 char             g_cfgdir[CFGPATH_LEN] = ".";
@@ -579,7 +578,16 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	printf("%s  cfgdir=%s\n\n", TCMG_BANNER, g_cfgdir);
+	printf(
+		"\n"
+		"  _____  ____  __  __  ____\n"
+		" |_   _|/ ___||  \\/  |/ ___|\n"
+		"   | |  | |    | |\\/| | |  _\n"
+		"   | |  | |___ | |  | | |_| |\n"
+		"   |_|   \\____||_|  |_|\\____|\n"
+		"\n"
+		"  v" TCMG_VERSION "  --  built " TCMG_BUILD_TIME "\n"
+		"\n");
 
 	memset(&g_cfg, 0, sizeof(g_cfg));
 	pthread_rwlock_init(&g_cfg.acc_lock, NULL);
@@ -591,25 +599,12 @@ int main(int argc, char *argv[])
 	if (!cfg_load(cfgpath, &g_cfg))
 	{
 		tcmg_log("config not found: %s — writing defaults", cfgpath);
-		strncpy(g_cfg.config_file, cfgpath, CFGPATH_LEN - 1);
-
-		g_cfg.port          = 15050;
-		g_cfg.sock_timeout  = 30;
-		g_cfg.ecm_log       = 1;
-		g_cfg.webif_enabled = 1;
-		g_cfg.webif_port    = 8080;
-		strncpy(g_cfg.webif_user, "admin",    sizeof(g_cfg.webif_user) - 1);
-		strncpy(g_cfg.webif_pass, "admin123", sizeof(g_cfg.webif_pass) - 1);
-
-		S_ACCOUNT *demo = cfg_account_new(&g_cfg);
-		if (demo)
+		cfg_write_default(cfgpath);
+		if (!cfg_load(cfgpath, &g_cfg))
 		{
-			strncpy(demo->user, "admin", CFGKEY_LEN - 1);
-			strncpy(demo->pass, "admin", CFGKEY_LEN - 1);
-			demo->caid    = 0x0B00;
-			demo->enabled = 1;
+			tcmg_log("fatal: cannot load generated config %s", cfgpath);
+			return 1;
 		}
-		cfg_save(&g_cfg);
 	}
 
 	tcmg_log_dbg(D_CONF, "config loaded: %s", g_cfg.config_file);
@@ -618,6 +613,22 @@ int main(int argc, char *argv[])
 
 	/* Load channel names */
 	build_cfg_path(srvidpath, sizeof(srvidpath), TCMG_SRVID_FILE);
+
+	/* If tcmg.srvid2 is missing from cfgdir, generate a default one */
+	{
+		FILE *chk = fopen(srvidpath, "r");
+		if (!chk)
+		{
+			tcmg_log("srvid: %s not found — writing defaults", srvidpath);
+			if (!srvid_write_default(srvidpath))
+				tcmg_log("srvid: cannot create %s", srvidpath);
+		}
+		else
+		{
+			fclose(chk);
+		}
+	}
+
 	int nsrv = srvid_load(srvidpath);
 	if (nsrv >= 0)
 		tcmg_log("srvid: loaded %d channel(s) from %s", nsrv, srvidpath);
@@ -676,15 +687,6 @@ int main(int argc, char *argv[])
 			}
 			else
 				tcmg_log("config reload FAILED: %s", errbuf);
-		}
-
-		if (g_normalize_cfg)
-		{
-			g_normalize_cfg = 0;
-			if (cfg_save(&g_cfg))
-				tcmg_log("config normalized: %s", g_cfg.config_file);
-			else
-				tcmg_log("config normalize FAILED");
 		}
 
 		fd_set rfds;

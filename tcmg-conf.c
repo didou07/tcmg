@@ -1,4 +1,3 @@
-
 #define MODULE_LOG_PREFIX "conf"
 #include "tcmg-globals.h"
 
@@ -331,6 +330,9 @@ bool cfg_load(const char *file, S_CONFIG *cfg)
 		if (!eq) continue;
 		*eq = '\0';
 		char *k = line, *v = eq + 1;
+		/* strip inline comments: VALUE = something  # comment */
+		char *comment = strchr(v, '#');
+		if (comment) *comment = '\0';
 		str_trim(k); str_trim(v);
 
 		switch (sec)
@@ -503,6 +505,72 @@ bool cfg_save(const S_CONFIG *cfg)
 	return true;
 }
 
+
+bool cfg_write_default(const char *path)
+{
+	FILE *f = fopen(path, "w");
+	if (!f)
+	{
+		tcmg_log("cfg_write_default: cannot create %s (errno=%d %s)",
+		         path, errno, strerror(errno));
+		return false;
+	}
+
+	fprintf(f,
+	"# tcmg — default configuration\n"
+	"# Generated automatically. Edit and restart to apply changes.\n"
+	"\n"
+	"[server]\n"
+	"PORT                = 15050          # Listening port for card-sharing clients\n"
+	"DES_KEY             = 0102030405060708091011121314  # 14-byte DES key (28 hex chars)\n"
+	"SOCKET_TIMEOUT      = 30             # Client socket timeout in seconds (5-600)\n"
+	"ECM_LOG             = 1              # Log ECM requests: 1=on 0=off\n"
+	"# LOGFILE           = /var/log/tcmg.log   # Log to file (empty = stdout only; rotates at 10 MB)\n"
+	"\n"
+	"[webif]\n"
+	"ENABLED             = 1              # Enable web interface: 1=on 0=off\n"
+	"PORT                = 8080           # Web interface port\n"
+	"USER                = admin          # Web interface username (empty = no auth)\n"
+	"PWD                 = admin123       # Web interface password\n"
+	"BINDADDR            =                # Bind address (empty = all interfaces)\n"
+	"# REFRESH           = 30             # Auto-refresh status page every N seconds (0=off)\n"
+	"\n"
+	"# ── Accounts ──────────────────────────────────────────────────────────────\n"
+	"# Each [account] block defines one client. All commented keys are optional.\n"
+	"\n"
+	"[account]\n"
+	"user                = tvcas          # Login username\n"
+	"pwd                 = 1234           # Login password\n"
+	"group               = 1             # Group number (1-65535)\n"
+	"enabled             = 1             # 1=active  0=disabled\n"
+	"fakecw              = 0             # Send fake CW instead of real: 1=on 0=off\n"
+	"caid                = 0B00,0B01     # Allowed CAIDs (comma-separated hex)\n"
+	"ecmkey              = 0B00=9F3C17A2B5D0481E6A7B92F4C8E05D13A1B9E4F276C3058D4ACF19B08273DE5F\n"
+	"ecmkey              = 0B01=A9688E271BA149BE1D3A1D84BC2BD1E920626B61C8CBB5CDBA361F44FAF750D6\n"
+	"# max_connections   = 2             # Max simultaneous logins (0=unlimited)\n"
+	"# max_idle          = 120           # Kick after N seconds with no ECM (0=off)\n"
+	"# expiration        = 2026-12-31    # Account expiry date in YYYY-MM-DD (0=never)\n"
+	"# schedule          = MON-FRI 08:00-22:00  # Allowed timeframe (empty=always)\n"
+	"# sid_whitelist     = 0064,00C8,1234        # Allowed Service IDs (empty=all)\n"
+	"# ip_whitelist      = 192.168.1.0,10.0.0.1 # Allowed source IPs (empty=all)\n"
+	"\n"
+	"[account]\n"
+	"user                = test\n"
+	"pwd                 = 1234\n"
+	"group               = 1\n"
+	"enabled             = 1\n"
+	"fakecw              = 1\n"
+	"max_connections     = 0\n"
+	"max_idle            = 0\n"
+	"expiration          = 0\n"
+	"schedule            =\n"
+	"caid                = 0604\n"
+	);
+
+	fclose(f);
+	tcmg_log("created default config: %s", path);
+	return true;
+}
 
 bool cfg_reload(const char *file, char *errbuf, size_t errsz)
 {

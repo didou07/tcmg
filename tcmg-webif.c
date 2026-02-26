@@ -184,26 +184,6 @@ static const char CSS[] =
 "}"
 ".nav-icon{width:18px;height:18px;flex-shrink:0;opacity:0.75}"
 "nav a.active .nav-icon,nav a:hover .nav-icon{opacity:1}"
-/* ── Sidebar bottom ── */
-".sidebar-footer{margin-top:auto;padding:10px 14px;border-top:1px solid var(--border)}"
-".uptime-badge{"
-"  display:flex;align-items:center;gap:8px;"
-"  background:var(--bg2);border:1px solid var(--border);"
-"  border-radius:6px;padding:7px 10px;"
-"}"
-".pulse-dot{"
-"  width:7px;height:7px;border-radius:50%;"
-"  background:var(--green);"
-"  box-shadow:0 0 0 0 rgba(34,197,94,.4);"
-"  animation:pulse 2s infinite;"
-"  flex-shrink:0;"
-"}"
-"@keyframes pulse{"
-"  0%{box-shadow:0 0 0 0 rgba(34,197,94,.4)}"
-"  70%{box-shadow:0 0 0 7px rgba(34,197,94,0)}"
-"  100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}"
-"}"
-".uptime-text{font-size:11px;color:var(--text1);font-family:var(--font-mono)}"
 /* ── Main area ── */
 "#main{"
 "  margin-left:220px;"
@@ -733,6 +713,7 @@ static int check_auth(const char *auth_header)
 #define ICO_LOG     "<svg class='nav-icon' viewBox='0 0 20 20' fill='currentColor'><path fill-rule='evenodd' d='M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h4a1 1 0 110 2H4a1 1 0 01-1-1z' clip-rule='evenodd'/></svg>"
 #define ICO_CFG     "<svg class='nav-icon' viewBox='0 0 20 20' fill='currentColor'><path fill-rule='evenodd' d='M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z' clip-rule='evenodd'/></svg>"
 #define ICO_STOP    "<svg class='nav-icon' viewBox='0 0 20 20' fill='currentColor'><path fill-rule='evenodd' d='M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z' clip-rule='evenodd'/></svg>"
+#define ICO_TVCAS   "<svg class='nav-icon' viewBox='0 0 20 20' fill='currentColor'><path fill-rule='evenodd' d='M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z' clip-rule='evenodd'/></svg>"
 
 /* ── Nav item type (shared across all nav groups) ── */
 typedef struct { const char *id; const char *href; const char *icon; const char *label; } NavItem;
@@ -784,6 +765,10 @@ static int emit_header(char **buf, int *bsz, int pos,
 		{ "shutdown", "/shutdown", ICO_STOP,   "Shutdown" },
 		{ NULL, NULL, NULL, NULL }
 	};
+	static const NavItem pages4[] = {
+		{ "tvcas",    "/tvcas",    ICO_TVCAS,  "TVCAS Tool" },
+		{ NULL, NULL, NULL, NULL }
+	};
 
 	for (int i = 0; pages[i].id; i++) {
 		const char *cls = (strcmp(pages[i].id, active) == 0) ? " active" : "";
@@ -808,16 +793,17 @@ static int emit_header(char **buf, int *bsz, int pos,
 			pages3[i].href, cls, pages3[i].icon, pages3[i].label);
 	}
 
+	pos = buf_printf(buf, bsz, pos, "</nav><div class='nav-group-label'>Tools</div><nav>");
+	for (int i = 0; pages4[i].id; i++) {
+		const char *cls = (strcmp(pages4[i].id, active) == 0) ? " active" : "";
+		pos = buf_printf(buf, bsz, pos,
+			"<a href='%s' class='%s'>%s<span class='nav-label'>%s</span></a>",
+			pages4[i].href, cls, pages4[i].icon, pages4[i].label);
+	}
+
 	pos = buf_printf(buf, bsz, pos,
 		"</nav>"
-		"<div class='sidebar-footer'>"
-		"  <div class='uptime-badge'>"
-		"    <div class='pulse-dot'></div>"
-		"    <div class='uptime-text' id='sb_up'>%s</div>"
-		"  </div>"
-		"</div>"
-		"</div>",
-		upstr);
+		"</div>");
 
 	char srv_addr[64];
 	snprintf(srv_addr, sizeof(srv_addr), "%s:%d",
@@ -841,12 +827,13 @@ static int emit_header(char **buf, int *bsz, int pos,
 		"      <div class='pulse-dot pulse-sm'></div>"
 		"      <span id='tb_conns'>%d</span> online"
 		"    </div>"
+		"    <span class='topbar-badge' id='sb_up'>%s</span>"
 		"    <span class='topbar-badge' id='tb_hitrate'>—</span>"
 		"  </div>"
 		"</div>"
 		"<div id='content'>",
 		title, srv_addr,
-		g_active_conns);
+		g_active_conns, upstr);
 
 	/* Sidebar collapse JS */
 	pos = buf_printf(buf, bsz, pos,
@@ -927,15 +914,13 @@ static int emit_footer(char **buf, int *bsz, int pos)
 	return buf_printf(buf, bsz, pos,
 		"</div>"  /* #content */
 		"<div style='padding:8px 20px;border-top:1px solid var(--border);"
-		"display:flex;align-items:center;justify-content:space-between;"
+		"display:flex;align-items:center;"
 		"font-size:11px;color:var(--text2)'>"
 		"<span>tcmg <span style='color:var(--text1)'>" TCMG_VERSION "</span>"
 		" &bull; built <span style='color:var(--text1)'>" TCMG_BUILD_TIME "</span></span>"
-		"<span>debug <span class='mono' style='color:var(--accent2)'>0x%04X</span></span>"
 		"</div>"
 		"</div>"  /* #main */
-		"</body></html>",
-		g_dblevel);
+		"</body></html>");
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -990,9 +975,6 @@ static void send_login_page(int fd, int failed)
 		"<button type='submit' class='btn btn-primary' style='width:100%%;justify-content:center;padding:10px'>"
 		"Sign In</button>"
 		"</form>"
-		"<div style='margin-top:16px;font-size:11px;color:var(--text2);text-align:center'>"
-		"Conditional Access Management Gateway"
-		"</div>"
 		"</div></div>"
 		"</body></html>");
 
@@ -1050,10 +1032,9 @@ static void send_page_status(int fd)
 	S_STATS st  = aggregate_stats();
 	int64_t cw_found = st.cw_found, cw_not = st.cw_not;
 	int nbans = st.nbans;
-	int nactive = 0, naccounts;
+	int naccounts;
 	pthread_rwlock_rdlock(&g_cfg.acc_lock);
 	naccounts = g_cfg.naccounts;
-	for (const S_ACCOUNT *a = g_cfg.accounts; a; a = a->next) nactive += a->active;
 	pthread_rwlock_unlock(&g_cfg.acc_lock);
 
 	int64_t ecm_total = cw_found + cw_not;
@@ -1069,7 +1050,6 @@ static void send_page_status(int fd)
 		"<div class='card blue'>"
 		"<div class='card-label'>Uptime</div>"
 		"<div class='card-value blue sm' id='p_up'>%s</div>"
-		"<div class='card-sub'>" TCMG_BUILD_TIME "</div>"
 		"</div>", upstr);
 
 	/* Connections */
@@ -1148,7 +1128,7 @@ static void send_page_status(int fd)
 		"<div class='section-hdr'>"
 		"  <div class='section-title'>Active Connections</div>"
 		"  <div class='flex gap-8'>"
-		"    <a href='/status?action=resetstats' class='btn btn-ghost btn-sm'>↺ Reset Stats</a>"
+		"    <a href='#' onclick=\"if(confirm('Reset all stats?')){fetch('/api/resetstats').then(()=>location.reload());}return false\" class='btn btn-ghost btn-sm'>↺ Reset Stats</a>"
 		"    <a href='#' onclick=\"fetch('/api/reload');this.textContent='✓ Done';return false\" class='btn btn-ghost btn-sm'>⟳ Reload Config</a>"
 		"  </div>"
 		"</div>"
@@ -1170,7 +1150,7 @@ static void send_page_status(int fd)
 		format_uptime(now - cl->connect_time, conn_str, sizeof(conn_str));
 		format_uptime(now - cl->account->last_seen, idle_str, sizeof(idle_str));
 		pos = buf_printf(&buf, &bsz, pos,
-			"<tr>"
+			"<tr id='row_%u'>"
 			"<td><span class='bold'>%s</span></td>"
 			"<td class='mono'>%s</td>"
 			"<td class='mono'><span class='badge badge-blue'>%04X</span></td>"
@@ -1178,13 +1158,17 @@ static void send_page_status(int fd)
 			"<td>%s</td>"
 			"<td class='mono text-muted'>%s</td>"
 			"<td class='mono text-muted'>%s</td>"
-			"<td><button class='kill-btn' onclick='if(confirm(\"Disconnect %s?\"))location=\"/status?kill=%u\"'>&#10005;</button></td>"
+			"<td><button class='kill-btn' onclick=\"if(confirm('Disconnect %s?')){"
+			"fetch('/status?kill=%u&user=%s');"
+			"var r=document.getElementById('row_%u');if(r)r.remove();"
+			"}\" >&#10005;</button></td>"
 			"</tr>",
+			cl->thread_id,
 			cl->user, cl->ip,
 			cl->last_caid, cl->last_srvid,
 			cl->last_channel[0] ? cl->last_channel : "<span class='text-muted'>—</span>",
 			conn_str, idle_str,
-			cl->user, cl->thread_id);
+			cl->user, cl->thread_id, cl->user, cl->thread_id);
 		shown++;
 	}
 	pthread_mutex_unlock(&g_clients_mtx);
@@ -1195,20 +1179,7 @@ static void send_page_status(int fd)
 
 	pos = buf_printf(&buf, &bsz, pos, "</tbody></table></div>");
 
-	/* ── Server info ── */
-	pos = buf_printf(&buf, &bsz, pos,
-		"<div class='section-hdr'><div class='section-title'>Server Info</div></div>"
-		"<div class='tbl-wrap'><table><tbody>"
-		"<tr><td class='text-muted' style='width:160px'>Version</td>"
-		"<td class='mono'>" TCMG_BANNER "</td></tr>"
-		"<tr><td class='text-muted'>Port</td>"
-		"<td class='mono'>%d</td></tr>"
-		"<tr><td class='text-muted'>Config</td>"
-		"<td class='mono'>%s</td></tr>"
-		"<tr><td class='text-muted'>Debug Mask</td>"
-		"<td class='mono'><span class='badge badge-blue'>0x%04X</span></td></tr>"
-		"</tbody></table></div>",
-		g_cfg.port, g_cfg.config_file, g_dblevel);
+
 
 	pos = emit_footer(&buf, &bsz, pos);
 	send_response(fd, 200, "OK", "text/html", buf, pos);
@@ -1419,9 +1390,8 @@ static void send_page_failban(int fd, const char *qs)
 /* ═══════════════════════════════════════════════════════════════════════════
  *  CONFIG PAGE
  * ═══════════════════════════════════════════════════════════════════════════ */
-static void send_page_config(int fd, const char *qs)
+static void send_page_config(int fd)
 {
-	(void)qs;
 	int bsz = 65536, pos = 0;
 	char *buf = (char *)malloc(bsz);
 	if (!buf) return;
@@ -1434,10 +1404,12 @@ static void send_page_config(int fd, const char *qs)
 	FILE *fp = fopen(cfgpath, "r");
 	char  filebuf[16384] = "";
 	int   filelen = 0;
+	int   truncated = 0;
 	if (fp) {
 		filelen = (int)fread(filebuf, 1, sizeof(filebuf) - 1, fp);
 		if (filelen < 0) filelen = 0;
 		filebuf[filelen] = '\0';
+		if (!feof(fp)) truncated = 1;
 		fclose(fp);
 	}
 
@@ -1459,6 +1431,7 @@ static void send_page_config(int fd, const char *qs)
 		"  <div class='section-title'>config.cfg</div>"
 		"  <span class='text-muted' style='font-size:11px;font-family:var(--font-mono)'>%s</span>"
 		"</div>"
+		"%s"
 		"<div class='info-box'>"
 		"Edit and save to apply changes. A backup is created as <span class='mono'>config.cfg.bak</span> automatically."
 		"</div>"
@@ -1466,10 +1439,13 @@ static void send_page_config(int fd, const char *qs)
 		"<textarea class='cfg-editor' name='cfg' spellcheck='false'>%s</textarea>"
 		"<div class='flex gap-8 mb-20' style='margin-top:12px'>"
 		"<button type='submit' class='btn btn-primary'>💾 Save &amp; Reload</button>"
-		"<a href='/config' class='btn btn-ghost'>Discard</a>"
 		"</div>"
 		"</form>",
-		cfgpath, escaped);
+		cfgpath,
+		truncated ? "<div class='info-box' style='color:var(--yellow2);border-color:rgba(245,158,11,.3)'>"
+		            "⚠ Config file exceeds 16 KB — displayed content is truncated. Edit the file directly."
+		            "</div>" : "",
+		escaped);
 	free(escaped);
 
 	pos = emit_footer(&buf, &bsz, pos);
@@ -1477,7 +1453,7 @@ static void send_page_config(int fd, const char *qs)
 	free(buf);
 }
 
-static void handle_config_save(int fd, const char *post_body, int post_len)
+static void handle_config_save(int fd, const char *post_body)
 {
 	char newcfg[16384] = "";
 	form_get(post_body, "cfg", newcfg, sizeof(newcfg));
@@ -1530,7 +1506,7 @@ static void handle_config_save(int fd, const char *post_body, int post_len)
 		return;
 	}
 	cfg_accounts_free(&parsed);
-	tcmg_log("config saved+normalized, triggering reload");
+	tcmg_log("config saved successfully, reloading...");
 	g_reload_cfg = 1;
 	send_redirect(fd, "/config");
 }
@@ -1887,9 +1863,461 @@ static void send_page_shutdown(int fd, const char *qs)
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+ *  TVCAS TOOL PAGE  (pure-JS DES/3DES + TVCAS key transform, no ext libs)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+static void send_page_tvcas(int fd)
+{
+	int bsz = 32768, pos = 0;
+	char *buf = (char *)malloc(bsz);
+	if (!buf) return;
+
+	pos = emit_header(&buf, &bsz, pos, "TVCAS Tool", "tvcas");
+
+	/* ── Page styles ── */
+	pos = buf_printf(&buf, &bsz, pos,
+		"<style>"
+		".tv-tabs{display:flex;gap:4px;margin-bottom:16px;"
+		"border-bottom:1px solid var(--border);padding-bottom:0}"
+		".tv-tab{padding:8px 22px;cursor:pointer;font-size:13px;font-weight:500;"
+		"color:var(--text2);border-bottom:2px solid transparent;margin-bottom:-1px;"
+		"transition:all .15s;background:none;border-top:none;border-left:none;border-right:none}"
+		".tv-tab.active{color:var(--accent2);border-bottom-color:var(--accent)}"
+		".tv-tab:hover{color:var(--text0)}"
+		".tv-panel{display:none}.tv-panel.active{display:block}"
+		".tv-card{background:var(--bg2);border:1px solid var(--border);"
+		"border-radius:8px;padding:16px;margin-bottom:12px}"
+		".tv-lbl{font-size:12px;color:var(--text2);margin-bottom:5px;"
+		"margin-top:10px;font-weight:500}"
+		".tv-lbl:first-child{margin-top:0}"
+		".tv-inp{width:100%%;background:var(--bg3);border:1px solid var(--border2);"
+		"border-radius:5px;color:var(--text0);font-family:var(--font-mono);"
+		"font-size:12px;padding:7px 10px;outline:none;transition:border-color .15s}"
+		".tv-inp:focus{border-color:var(--accent)}"
+		"textarea.tv-inp{resize:vertical;min-height:50px}"
+		".tv-btn{background:var(--accent);border:none;border-radius:5px;color:#fff;"
+		"font-size:13px;font-weight:600;padding:8px 22px;cursor:pointer;"
+		"margin-top:10px;transition:background .15s}"
+		".tv-btn:hover{background:var(--accent2)}"
+		".tv-res{background:var(--bg2);border:1px solid var(--border);"
+		"border-radius:8px;overflow:hidden;min-height:44px}"
+		".tv-res-empty{padding:14px;font-size:12px;color:var(--text2);"
+		"font-family:var(--font-mono)}"
+		".tv-tbl{width:100%%;border-collapse:collapse}"
+		".tv-tbl tr{border-bottom:1px solid var(--border)}"
+		".tv-tbl tr:last-child{border-bottom:none}"
+		".tv-tbl td{padding:9px 14px;vertical-align:middle;font-family:var(--font-mono);font-size:12px}"
+		".tv-tbl td.tk{color:var(--text2);font-size:11px;font-weight:600;"
+		"text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;"
+		"width:120px;border-right:1px solid var(--border);background:var(--bg3)}"
+		".tv-tbl td.tv{color:var(--text0);padding-left:16px;word-break:break-all}"
+		".tv-tbl tr.tv-sh>td{background:var(--bg4);color:var(--accent);font-size:10px;"
+		"font-weight:700;letter-spacing:1.5px;text-transform:uppercase;"
+		"padding:6px 14px;border-right:none}"
+		/* split layout */
+		".tv-split{display:flex;gap:0;border-bottom:1px solid var(--border)}"
+		".tv-split-box{flex:1;border-right:1px solid var(--border)}"
+		".tv-split-box:last-child{border-right:none}"
+		".tv-split-hdr{font-size:10px;font-weight:700;letter-spacing:1.5px;"
+		"text-transform:uppercase;color:var(--accent);background:var(--bg4);"
+		"padding:6px 14px;border-bottom:1px solid var(--border)}"
+		".tv-cw-val{font-family:var(--font-mono);font-size:12px;font-weight:600;"
+		"color:var(--cyan);word-break:break-all;letter-spacing:.3px}"
+		".tv-ts{color:var(--text0);white-space:nowrap}"
+		".tv-rgrp{display:flex;align-items:center;gap:12px;margin-bottom:10px}"
+		".tv-rgrp label{display:flex;align-items:center;gap:5px;"
+		"cursor:pointer;font-size:13px;color:var(--text1)}"
+		".tv-ok{color:var(--green2)}.tv-er{color:var(--red2)}"
+		".tv-hi{color:var(--cyan)}.tv-dim{color:var(--text2)}"
+		"</style>");
+
+	/* ── Tabs ── */
+	pos = buf_printf(&buf, &bsz, pos,
+		"<div class='tv-tabs'>"
+		"<button class='tv-tab active' onclick='tvTab(0)'>&#128275; ECM Decryptor</button>"
+		"<button class='tv-tab' onclick='tvTab(1)'>&#128260; Key Converter</button>"
+		"</div>");
+
+	/* ── Panel 0: ECM Decryptor ── */
+	pos = buf_printf(&buf, &bsz, pos,
+		"<div id='tvp0' class='tv-panel active'>"
+		"<div class='tv-card'>"
+		"<div class='tv-rgrp'>"
+		"<span style='font-size:12px;color:var(--text2);font-weight:500'>Version:</span>"
+		"<label><input type='radio' name='ecm_v' value='3' onchange='tvVC()'>TVCAS3</label>"
+		"<label><input type='radio' name='ecm_v' value='4' onchange='tvVC()' checked>TVCAS4</label>"
+		"</div>"
+		"<div class='tv-lbl'>ECM (110 hex chars — header 80 or 81 selects the key):</div>"
+		"<textarea id='ecm_in' class='tv-inp' rows='2'"
+		" placeholder='80... or 81... (110 hex chars)'></textarea>"
+		"<div id='k3r' style='display:none'>"
+		"<div class='tv-lbl'>TVCAS3 Key (32 or 64 hex chars):</div>"
+		"<input id='k3in' class='tv-inp' type='text' placeholder='TVCAS3 key hex...'>"
+		"</div>"
+		"<div id='k4r'>"
+		"<div class='tv-lbl'>TVCAS4 Key (64 hex chars):</div>"
+		"<input id='k4in' class='tv-inp' type='text' placeholder='TVCAS4 key hex...'>"
+		"</div>"
+		"<button class='tv-btn' onclick='tvDec()'>Decrypt ECM</button>"
+		"</div>"
+		"<div class='tv-card'>"
+		"<div class='tv-lbl'>Result</div>"
+		"<div id='ecm_res' class='tv-res'>"
+		"<div class='tv-res-empty'>—</div>"
+		"</div>"
+		"</div>"
+		"</div>");
+
+	/* ── Panel 1: Key Converter ── */
+	pos = buf_printf(&buf, &bsz, pos,
+		"<div id='tvp1' class='tv-panel'>"
+		"<div class='tv-card'>"
+		"<div class='tv-rgrp'>"
+		"<span style='font-size:12px;color:var(--text2);font-weight:500'>Direction:</span>"
+		"<label><input type='radio' name='cv_d' value='3to4'"
+		" onchange='tvDC()' checked>3 &#8594; 4</label>"
+		"<label><input type='radio' name='cv_d' value='4to3'"
+		" onchange='tvDC()'>4 &#8594; 3</label>"
+		"</div>"
+		"<div id='cv_il' class='tv-lbl'>TVCAS3 Key (32 or 64 hex chars):</div>"
+		"<input id='cv_in' class='tv-inp' type='text' placeholder='Key hex...'>"
+		"<button class='tv-btn' onclick='tvConv()'>Convert</button>"
+		"</div>"
+		"<div class='tv-card'>"
+		"<div id='cv_ol' class='tv-lbl'>TVCAS4 Key</div>"
+		"<div id='cv_res' class='tv-res'>"
+		"<div class='tv-res-empty'>—</div>"
+		"</div>"
+		"</div>"
+		"</div>");
+
+	/* ── JavaScript ── */
+	pos = buf_printf(&buf, &bsz, pos, "<script>\n");
+
+	/* CRYPT_TABLE */
+	pos = buf_printf(&buf, &bsz, pos,
+		"const CT=new Uint8Array(["
+		"0xDA,0x26,0xE8,0x72,0x11,0x52,0x3E,0x46,0x32,0xFF,0x8C,0x1E,0xA7,0xBE,0x2C,0x29,"
+		"0x5F,0x86,0x7E,0x75,0x0A,0x08,0xA5,0x21,0x61,0xFB,0x7A,0x58,0x60,0xF7,0x81,0x4F,"
+		"0xE4,0xFC,0xDF,0xB1,0xBB,0x6A,0x02,0xB3,0x0B,0x6E,0x5D,0x5C,0xD5,0xCF,0xCA,0x2A,"
+		"0x14,0xB7,0x90,0xF3,0xD9,0x37,0x3A,0x59,0x44,0x69,0xC9,0x78,0x30,0x16,0x39,0x9A,"
+		"0x0D,0x05,0x1F,0x8B,0x5E,0xEE,0x1B,0xC4,0x76,0x43,0xBD,0xEB,0x42,0xEF,0xF9,0xD0,"
+		"0x4D,0xE3,0xF4,0x57,0x56,0xA3,0x0F,0xA6,0x50,0xFD,0xDE,0xD2,0x80,0x4C,0xD3,0xCB,"
+		"0xF8,0x49,0x8F,0x22,0x71,0x84,0x33,0xE0,0x47,0xC2,0x93,0xBC,0x7C,0x3B,0x9C,0x7D,"
+		"0xEC,0xC3,0xF1,0x89,0xCE,0x98,0xA2,0xE1,0xC1,0xF2,0x27,0x12,0x01,0xEA,0xE5,0x9B,"
+		"0x25,0x87,0x96,0x7B,0x34,0x45,0xAD,0xD1,0xB5,0xDB,0x83,0x55,0xB0,0x9E,0x19,0xD7,"
+		"0x17,0xC6,0x35,0xD8,0xF0,0xAE,0xD4,0x2B,0x1D,0xA0,0x99,0x8A,0x15,0x00,0xAF,0x2D,"
+		"0x09,0xA8,0xF5,0x6C,0xA1,0x63,0x67,0x51,0x3C,0xB2,0xC0,0xED,0x94,0x03,0x6F,0xBA,"
+		"0x3F,0x4E,0x62,0x92,0x85,0xDD,0xAB,0xFE,0x10,0x2E,0x68,0x65,0xE7,0x04,0xF6,0x0C,"
+		"0x20,0x1C,0xA9,0x53,0x40,0x77,0x2F,0xA4,0xFA,0x6D,0x73,0x28,0xE2,0xCD,0x79,0xC8,"
+		"0x97,0x66,0x8E,0x82,0x74,0x06,0xC7,0x88,0x1A,0x4A,0x6B,0xCC,0x41,0xE9,0x9D,0xB8,"
+		"0x23,0x9F,0x3D,0xBF,0x8D,0x95,0xC5,0x13,0xB9,0x24,0x5A,0xDC,0x64,0x18,0x38,0x91,"
+		"0x7F,0x5B,0x70,0x54,0x07,0xB6,0x4B,0x0E,0x36,0xAC,0x31,0xE6,0xD6,0x48,0xAA,0xB4]);\n");
+
+	/* DES implementation (BigInt-based, portable) */
+	pos = buf_printf(&buf, &bsz, pos,
+		"const DES=(()=>{\n"
+		"const IP=[58,50,42,34,26,18,10,2,60,52,44,36,28,20,12,4,62,54,46,38,30,22,14,6,"
+		"64,56,48,40,32,24,16,8,57,49,41,33,25,17,9,1,59,51,43,35,27,19,11,3,"
+		"61,53,45,37,29,21,13,5,63,55,47,39,31,23,15,7];\n"
+		"const FP=[40,8,48,16,56,24,64,32,39,7,47,15,55,23,63,31,38,6,46,14,54,22,62,30,"
+		"37,5,45,13,53,21,61,29,36,4,44,12,52,20,60,28,35,3,43,11,51,19,59,27,"
+		"34,2,42,10,50,18,58,26,33,1,41,9,49,17,57,25];\n"
+		"const EE=[32,1,2,3,4,5,4,5,6,7,8,9,8,9,10,11,12,13,12,13,14,15,16,17,"
+		"16,17,18,19,20,21,20,21,22,23,24,25,24,25,26,27,28,29,28,29,30,31,32,1];\n"
+		"const PP=[16,7,20,21,29,12,28,17,1,15,23,26,5,18,31,10,"
+		"2,8,24,14,32,27,3,9,19,13,30,6,22,11,4,25];\n"
+		"const PC1=[57,49,41,33,25,17,9,1,58,50,42,34,26,18,10,2,59,51,43,35,27,19,11,3,"
+		"60,52,44,36,63,55,47,39,31,23,15,7,62,54,46,38,30,22,14,6,"
+		"61,53,45,37,29,21,13,5,28,20,12,4];\n"
+		"const PC2=[14,17,11,24,1,5,3,28,15,6,21,10,23,19,12,4,26,8,16,7,27,20,13,2,"
+		"41,52,31,37,47,55,30,40,51,45,33,48,44,49,39,56,34,53,46,42,50,36,29,32];\n"
+		"const SH=[1,1,2,2,2,2,2,2,1,2,2,2,2,2,2,1];\n");
+
+	pos = buf_printf(&buf, &bsz, pos,
+		"const SB=["
+		"[14,4,13,1,2,15,11,8,3,10,6,12,5,9,0,7,0,15,7,4,14,2,13,1,10,6,12,11,9,5,3,8,"
+		"4,1,14,8,13,6,2,11,15,12,9,7,3,10,5,0,15,12,8,2,4,9,1,7,5,11,3,14,10,0,6,13],"
+		"[15,1,8,14,6,11,3,4,9,7,2,13,12,0,5,10,3,13,4,7,15,2,8,14,12,0,1,10,6,9,11,5,"
+		"0,14,7,11,10,4,13,1,5,8,12,6,9,3,2,15,13,8,10,1,3,15,4,2,11,6,7,12,0,5,14,9],"
+		"[10,0,9,14,6,3,15,5,1,13,12,7,11,4,2,8,13,7,0,9,3,4,6,10,2,8,5,14,12,11,15,1,"
+		"13,6,4,9,8,15,3,0,11,1,2,12,5,10,14,7,1,10,13,0,6,9,8,7,4,15,14,3,11,5,2,12],"
+		"[7,13,14,3,0,6,9,10,1,2,8,5,11,12,4,15,13,8,11,5,6,15,0,3,4,7,2,12,1,10,14,9,"
+		"10,6,9,0,12,11,7,13,15,1,3,14,5,2,8,4,3,15,0,6,10,1,13,8,9,4,5,11,12,7,2,14],"
+		"[2,12,4,1,7,10,11,6,8,5,3,15,13,0,14,9,14,11,2,12,4,7,13,1,5,0,15,10,3,9,8,6,"
+		"4,2,1,11,10,13,7,8,15,9,12,5,6,3,0,14,11,8,12,7,1,14,2,13,6,15,0,9,10,4,5,3],"
+		"[12,1,10,15,9,2,6,8,0,13,3,4,14,7,5,11,10,15,4,2,7,12,9,5,6,1,13,14,0,11,3,8,"
+		"9,14,15,5,2,8,12,3,7,0,4,10,1,13,11,6,4,3,2,12,9,5,15,10,11,14,1,7,6,0,8,13],"
+		"[4,11,2,14,15,0,8,13,3,12,9,7,5,10,6,1,13,0,11,7,4,9,1,10,14,3,5,12,2,15,8,6,"
+		"1,4,11,13,12,3,7,14,10,15,6,8,0,5,9,2,6,11,13,8,1,4,10,7,9,5,0,15,14,2,3,12],"
+		"[13,2,8,4,6,15,11,1,10,9,3,14,5,0,12,7,1,15,13,8,10,3,7,4,12,5,6,11,0,14,9,2,"
+		"7,11,4,1,9,12,14,2,0,6,10,13,15,3,5,8,2,1,14,7,4,10,8,13,15,12,9,0,3,5,6,11]];\n");
+
+	/* DES permute, subkeys, F-function, block */
+	pos = buf_printf(&buf, &bsz, pos,
+		"function prm(v,t,n){"
+		"let o=0n;const l=t.length;"
+		"for(let i=0;i<l;i++){const b=(v>>BigInt(n-t[i]))&1n;"
+		"if(b)o|=(1n<<BigInt(l-1-i));}return o;}\n"
+
+		"function skeys(k8){"
+		"let k=0n;for(let i=0;i<8;i++)k=(k<<8n)|BigInt(k8[i]);"
+		"let cd=prm(k,PC1,64);"
+		"let C=cd>>28n,D=cd&0xFFFFFFFn;"
+		"const sk=[];"
+		"for(let r=0;r<16;r++){"
+		"for(let s=0;s<SH[r];s++){"
+		"C=((C<<1n)|(C>>27n))&0xFFFFFFFn;"
+		"D=((D<<1n)|(D>>27n))&0xFFFFFFFn;}"
+		"sk.push(prm((C<<28n)|D,PC2,56));}"
+		"return sk;}\n"
+
+		"function ff(R,sk){"
+		"let exp=prm(BigInt(R>>>0),EE,32)^sk;"
+		"let out=0n;"
+		"for(let i=0;i<8;i++){"
+		"const b6=Number((exp>>BigInt(42-i*6))&0x3Fn);"
+		"const row=((b6&0x20)>>4)|(b6&1),col=(b6>>1)&0xF;"
+		"out|=BigInt(SB[i][row*16+col])<<BigInt(28-i*4);}"
+		"return Number(prm(out,PP,32)&0xFFFFFFFFn);}\n"
+
+		"function desBlk(k8,b8,dec){"
+		"const sk=skeys(k8);"
+		"let v=0n;for(let i=0;i<8;i++)v=(v<<8n)|BigInt(b8[i]);"
+		"v=prm(v,IP,64);"
+		"let L=Number((v>>32n)&0xFFFFFFFFn),R=Number(v&0xFFFFFFFFn);"
+		"for(let i=0;i<16;i++){const t=R;"
+		"R=(L^ff(R,dec?sk[15-i]:sk[i]))>>>0;L=t;}"
+		"const fp=prm((BigInt(R>>>0)<<32n)|BigInt(L>>>0),FP,64);"
+		"const r=new Uint8Array(8);"
+		"for(let i=0;i<8;i++)r[i]=Number((fp>>BigInt(56-i*8))&0xFFn);"
+		"return r;}\n"
+
+		"return{e:(k,b)=>desBlk(k,b,false),d:(k,b)=>desBlk(k,b,true)};"
+		"})();\n");
+
+	/* 3DES ECB decrypt — PyCryptodome compatible: D_K1(E_K2(D_K3(C))) */
+	pos = buf_printf(&buf, &bsz, pos,
+		"function tdesD(k24,data){"
+		"const k1=k24.slice(0,8),k2=k24.slice(8,16),k3=k24.slice(16,24);"
+		"const out=new Uint8Array(data.length);"
+		"for(let i=0;i<data.length;i+=8){"
+		"let b=data.slice(i,i+8);"
+		"b=DES.d(k3,b);b=DES.e(k2,b);b=DES.d(k1,b);out.set(b,i);}"
+		"return out;}\n");
+
+	/* rotate 8-byte buffer */
+	pos = buf_printf(&buf, &bsz, pos,
+		"function rot8(buf,left){"
+		"const b=new Uint8Array(buf);"
+		"if(left){let t1=b[7];for(let k=0;k<8;k++){const t2=t1;t1=b[k];b[k]=((b[k]<<1)|(t2>>7))&0xFF;}}"
+		"else{let t1=b[0];for(let k=7;k>=0;k--){const t2=t1;t1=b[k];b[k]=((b[k]>>1)|(t2<<7))&0xFF;}}"
+		"return b;}\n");
+
+	/* TVCAS session key transform */
+	pos = buf_printf(&buf, &bsz, pos,
+		"function tvKT(key8,enc){"
+		"const key=new Uint8Array(key8);"
+		"let bk=new Uint8Array([0x11,0x22,0x33,0x44,0x55,0x66,0x77,0x88]);"
+		"if(enc){"
+		"for(let i=0;i<8;i++)bk=rot8(bk,true);"
+		"for(let i1=7;i1>=0;i1--){"
+		"bk=rot8(bk,false);"
+		"for(let i2=7;i2>=0;i2--){"
+		"const ok7=key[6];"
+		"const t1=CT[ok7^bk[i2]^i1];"
+		"const s=[...key.slice(0,6)];"
+		"key[0]=key[7]^t1;"
+		"for(let j=1;j<7;j++)key[j]=s[j-1];"
+		"key[6]^=t1;key[7]=ok7;"
+		"}}"
+		"}else{"
+		"for(let i1=0;i1<8;i1++){"
+		"for(let i2=0;i2<8;i2++){"
+		"const t1=CT[key[7]^bk[i2]^i1],t2=key[0];"
+		"for(let j=0;j<6;j++)key[j]=key[j+1];"
+		"key[5]^=t1;key[6]=key[7];key[7]=t1^t2;}"
+		"bk=rot8(bk,true);}}"
+		"return key;}\n");
+
+	/* hex utils */
+	pos = buf_printf(&buf, &bsz, pos,
+		"function h2b(h){const b=new Uint8Array(h.length/2);"
+		"for(let i=0;i<b.length;i++)b[i]=parseInt(h.slice(i*2,i*2+2),16);return b;}\n"
+		"function b2h(b){return Array.from(b).map(x=>x.toString(16).padStart(2,'0')).join('').toUpperCase();}\n");
+
+	/* convert key */
+	pos = buf_printf(&buf, &bsz, pos,
+		"function convKey(hex,to4){"
+		"const kb=h2b(hex),res=new Uint8Array(kb.length);"
+		"for(let i=0;i<kb.length;i+=8)res.set(tvKT(kb.slice(i,i+8),to4),i);"
+		"return b2h(res);}\n");
+
+	/* decrypt ECM */
+	pos = buf_printf(&buf, &bsz, pos,
+		"function decEcm(ecmH,keyH){"
+		"ecmH=ecmH.replace(/[\\s]/g,'');"
+		"if(ecmH.length!==110)return{err:'ECM must be 110 hex chars (got '+ecmH.length+')'};"
+		"const hdr=ecmH.slice(0,2).toUpperCase();"
+		"if(hdr!=='80'&&hdr!=='81')return{err:'Invalid ECM header (expected 80 or 81, got '+hdr+')'};"
+		"const par=parseInt(hdr,16);"
+		"const ed=h2b(ecmH.slice(14)),kr=h2b(keyH);"
+		"if(ed.length!==48)return{err:'ECM payload must be 48 bytes, got '+ed.length};"
+		"if(kr.length!==32)return{err:'Key must be 32 bytes, got '+kr.length};"
+		"const kd=new Uint8Array(32);"
+		"for(let i=0;i<32;i+=8)kd.set(tvKT(kr.slice(i,i+8),false),i);"
+		"const off=par===0x81?16:0;"
+		"const dk=new Uint8Array(24);"
+		"dk.set(kd.slice(off,off+16));dk.set(kd.slice(off,off+8),16);"
+		"const dec=tdesD(dk,ed);"
+		"let sum=0;for(let i=0;i<47;i++)sum=(sum+dec[i])&0xFF;"
+		"const ts=((dec[0]<<24)|(dec[1]<<16)|(dec[2]<<8)|dec[3])>>>0;"
+		"const ac=((dec[20]<<24)|(dec[21]<<16)|(dec[22]<<8)|dec[23])>>>0;"
+		"const cw=new Uint8Array(16);cw.set(dec.slice(12,20));cw.set(dec.slice(4,12),8);"
+		"const d=new Date(ts*1000);"
+		"const ts2=d.getUTCFullYear()+'-'+"
+		"String(d.getUTCMonth()+1).padStart(2,'0')+'-'+"
+		"String(d.getUTCDate()).padStart(2,'0')+' '+"
+		"String(d.getUTCHours()).padStart(2,'0')+':'+"
+		"String(d.getUTCMinutes()).padStart(2,'0')+':'+"
+		"String(d.getUTCSeconds()).padStart(2,'0')+' UTC';"
+		"return{csC:sum,csS:dec[47],csOk:sum===dec[47],par:hdr,"
+		"ts:ts2,ac:ac.toString(16).toUpperCase().padStart(8,'0'),cw:b2h(cw)};}\n");
+
+	/* UI logic + sessionStorage persistence + aligned output */
+	pos = buf_printf(&buf, &bsz, pos,
+		"/* ── sessionStorage helpers ── */\n"
+		"function tvSave(){"
+		"const v=document.querySelector('input[name=ecm_v]:checked').value;"
+		"sessionStorage.setItem('tv_ecm',document.getElementById('ecm_in').value);"
+		"sessionStorage.setItem('tv_k3',document.getElementById('k3in').value);"
+		"sessionStorage.setItem('tv_k4',document.getElementById('k4in').value);"
+		"sessionStorage.setItem('tv_ecmv',v);"
+		"sessionStorage.setItem('tv_cvk',document.getElementById('cv_in').value);"
+		"const d=document.querySelector('input[name=cv_d]:checked');"
+		"if(d)sessionStorage.setItem('tv_cvd',d.value);"
+		"sessionStorage.setItem('tv_tab',document.querySelector('.tv-tab.active')?[].indexOf.call(document.querySelectorAll('.tv-tab'),document.querySelector('.tv-tab.active')):'0');}\n"
+
+		"function tvLoad(){"
+		"const ecm=sessionStorage.getItem('tv_ecm');"
+		"const k3=sessionStorage.getItem('tv_k3');"
+		"const k4=sessionStorage.getItem('tv_k4');"
+		"const ev=sessionStorage.getItem('tv_ecmv');"
+		"const cvk=sessionStorage.getItem('tv_cvk');"
+		"const cvd=sessionStorage.getItem('tv_cvd');"
+		"const tab=parseInt(sessionStorage.getItem('tv_tab')||'0');"
+		"if(ecm)document.getElementById('ecm_in').value=ecm;"
+		"if(k3)document.getElementById('k3in').value=k3;"
+		"if(k4)document.getElementById('k4in').value=k4;"
+		"if(ev){const r=document.querySelector('input[name=ecm_v][value=\"'+ev+'\"]');if(r)r.checked=true;}"
+		"if(cvk)document.getElementById('cv_in').value=cvk;"
+		"if(cvd){const r=document.querySelector('input[name=cv_d][value=\"'+cvd+'\"]');if(r)r.checked=true;}"
+		"tvVC();tvDC();if(tab)tvTab(tab);}\n"
+
+		"function tvTab(n){"
+		"document.querySelectorAll('.tv-tab').forEach((t,i)=>t.classList.toggle('active',i===n));"
+		"document.querySelectorAll('.tv-panel').forEach((p,i)=>p.classList.toggle('active',i===n));"
+		"sessionStorage.setItem('tv_tab',n);}\n"
+
+		"function tvVC(){"
+		"const v=document.querySelector('input[name=ecm_v]:checked').value;"
+		"document.getElementById('k3r').style.display=v==='3'?'':'none';"
+		"document.getElementById('k4r').style.display=v==='4'?'':'none';"
+		"tvSave();}\n"
+
+		"function tvDC(){"
+		"const d=document.querySelector('input[name=cv_d]:checked').value;"
+		"document.getElementById('cv_il').textContent=d==='3to4'?"
+		"'TVCAS3 Key (32 or 64 hex chars):':'TVCAS4 Key (64 hex chars):';"
+		"document.getElementById('cv_ol').textContent=d==='3to4'?'TVCAS4 Key':'TVCAS3 Key';"
+		"tvSave();}\n"
+
+		"function sr(id,html){document.getElementById(id).innerHTML=html;}\n"
+		"function row(k,v){return '<tr><td class=tk>'+k+'</td><td class=tv>'+v+'</td></tr>';}\n"
+
+		"function tvDec(){"
+		"tvSave();"
+		"try{"
+		"const ecm=document.getElementById('ecm_in').value.trim().replace(/[\\s]+/g,'');"
+		"if(!ecm)return sr('ecm_res','<div class=tv-res-empty><span class=tv-er>Missing ECM</span></div>');"
+		"if(ecm.length!==110)"
+		"return sr('ecm_res','<div class=tv-res-empty><span class=tv-er>ECM must be 110 hex chars (got '+ecm.length+')</span></div>');"
+		"const ver=document.querySelector('input[name=ecm_v]:checked').value;"
+		"let k4;"
+		"if(ver==='3'){"
+		"const k3=document.getElementById('k3in').value.trim().replace(/[\\s]+/g,'');"
+		"if(!k3)return sr('ecm_res','<div class=tv-res-empty><span class=tv-er>Missing TVCAS3 Key</span></div>');"
+		"if(k3.length!==32&&k3.length!==64)"
+		"return sr('ecm_res','<div class=tv-res-empty><span class=tv-er>Key must be 32 or 64 hex chars</span></div>');"
+		"k4=convKey(k3,true);"
+		"}else{"
+		"k4=document.getElementById('k4in').value.trim().replace(/[\\s]+/g,'');"
+		"if(!k4)return sr('ecm_res','<div class=tv-res-empty><span class=tv-er>Missing TVCAS4 Key</span></div>');"
+		"if(k4.length!==64)"
+		"return sr('ecm_res','<div class=tv-res-empty><span class=tv-er>Key must be 64 hex chars</span></div>');}"
+		"const r=decEcm(ecm,k4);"
+		"if(r.err)return sr('ecm_res','<div class=tv-res-empty><span class=tv-er>'+r.err+'</span></div>');"
+		"const csC=r.csC.toString(16).toUpperCase().padStart(2,'0');"
+		"const csS=r.csS.toString(16).toUpperCase().padStart(2,'0');"
+		"const ok=r.csOk?'<span class=tv-ok>YES</span>':'<span class=tv-er>NO</span>';"
+		"const cc=r.csOk?'tv-ok':'tv-er';"
+		/* Two tables side by side, then CW full width below */
+		"sr('ecm_res',"
+		"'<div class=tv-split>'"
+		/* LEFT: Checksum */
+		"+'<div class=tv-split-box>'"
+		"+'<div class=tv-split-hdr>Checksum</div>'"
+		"+'<table class=tv-tbl>'"
+		"+row('Calculated','<span class='+cc+'>'+csC+'</span>')"
+		"+row('Stored','<span class='+cc+'>'+csS+'</span>')"
+		"+row('Valid',ok)"
+		"+'</table></div>'"
+		/* RIGHT: Output */
+		"+'<div class=tv-split-box>'"
+		"+'<div class=tv-split-hdr>Output</div>'"
+		"+'<table class=tv-tbl>'"
+		"+row('Timestamp','<span class=tv-ts>'+r.ts+'</span>')"
+		"+row('Access','<span class=tv-hi>'+r.ac+'</span>')"
+		"+row('CW','<span class=tv-cw-val>'+r.cw+'</span>')"
+		"+'</table></div>'"
+		"+'</div>'"
+		");"
+		"}catch(e){sr('ecm_res','<div class=tv-res-empty><span class=tv-er>'+e.message+'</span></div>');}}\n"
+
+		"function tvConv(){"
+		"tvSave();"
+		"try{"
+		"const k=document.getElementById('cv_in').value.trim().replace(/[\\s]+/g,'');"
+		"if(!k)return sr('cv_res','<div class=tv-res-empty><span class=tv-er>Missing key</span></div>');"
+		"if(k.length!==32&&k.length!==64)"
+		"return sr('cv_res','<div class=tv-res-empty><span class=tv-er>Invalid length (must be 32 or 64 hex chars)</span></div>');"
+		"const d=document.querySelector('input[name=cv_d]:checked').value;"
+		"const lbl=d==='3to4'?'TVCAS4 Key':'TVCAS3 Key';"
+		"sr('cv_res',"
+		"'<div class=tv-split-hdr>'+lbl+'</div>'"
+		"+'<table class=tv-tbl>'"
+		"+row('Key','<span class=tv-cw-val>'+convKey(k,d==='3to4')+'</span>')"
+		"+'</table>'"
+		");"
+		"}catch(e){sr('cv_res','<div class=tv-res-empty><span class=tv-er>'+e.message+'</span></div>');}}\n"
+
+		/* Add input listeners for auto-save */
+		"['ecm_in','k3in','k4in','cv_in'].forEach(id=>{"
+		"const el=document.getElementById(id);"
+		"if(el)el.addEventListener('input',tvSave);});\n"
+
+		"document.addEventListener('DOMContentLoaded',tvLoad);\n"
+
+		"</script>");
+
+	pos = emit_footer(&buf, &bsz, pos);
+	send_response(fd, 200, "OK", "text/html", buf, pos);
+	free(buf);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
  *  HTTP REQUEST HANDLER  (unchanged routing logic)
  * ═══════════════════════════════════════════════════════════════════════════ */
-static void handle_request(int fd)
+static void handle_request(int fd, const char *client_ip)
 {
 	char req[WEB_BUF_SIZE];
 	int  rlen = 0;
@@ -1962,10 +2390,10 @@ static void handle_request(int fd)
 		if (ok) {
 			char token[WEB_SESSION_LEN + 1];
 			session_create(token);
-			tcmg_log_dbg(D_WEBIF, "login OK for '%s'", u);
+			tcmg_log_dbg(D_WEBIF, "login OK for '%s' from %s", u, client_ip);
 			send_redirect_with_cookie(fd, "/status", token);
 		} else {
-			tcmg_log_dbg(D_WEBIF, "login FAIL for '%s'", u);
+			tcmg_log("login FAIL for '%s' from %s", u, client_ip);
 			send_login_page(fd, 1);
 		}
 		return;
@@ -1981,20 +2409,21 @@ static void handle_request(int fd)
 	if (strcmp(path, "/") == 0 || strcmp(path, "/login") == 0)
 		send_redirect(fd, "/status");
 	else if (strcmp(path, "/status") == 0) {
-		char killstr[16], action2[32];
-		get_param(qs ? qs : "", "kill",   killstr, sizeof(killstr));
-		get_param(qs ? qs : "", "action", action2, sizeof(action2));
+		char killstr[16];
+		get_param(qs ? qs : "", "kill", killstr, sizeof(killstr));
 		if (killstr[0]) {
 			uint32_t tid = (uint32_t)strtoul(killstr, NULL, 10);
+			char killed_user[64] = "";
+			get_param(qs ? qs : "", "user", killed_user, sizeof(killed_user));
 			client_kill_by_tid(tid);
-			tcmg_log("disconnect tid=%u", tid);
+			tcmg_log("disconnect user '%s' tid=%u (by webif)",
+			         killed_user[0] ? killed_user : "?", tid);
 		}
-		if (strcmp(action2, "resetstats") == 0) handle_reset_stats();
 		send_page_status(fd);
 	}
 	else if (strcmp(path, "/users")   == 0) send_page_users(fd);
 	else if (strcmp(path, "/failban") == 0) send_page_failban(fd, qs ? qs : "");
-	else if (strcmp(path, "/config")  == 0) send_page_config(fd, qs ? qs : "");
+	else if (strcmp(path, "/config")  == 0) send_page_config(fd);
 	else if (strcmp(path, "/config_save") == 0 && strcmp(method, "POST") == 0)
 	{
 		const char *body_start = strstr(req, "\r\n\r\n");
@@ -2017,20 +2446,21 @@ static void handle_request(int fd)
 				}
 			}
 		}
-		handle_config_save(fd, post_extra, body_len);
+		handle_config_save(fd, post_extra);
 	}
 	else if (strcmp(path, "/livelog")  == 0) send_page_livelog(fd);
 	else if (strcmp(path, "/logpoll")  == 0) send_logpoll(fd, qs ? qs : "");
 	else if (strcmp(path, "/shutdown") == 0) send_page_shutdown(fd, qs ? qs : "");
+	else if (strcmp(path, "/tvcas")    == 0) send_page_tvcas(fd);
 	else if (strcmp(path, "/api/status") == 0) send_api_status(fd);
 	else if (strcmp(path, "/api/reload") == 0) {
 		g_reload_cfg = 1;
 		const char *j = "{\"ok\":true,\"msg\":\"reload scheduled\"}";
 		send_response(fd, 200, "OK", "application/json", j, (int)strlen(j));
 	}
-	else if (strcmp(path, "/api/normalize") == 0) {
-		g_normalize_cfg = 1;
-		const char *j = "{\"ok\":true,\"msg\":\"normalize scheduled\"}";
+	else if (strcmp(path, "/api/resetstats") == 0) {
+		handle_reset_stats();
+		const char *j = "{\"ok\":true,\"msg\":\"stats reset\"}";
 		send_response(fd, 200, "OK", "application/json", j, (int)strlen(j));
 	}
 	else {
@@ -2074,7 +2504,7 @@ static void *http_server_thread(void *arg)
 		int is_poll = (strstr(peek, "GET /logpoll") != NULL);
 		if (!is_poll) tcmg_log_dbg(D_WEBIF, "HTTP connection from %s", client_ip);
 
-		handle_request(cfd);
+		handle_request(cfd, client_ip);
 		close(cfd);
 	}
 	tcmg_log("stopped");

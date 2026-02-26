@@ -322,7 +322,6 @@ typedef struct s_conn_args
 extern S_CONFIG         g_cfg;
 extern volatile int32_t g_running;
 extern volatile int32_t g_reload_cfg;
-extern volatile int32_t g_normalize_cfg;
 extern volatile int32_t g_active_conns;
 extern time_t           g_start_time;
 extern char             g_cfgdir[CFGPATH_LEN];

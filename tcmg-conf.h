@@ -73,6 +73,12 @@ S_ACCOUNT *cfg_account_new(S_CONFIG *cfg);
 /* Free all accounts in the list and zero the pointer. */
 void cfg_accounts_free(S_CONFIG *cfg);
 
+/*
+ * cfg_write_default — create a fully-commented default config file.
+ * Called when no config file is found on startup.
+ */
+bool cfg_write_default(const char *path);
+
 /* Print one-line summary of loaded config. */
 void cfg_print(const S_CONFIG *cfg);
 
