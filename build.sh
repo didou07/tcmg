@@ -87,17 +87,18 @@ mlog() { echo "$*" >> "$MASTER_LOG" 2>/dev/null || true; }
 #
 #  LEGACY=1     -> use LEGACY_CFLAGS (old GCC, max C99)
 #  NO_SYSROOT=1 -> skip sysroot detection (avoid path issues)
-#  EXT          -> output file extension (.elf default, .exe for Windows)
+#  EXT          -> output file extension (empty default, .exe for Windows)
 
 declare -A TC_CC TC_URL TC_MD5 TC_DESC TC_ARCH_FLAGS
 declare -A TC_EXTRA_CFLAGS TC_LDFLAGS TC_STRIP TC_TYPE TC_APT
 declare -A TC_LEGACY TC_NO_SYSROOT TC_EXT
+declare -A TC_CONFDIR
 
 _reg() {
     local name="$1"  desc="$2"    cc="$3"    url="$4"
     local md5="$5"   archf="$6"   xcf="$7"   ldf="$8"
     local strip="$9" type="${10}" apt="${11:-}" legacy="${12:-0}"
-    local nosys="${13:-0}" ext="${14:-.elf}"
+    local nosys="${13:-0}" ext="${14:-}"
     TC_CC[$name]="$cc";             TC_URL[$name]="$url"
     TC_MD5[$name]="$md5";           TC_DESC[$name]="$desc"
     TC_ARCH_FLAGS[$name]="$archf";  TC_EXTRA_CFLAGS[$name]="$xcf"
@@ -197,9 +198,9 @@ _reg "dream_mipsel" \
     "mipsel-dreambox-linux-gnu-gcc" \
     "$BASE_URL/$PVER/Toolchain-dream_mipsel.tar.xz" \
     "731671ac09cbed5910e00b19c243218f" \
-    "-march=mips32r2 -mabi=32 -EL" "" \
+    "-march=mips32 -mabi=32 -EL -msoft-float -fno-tree-vectorize" "" \
     "-lpthread -latomic -Wl,--gc-sections -Wl,--strip-all" \
-    "mipsel-dreambox-linux-gnu-strip" "linux" "gcc-mipsel-linux-gnu" "1" "1"
+    "mipsel-dreambox-linux-gnu-strip" "linux" "gcc-mipsel-linux-gnu" "1" "1" ""
 
 _reg "dream_aarch64" \
     "Dreambox DM920 / DM7080 HD (AArch64)" \
@@ -492,6 +493,39 @@ _reg "mipsel_oe16" \
     "-march=mips32r2 -mabi=32 -EL" "" \
     "-lpthread -lrt -Wl,--gc-sections -Wl,--strip-all" \
     "mipsel-unknown-linux-gnu-strip" "linux" "gcc-mipsel-linux-gnu" "1" "0"
+
+# Config directory per target (compile-time default, like OSCam CONF_DIR)
+TC_CONFDIR["rpi_armv6"]="/etc/tcmg"
+TC_CONFDIR["rpi_armv7"]="/etc/tcmg"
+TC_CONFDIR["rpi_armv8"]="/etc/tcmg"
+TC_CONFDIR["rpi_aarch64"]="/etc/tcmg"
+TC_CONFDIR["dream_arm"]="/etc/tuxbox/config"
+TC_CONFDIR["dream_mipsel"]="/etc/tuxbox/config"
+TC_CONFDIR["dream_aarch64"]="/etc/tuxbox/config"
+TC_CONFDIR["vuplus4k_arm"]="/etc/tuxbox/config"
+TC_CONFDIR["vuplus4k_armv7"]="/etc/tuxbox/config"
+TC_CONFDIR["qnap_armv5"]="/etc/config/tcmg"
+TC_CONFDIR["qnap_armv7"]="/etc/config/tcmg"
+TC_CONFDIR["qnap_x64"]="/etc/config/tcmg"
+TC_CONFDIR["owrt_ar71xx_mips"]="/etc/tcmg"
+TC_CONFDIR["owrt_ath79_mips"]="/etc/tcmg"
+TC_CONFDIR["owrt_ramips_mips"]="/etc/tcmg"
+TC_CONFDIR["owrt_rpi_armv6"]="/etc/tcmg"
+TC_CONFDIR["owrt_rpi_armv7"]="/etc/tcmg"
+TC_CONFDIR["owrt_mediatek_armv8"]="/etc/tcmg"
+TC_CONFDIR["owrt_kirkwood_arm"]="/usr/tcmg"
+TC_CONFDIR["owrt_mpc85xx_ppc"]="/etc/tcmg"
+TC_CONFDIR["ubnt_aarch64"]="/etc/tcmg"
+TC_CONFDIR["ubnt_mips64"]="/etc/tcmg"
+TC_CONFDIR["aarch64_generic"]="/var/tuxbox/config"
+TC_CONFDIR["armv7_generic"]="/var/tuxbox/config"
+TC_CONFDIR["mipsel_generic"]="/var/tuxbox/config"
+TC_CONFDIR["powerpc_generic"]="/var/tuxbox/config"
+TC_CONFDIR["oe20_sh4"]="/var/tuxbox/config"
+TC_CONFDIR["oe20_armv7"]="/var/tuxbox/config"
+TC_CONFDIR["oe20_mipsel"]="/var/tuxbox/config"
+TC_CONFDIR["pogoplug_arm"]="/usr/tcmg"
+TC_CONFDIR["mipsel_oe16"]="/var/tuxbox/config"
 
 # Group definitions and build order
 GROUP_NAMES=(
@@ -800,6 +834,11 @@ build_target() {
     # Extra flags
     local xcf="${TC_EXTRA_CFLAGS[$t]:-}"
     [[ -n "$xcf" ]] && read -ra _xf <<< "$xcf" && FLAGS+=("${_xf[@]}")
+
+    # Config directory — set at compile time (identical to OSCam CONF_DIR)
+    # Only inject for embedded targets; Windows and generic Linux use header defaults
+    local confdir="${TC_CONFDIR[$t]:-}"
+    [[ -n "$confdir" ]] && FLAGS+=("-DCS_CONFDIR=\"$confdir\"")
 
     # Detect sysroot
     local sysroot; sysroot=$(find_sysroot "$t")

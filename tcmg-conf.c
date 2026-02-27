@@ -422,7 +422,7 @@ bool cfg_save(const S_CONFIG *cfg)
 	time_t now = time(NULL); struct tm ti; char ts[32];
 	localtime_r(&now, &ti);
 	strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", &ti);
-	fprintf(f, "# tcmg config — saved %s\n\n", ts);
+	fprintf(f, "# tcmg config -- saved %s\n\n", ts);
 
 	fprintf(f, "[server]\n"); field_write(f, cfg_server_fields, cfg); fputc('\n', f);
 	fprintf(f, "[webif]\n");  field_write(f, cfg_webif_fields,  cfg); fputc('\n', f);
@@ -477,7 +477,7 @@ bool cfg_save(const S_CONFIG *cfg)
 	fclose(f);
 
 	/* Step 2: copy .tmp → final file
-	 * Use fopen(dest,"w") like OSCam's file_copy — rename() fails on Windows
+	 * Use fopen(dest,"w") like OSCam's file_copy -- rename() fails on Windows
 	 * when the destination already exists.                                   */
 	FILE *src = fopen(tmppath, "r");
 	if (!src)
@@ -517,7 +517,7 @@ bool cfg_write_default(const char *path)
 	}
 
 	fprintf(f,
-	"# tcmg — default configuration\n"
+	"# tcmg -- default configuration\n"
 	"# Generated automatically. Edit and restart to apply changes.\n"
 	"\n"
 	"[server]\n"

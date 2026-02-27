@@ -141,7 +141,7 @@ void tcmg_log_hex(const char *mod, const uint8_t *buf, int32_t n,
 
 
 /*
- * log_ecm_raw — compact hex dump of raw ECM payload (D_ECM only).
+ * log_ecm_raw -- compact hex dump of raw ECM payload (D_ECM only).
  */
 void log_ecm_raw(const uint8_t *data, int32_t len)
 {
@@ -174,10 +174,10 @@ void log_ecm_raw(const uint8_t *data, int32_t len)
 }
 
 /*
- * log_cw_result — always printed when ecm_log=1 (D_ECM not required).
- * Normal mode (0x0000):
+ * log_cw_result -- always printed when ecm_log=1 (D_ECM not required).
+ * Normal mode (0):
  *   (cw      ) [hit]  0B00:0001  28FDEF307A1BFBBA 43F55D8627A87C5C  0ms  user
- * With D_ECM (0x0010): same format, payload already printed by log_ecm_raw.
+ * With D_ECM (16): same format, payload already printed by log_ecm_raw.
  */
 void log_cw_result(uint16_t caid, uint16_t sid, int32_t len,
                    const uint8_t *cw, bool hit, int32_t ms, const char *user)
@@ -223,7 +223,7 @@ int8_t log_ecm_get(void)      { return s_ecm_log; }
 
 
 /*
- * log_ring_since — copy lines with serial id in [from_id, ...).
+ * log_ring_since -- copy lines with serial id in [from_id, ...).
  * Call with from_id=0 on first poll to get the last LOG_RING_MAX entries.
  * Returns count; *out_next = next id to pass next time.
  * Caller must free() each returned string.

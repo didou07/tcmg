@@ -85,7 +85,7 @@ static const char *cookie_get_session(const char *cookie_hdr, char *buf, int buf
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- *  NEW CSS — DreamBox OpenWebif inspired, fully modernised
+ *  NEW CSS -- DreamBox OpenWebif inspired, fully modernised
  * ═══════════════════════════════════════════════════════════════════════════ */
 static const char CSS[] =
 /* ── Reset + Font ── */
@@ -711,7 +711,7 @@ static int check_auth(const char *auth_header)
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- *  PAGE STRUCTURE — sidebar layout
+ *  PAGE STRUCTURE -- sidebar layout
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /* SVG icons (inline, no deps) */
@@ -739,7 +739,7 @@ static int emit_header(char **buf, int *bsz, int pos,
 		"<!DOCTYPE html><html lang='en'><head>"
 		"<meta charset='UTF-8'>"
 		"<meta name='viewport' content='width=device-width,initial-scale=1'>"
-		"<title>tcmg — %s</title>"
+		"<title>tcmg -- %s</title>"
 		"<style>%s</style>"
 		"</head><body>",
 		title, CSS);
@@ -975,7 +975,7 @@ static void send_login_page(int fd, int failed)
 		"<!DOCTYPE html><html lang='en'><head>"
 		"<meta charset='UTF-8'>"
 		"<meta name='viewport' content='width=device-width,initial-scale=1'>"
-		"<title>tcmg — Login</title>"
+		"<title>tcmg -- Login</title>"
 		"<style>%s</style>"
 		"</head><body style='background:var(--bg0)'>",
 		CSS);
@@ -1427,7 +1427,7 @@ static void send_page_config(int fd)
 	pos = emit_header(&buf, &bsz, pos, "Config", "config");
 
 	char cfgpath[CFGPATH_LEN + 16];
-	snprintf(cfgpath, sizeof(cfgpath), "%s/config.cfg", g_cfgdir);
+	snprintf(cfgpath, sizeof(cfgpath), "%s/" TCMG_CFG_FILE, g_cfgdir);
 
 	FILE *fp = fopen(cfgpath, "r");
 	char  filebuf[16384] = "";
@@ -1456,12 +1456,12 @@ static void send_page_config(int fd)
 
 	pos = buf_printf(&buf, &bsz, pos,
 		"<div class='section-hdr'>"
-		"  <div class='section-title'>config.cfg</div>"
+		"  <div class='section-title'>tcmg.conf</div>"
 		"  <span class='text-muted' style='font-size:11px;font-family:var(--font-mono)'>%s</span>"
 		"</div>"
 		"%s"
 		"<div class='info-box'>"
-		"Edit and save to apply changes. A backup is created as <span class='mono'>config.cfg.bak</span> automatically."
+		"Edit and save to apply changes. A backup is created as <span class='mono'>tcmg.conf.bak</span> automatically."
 		"</div>"
 		"<form method='post' action='/config_save'>"
 		"<textarea class='cfg-editor' name='cfg' spellcheck='false'>%s</textarea>"
@@ -1471,7 +1471,7 @@ static void send_page_config(int fd)
 		"</form>",
 		cfgpath,
 		truncated ? "<div class='info-box' style='color:var(--yellow2);border-color:rgba(245,158,11,.3)'>"
-		            "⚠ Config file exceeds 16 KB — displayed content is truncated. Edit the file directly."
+		            "⚠ Config file exceeds 16 KB -- displayed content is truncated. Edit the file directly."
 		            "</div>" : "",
 		escaped);
 	free(escaped);
@@ -1491,9 +1491,9 @@ static void handle_config_save(int fd, const char *post_body)
 		return;
 	}
 	char cfgpath[CFGPATH_LEN + 16];
-	snprintf(cfgpath, sizeof(cfgpath), "%s/config.cfg", g_cfgdir);
+	snprintf(cfgpath, sizeof(cfgpath), "%s/" TCMG_CFG_FILE, g_cfgdir);
 	char tmppath[CFGPATH_LEN + 20];
-	snprintf(tmppath, sizeof(tmppath), "%s/config.cfg.tmp", g_cfgdir);
+	snprintf(tmppath, sizeof(tmppath), "%s/" TCMG_CFG_FILE ".tmp", g_cfgdir);
 	FILE *fp = fopen(tmppath, "w");
 	if (!fp) {
 		const char *e = "<html><body><h1>Cannot write temp file</h1></body></html>";
@@ -1507,7 +1507,7 @@ static void handle_config_save(int fd, const char *post_body)
 	pthread_mutex_init(&parsed.ban_lock, NULL);
 	if (!cfg_load(tmppath, &parsed)) {
 		remove(tmppath); cfg_accounts_free(&parsed);
-		const char *e = "<html><body><h1>Config parse error — not saved</h1></body></html>";
+		const char *e = "<html><body><h1>Config parse error -- not saved</h1></body></html>";
 		send_response(fd, 400, "Bad Request", "text/html", e, (int)strlen(e));
 		return;
 	}
@@ -1515,7 +1515,7 @@ static void handle_config_save(int fd, const char *post_body)
 	strncpy(parsed.config_file, cfgpath, CFGPATH_LEN - 1);
 	/* Backup */
 	char bakpath[CFGPATH_LEN + 20];
-	snprintf(bakpath, sizeof(bakpath), "%s/config.cfg.bak", g_cfgdir);
+	snprintf(bakpath, sizeof(bakpath), "%s/" TCMG_CFG_FILE ".bak", g_cfgdir);
 	FILE *src = fopen(cfgpath, "r");
 	if (src) {
 		FILE *dst = fopen(bakpath, "w");
@@ -1563,7 +1563,7 @@ static void send_page_livelog(int fd)
 		int      on  = !!(g_dblevel & m);
 		pos = buf_printf(&buf, &bsz, pos,
 			"<a id='db%u' href='#' class='dbg-tag%s' onclick='toggleDbg(%u);return false;'"
-			" title='0x%04X'>%s</a>",
+			" title='%u'>%s</a>",
 			m, on ? " on" : "", m, m, g_dblevel_names[i].name);
 		ma += snprintf(masks_arr + ma, sizeof(masks_arr) - ma,
 		               "%s%u", i ? "," : "", m);
@@ -1571,7 +1571,7 @@ static void send_page_livelog(int fd)
 	int all_on = (g_dblevel == D_ALL);
 	pos = buf_printf(&buf, &bsz, pos,
 		"<a id='dbALL' href='#' class='dbg-tag%s' onclick='toggleAll();return false;'>ALL</a>"
-		"<span class='dbg-mask'>mask: <span id='dbmask'>0x%04X</span></span>"
+		"<span class='dbg-mask'>mask: <span id='dbmask'>%u</span></span>"
 		"</div>",
 		all_on ? " on" : "", g_dblevel);
 
@@ -1715,7 +1715,7 @@ static void send_logpoll(int fd, const char *qs)
 		if (v >= 0 && v <= 0xFFFF && (uint16_t)v != g_dblevel)
 		{
 			g_dblevel = (uint16_t)v;
-			tcmg_log_dbg(D_WEBIF, "livelog debug_level → 0x%04X", g_dblevel);
+			tcmg_log_dbg(D_WEBIF, "livelog debug_level → %u", g_dblevel);
 		}
 	}
 
@@ -1790,7 +1790,7 @@ static void send_api_status(int fd)
 		"\"cw_not\":%lld,"
 		"\"ecm_total\":%lld,"
 		"\"hit_rate_pct\":%.1f,"
-		"\"debug_mask\":\"0x%04X\","
+		"\"debug_mask\":%u,"
 		"\"clients\":[",
 		TCMG_VERSION,
 		TCMG_BUILD_TIME,
@@ -2030,7 +2030,7 @@ static void send_page_tvcas(int fd)
 		"<label><input type='radio' name='ecm_v' value='3' onchange='tvVC()'>TVCAS3</label>"
 		"<label><input type='radio' name='ecm_v' value='4' onchange='tvVC()' checked>TVCAS4</label>"
 		"</div>"
-		"<div class='tv-lbl'>ECM (110 hex chars — header 80 or 81 selects the key):</div>"
+		"<div class='tv-lbl'>ECM (110 hex chars -- header 80 or 81 selects the key):</div>"
 		"<textarea id='ecm_in' class='tv-inp' rows='2'"
 		" placeholder='80... or 81... (110 hex chars)'></textarea>"
 		"<div id='k3r' style='display:none'>"
@@ -2179,7 +2179,7 @@ static void send_page_tvcas(int fd)
 		"return{e:(k,b)=>desBlk(k,b,false),d:(k,b)=>desBlk(k,b,true)};"
 		"})();\n");
 
-	/* 3DES ECB decrypt — PyCryptodome compatible: D_K1(E_K2(D_K3(C))) */
+	/* 3DES ECB decrypt -- PyCryptodome compatible: D_K1(E_K2(D_K3(C))) */
 	pos = buf_printf(&buf, &bsz, pos,
 		"function tdesD(k24,data){"
 		"const k1=k24.slice(0,8),k2=k24.slice(8,16),k3=k24.slice(16,24);"

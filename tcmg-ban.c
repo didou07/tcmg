@@ -11,7 +11,7 @@ static S_BAN_ENTRY *ban_find_locked(const char *ip)
 	return NULL;
 }
 
-/* Prune expired entries — call under ban_lock. */
+/* Prune expired entries -- call under ban_lock. */
 static void ban_prune_locked(void)
 {
 	S_BAN_ENTRY **pp = &g_cfg.bans;

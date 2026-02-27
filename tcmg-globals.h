@@ -77,6 +77,7 @@ static inline void tcmg_winsock_cleanup(void)
 
 #  include <pthread.h>
 #  include <unistd.h>
+#  include <sys/stat.h>
 #  include <fcntl.h>
 #  include <poll.h>
 #  include <sys/socket.h>
@@ -122,7 +123,7 @@ static inline void tcmg_winsock_cleanup(void)
 #endif
 
 /* Build-time constants */
-#define TCMG_VERSION         "4.1"
+#define TCMG_VERSION         "4.2"
 #define TCMG_BANNER          "tcmg v" TCMG_VERSION
 #define CW_LEN               16
 #define NC_MSG_MAX           400
@@ -146,7 +147,14 @@ static inline void tcmg_winsock_cleanup(void)
 #  define TCMG_BUILD_TIME    __DATE__ " " __TIME__
 #endif
 
-#define TCMG_CFG_FILE        "config.cfg"
+#ifndef CS_CONFDIR
+#  if defined(TCMG_OS_WINDOWS)
+#    define CS_CONFDIR  "."
+#  else
+#    define CS_CONFDIR  "/usr/local/etc"
+#  endif
+#endif
+#define TCMG_CFG_FILE        "tcmg.conf"
 #define TCMG_SRVID_FILE      "tcmg.srvid2"
 
 /* Newcamd protocol message IDs */

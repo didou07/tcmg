@@ -14,7 +14,7 @@ volatile int32_t g_restart       = 0;
 static char **g_argv_saved = NULL;
 volatile int32_t g_active_conns = 0;
 time_t           g_start_time   = 0;
-char             g_cfgdir[CFGPATH_LEN] = ".";
+char             g_cfgdir[CFGPATH_LEN] = CS_CONFDIR;
 
 /* ECM CW cache */
 S_CW_CACHE_ENTRY g_cw_cache[CW_CACHE_SIZE];
@@ -79,7 +79,7 @@ void client_kill_by_tid(uint32_t tid)
 
 /* After cfg_reload, re-point each connected client to the new S_ACCOUNT
  * object (looked up by username). Without this, cl->account is a dangling
- * pointer into freed memory — any field (sched_day_from, limits, ...) is
+ * pointer into freed memory -- any field (sched_day_from, limits, ...) is
  * garbage and will produce false schedule denials or UAF crashes.       */
 static void clients_relink_accounts(void)
 {
@@ -92,7 +92,7 @@ static void clients_relink_accounts(void)
 		S_ACCOUNT *a;
 		for (a = g_cfg.accounts; a; a = a->next)
 			if (strcmp(cl->user, a->user) == 0) break;
-		cl->account = a;   /* NULL if account was deleted — kill the client */
+		cl->account = a;   /* NULL if account was deleted -- kill the client */
 		if (!a) cl->kill_flag = 1;
 	}
 	pthread_rwlock_unlock(&g_cfg.acc_lock);
@@ -163,10 +163,11 @@ static void print_usage(const char *prog)
 	       "Options:\n"
 	       "  -c <dir>    Config directory (default: current dir)\n"
 	       "              Loads <dir>/" TCMG_CFG_FILE "\n"
-	       "  -d <level>  Debug bitmask (decimal or hex 0x...)\n"
-	       "              Bits: 0001=trace 0002=net   0004=reader 0008=client\n"
-	       "                    0010=ecm   0020=proto  0040=conf   0080=webif\n"
-	       "                    0100=ban   FFFF=all\n"
+	       "  -b          Run in background (daemonize)\n"
+	       "  -d <level>  Debug bitmask (decimal)\n"
+	       "                1=trace  2=net    4=reader   8=client\n"
+	       "               16=ecm   32=proto 64=conf   128=webif\n"
+	       "              256=ban   65535=all\n"
 	       "  -v          Show version and exit\n"
 	       "  -h          Show this help\n\n",
 	       prog);
@@ -514,7 +515,7 @@ static void *handle_client(void *arg)
 			time_t idle_secs = time(NULL) - cl.last_ecm_time;
 			if (idle_secs >= cl.account->max_idle)
 			{
-				tcmg_log("%s idle timeout (%lds >= %ds) — disconnecting '%s'",
+				tcmg_log("%s idle timeout (%lds >= %ds) -- disconnecting '%s'",
 				         cl.ip, (long)idle_secs, cl.account->max_idle, cl.user);
 				break;
 			}
@@ -562,6 +563,8 @@ int main(int argc, char *argv[])
 	tcmg_winsock_init();
 	setup_signals();
 
+	int do_daemon = 0;
+	(void)do_daemon; /* suppress unused-variable warning on Windows */
 	for (int i = 1; i < argc; i++)
 	{
 		if (strcmp(argv[i], "-c") == 0 && i + 1 < argc)
@@ -574,6 +577,10 @@ int main(int argc, char *argv[])
 			if (v >= 0 && v <= 0xFFFF)
 				g_dblevel = (uint16_t)v;
 		}
+		else if (strcmp(argv[i], "-b") == 0)
+		{
+			do_daemon = 1;
+		}
 		else if (strcmp(argv[i], "-v") == 0)
 		{
 			printf("%s\n", TCMG_BANNER);
@@ -585,6 +592,25 @@ int main(int argc, char *argv[])
 			return 0;
 		}
 	}
+
+#ifndef TCMG_OS_WINDOWS
+	if (do_daemon)
+	{
+		pid_t pid = fork();
+		if (pid < 0) { perror("fork"); return 1; }
+		if (pid > 0) return 0;   /* parent exits */
+		setsid();
+		/* redirect std fds to /dev/null */
+		int devnull = open("/dev/null", O_RDWR);
+		if (devnull >= 0)
+		{
+			dup2(devnull, STDIN_FILENO);
+			dup2(devnull, STDOUT_FILENO);
+			dup2(devnull, STDERR_FILENO);
+			if (devnull > 2) close(devnull);
+		}
+	}
+#endif
 
 	printf(
 		"\n"
@@ -604,9 +630,16 @@ int main(int argc, char *argv[])
 	char cfgpath[CFGPATH_LEN];
 	build_cfg_path(cfgpath, sizeof(cfgpath), TCMG_CFG_FILE);
 
+	/* Create config directory if it does not exist */
+#ifdef TCMG_OS_WINDOWS
+	CreateDirectoryA(g_cfgdir, NULL); /* no-op if already exists */
+#else
+	mkdir(g_cfgdir, 0755);           /* no-op if already exists */
+#endif
+
 	if (!cfg_load(cfgpath, &g_cfg))
 	{
-		tcmg_log("config not found: %s — writing defaults", cfgpath);
+		tcmg_log("config not found: %s -- writing defaults", cfgpath);
 		cfg_write_default(cfgpath);
 		if (!cfg_load(cfgpath, &g_cfg))
 		{
@@ -627,7 +660,7 @@ int main(int argc, char *argv[])
 		FILE *chk = fopen(srvidpath, "r");
 		if (!chk)
 		{
-			tcmg_log("srvid: %s not found — writing defaults", srvidpath);
+			tcmg_log("srvid: %s not found -- writing defaults", srvidpath);
 			if (!srvid_write_default(srvidpath))
 				tcmg_log("srvid: cannot create %s", srvidpath);
 		}
@@ -716,7 +749,7 @@ int main(int argc, char *argv[])
 		{
 			__sync_fetch_and_sub(&g_active_conns, 1);
 			close(cfd);
-			tcmg_log("MAX_CONNS=%d reached — rejected", MAX_CONNS);
+			tcmg_log("MAX_CONNS=%d reached -- rejected", MAX_CONNS);
 			continue;
 		}
 
@@ -743,7 +776,7 @@ int main(int argc, char *argv[])
 	{
 		int nc = g_active_conns;
 		if (nc > 0)
-			tcmg_log("shutting down — waiting for %d client(s) to disconnect...", nc);
+			tcmg_log("shutting down -- waiting for %d client(s) to disconnect...", nc);
 		else
 			tcmg_log("shutting down");
 	}
@@ -763,7 +796,7 @@ int main(int argc, char *argv[])
 #endif
 	}
 	if (g_active_conns > 0)
-		tcmg_log("shutdown: %d connection(s) still open — forcing exit", g_active_conns);
+		tcmg_log("shutdown: %d connection(s) still open -- forcing exit", g_active_conns);
 
 	pthread_rwlock_wrlock(&g_cfg.acc_lock);
 	cfg_accounts_free(&g_cfg);
@@ -796,7 +829,7 @@ int main(int argc, char *argv[])
 			CloseHandle(pi.hProcess);
 		}
 #else
-		/* Unix: re-exec same binary with same args — clean and portable */
+		/* Unix: re-exec same binary with same args -- clean and portable */
 		execv(g_argv_saved[0], g_argv_saved);
 		/* execv only returns on error */
 		perror("execv restart failed");

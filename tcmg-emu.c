@@ -119,7 +119,7 @@ int32_t emu_process(uint16_t caid, uint16_t sid,
 
 	if (!ctx->account) goto done;
 
-	/* Fake CW mode — always "hit" */
+	/* Fake CW mode -- always "hit" */
 	if (ctx->account->use_fake_cw)
 	{
 		gen_fake_cw(cw);

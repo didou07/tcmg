@@ -2,14 +2,14 @@
 #ifndef TCMG_LOG_H_
 #define TCMG_LOG_H_
 
-#define D_NET      0x0001u   /* raw socket recv/send bytes          */
-#define D_CLIENT   0x0002u   /* client connect / auth / disconnect  */
-#define D_ECM      0x0004u   /* ECM request + CW result + emulator  */
-#define D_PROTO    0x0008u   /* Newcamd frame encode/decode         */
-#define D_CONF     0x0010u   /* config load / save / reload         */
-#define D_WEBIF    0x0020u   /* HTTP request/response               */
-#define D_BAN      0x0040u   /* fail-ban events                     */
-#define D_ALL      0xFFFFu   /* enable all categories               */
+#define D_NET      1u      /* raw socket recv/send bytes          */
+#define D_CLIENT   2u      /* client connect / auth / disconnect  */
+#define D_ECM      4u      /* ECM request + CW result + emulator  */
+#define D_PROTO    8u      /* Newcamd frame encode/decode         */
+#define D_CONF     16u     /* config load / save / reload         */
+#define D_WEBIF    32u     /* HTTP request/response               */
+#define D_BAN      64u     /* fail-ban events                     */
+#define D_ALL      65535u  /* enable all categories               */
 
 #define MAX_DEBUG_LEVELS  7  /* number of named levels              */
 

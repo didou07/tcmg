@@ -166,7 +166,7 @@ echo.
 echo   Usage:
 echo     %OUT% -h
 echo     %OUT% -c C:\tcmg\config
-echo     %OUT% -d 0x18   ^(client+ecm debug^)
+echo     %OUT% -d 24   ^(client+ecm debug^)
 echo.
 pause
 exit /b 0
