@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         THEME A: VOID — Deep Navy + Electric Blue  (webif.c palette)
+         Dark, cool, professional
+         ══════════════════════════════════════════════════════════════════ -->
+    <color name="void_bg">#090d14</color>
+    <color name="void_surface">#0e1421</color>
+    <color name="void_surface_var">#141c2e</color>
+    <color name="void_primary">#3b82f6</color>
+    <color name="void_primary_dim">#2563eb</color>
+    <color name="void_primary_container">#1e2d47</color>
+    <color name="void_on_primary">#ffffff</color>
+    <color name="void_on_surface">#e8f0fe</color>
+    <color name="void_on_surface_var">#94a3b8</color>
+    <color name="void_outline">#1e2d47</color>
+    <color name="void_outline_var">#141c2e</color>
+    <color name="void_secondary">#8b5cf6</color>
+    <color name="void_secondary_container">#1e1b4b</color>
+    <color name="void_on_secondary">#ffffff</color>
+    <color name="void_accent">#06b6d4</color>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         THEME B: EMBER — Warm Charcoal + Amber/Orange
+         Warm, energetic, completely different feel from Void
+         bg: warm dark brown-black | primary: amber gold | accent: coral
+         ══════════════════════════════════════════════════════════════════ -->
+    <color name="ember_bg">#110e09</color>
+    <color name="ember_surface">#1a1409</color>
+    <color name="ember_surface_var">#241b0b</color>
+    <color name="ember_primary">#f59e0b</color>
+    <color name="ember_primary_dim">#d97706</color>
+    <color name="ember_primary_container">#3d2a07</color>
+    <color name="ember_on_primary">#1a0f00</color>
+    <color name="ember_on_surface">#fef3c7</color>
+    <color name="ember_on_surface_var">#a87c3a</color>
+    <color name="ember_outline">#3d2a07</color>
+    <color name="ember_outline_var">#241b0b</color>
+    <color name="ember_secondary">#fb923c</color>
+    <color name="ember_secondary_container">#3d1f07</color>
+    <color name="ember_on_secondary">#1a0a00</color>
+    <color name="ember_accent">#fcd34d</color>
+
+    <!-- ══ Status (shared) ════════════════════════════════════════════════ -->
+    <color name="color_running">#22c55e</color>
+    <color name="color_stopped">#ef4444</color>
+    <color name="color_warning">#f59e0b</color>
+
+    <!-- ══ Terminal/Log — Void style (log is always dark cool-toned) ══════ -->
+    <color name="log_bg">#090d14</color>
+    <color name="log_surface">#0e1421</color>
+    <color name="log_text">#e8f0fe</color>
+    <color name="log_text_dim">#4b6584</color>
+    <color name="log_separator">#1e2d47</color>
+
+</resources>

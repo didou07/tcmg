@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TCMG</string>
+    <string name="app_subtitle">card.server // v2.0</string>
+
+    <string name="status_running">RUNNING</string>
+    <string name="status_stopped">OFFLINE</string>
+    <string name="status_uptime">UPTIME</string>
+
+    <string name="btn_start">LAUNCH</string>
+    <string name="btn_stop">STOP</string>
+    <string name="btn_webif">WEBIF</string>
+
+    <string name="label_network">Network</string>
+    <string name="label_wifi">WI-FI</string>
+    <string name="label_hotspot">HOTSPOT</string>
+
+    <string name="label_settings">Settings</string>
+    <string name="label_autostart">AUTO-START ON BOOT</string>
+
+    <string name="nav_control">Control</string>
+    <string name="nav_log">Log</string>
+    <string name="nav_editor">Editor</string>
+
+    <string name="log_ready">[  TCMG] System ready — tap LAUNCH to start\n</string>
+    <string name="log_rotate_hint">⟳ landscape</string>
+
+    <string name="editor_title">CONFIG EDITOR</string>
+    <string name="editor_tab_conf">tcmg.conf</string>
+    <string name="editor_tab_servid2">tcmg.srvid2</string>
+    <string name="editor_save">SAVE</string>
+    <string name="editor_reload">RELOAD</string>
+    <string name="editor_saved">File saved successfully</string>
+    <string name="editor_save_error">Error saving file: %1$s</string>
+    <string name="editor_empty">File not found. Run server once to generate defaults.</string>
+    <string name="editor_running_warning">⚠  Server running — restart required to apply changes</string>
+
+    <string name="notif_channel_name">TCMG Server</string>
+    <string name="notif_channel_desc">TCMG card-server foreground service</string>
+    <string name="notif_title">TCMG Server</string>
+    <string name="notif_running">Running on port %1$d</string>
+    <string name="notif_action_stop">Stop</string>
+    <string name="notif_action_webif">WebIF</string>
+
+    <string name="toast_webif_unavailable">WebIF not available</string>
+    <string name="toast_autostart_on">Auto-start enabled</string>
+    <string name="toast_autostart_off">Auto-start disabled</string>
+
+    <string name="hint_not_available">—</string>
+    <string name="about_title">TCMG v2.0</string>
+    <string name="about_text">TCMG Card-Server for Android\n\n• Android 7+ (API 24)\n• Native core: tcmg 4.2\n• Neon Matrix UI\n• AGP 8.7.3 / Gradle 8.11.1</string>
+
+    <string name="theme_matrix">VOID</string>
+    <string name="theme_amber">EMBER</string>
+</resources>

@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    fragment_log.xml
+    Terminal-style log viewer. Compact chrome bar, scrollable output, status footer.
+-->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/log_bg">
+
+    <!-- Chrome title bar (44dp) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@color/log_surface"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp">
+
+        <!-- macOS traffic lights -->
+        <View
+            android:layout_width="11dp"
+            android:layout_height="11dp"
+            android:background="@drawable/status_dot_stopped"
+            android:layout_marginEnd="6dp"/>
+        <View
+            android:layout_width="11dp"
+            android:layout_height="11dp"
+            android:background="@drawable/status_dot"
+            android:layout_marginEnd="6dp"/>
+        <View
+            android:layout_width="11dp"
+            android:layout_height="11dp"
+            android:background="@drawable/status_dot_running"
+            android:layout_marginEnd="14dp"/>
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="tcmg  —  server output"
+            android:fontFamily="monospace"
+            android:textSize="11sp"
+            android:textColor="@color/log_text_dim"
+            android:gravity="center"/>
+
+        <TextView
+            android:id="@+id/tvRotateHint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/log_rotate_hint"
+            android:textSize="9sp"
+            android:fontFamily="monospace"
+            android:textColor="@color/log_text_dim"
+            android:alpha="0.4"/>
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/log_separator"/>
+
+    <!-- Log content -->
+    <ScrollView
+        android:id="@+id/svLog"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true"
+        android:overScrollMode="never"
+        android:clipToPadding="false"
+        android:paddingBottom="62dp">
+
+        <TextView
+            android:id="@+id/tvLog"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:textSize="12sp"
+            android:textColor="@color/log_text"
+            android:textIsSelectable="true"
+            android:lineSpacingMultiplier="1.6"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="10dp"/>
+    </ScrollView>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/log_separator"/>
+
+    <!-- Status footer (30dp) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="32dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@color/log_surface"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp">
+
+        <View
+            android:layout_width="6dp"
+            android:layout_height="6dp"
+            android:background="@drawable/status_dot"
+            android:layout_marginEnd="8dp"/>
+
+        <TextView
+            android:id="@+id/tvLogStatus"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="idle"
+            android:fontFamily="monospace"
+            android:textSize="10sp"
+            android:textColor="@color/log_text_dim"/>
+
+        <TextView
+            android:id="@+id/tvLogLineCount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0 lines"
+            android:fontFamily="monospace"
+            android:textSize="10sp"
+            android:textColor="@color/log_text_dim"/>
+    </LinearLayout>
+
+</LinearLayout>

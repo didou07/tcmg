@@ -1,0 +1,19 @@
+# Build outputs
+/build/
+app/build/
+.gradle/
+.cxx/
+
+# Keystore - DO NOT COMMIT!
+*.jks
+*.keystore
+keystore.properties
+
+# IDE
+.idea/
+*.iml
+local.properties
+
+# OS
+.DS_Store
+Thumbs.db

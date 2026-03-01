@@ -56,6 +56,7 @@ BASE_CFLAGS=(
     -fmerge-all-constants -fno-ident
     -fstack-protector-strong
     -fvisibility=hidden
+    -D_GNU_SOURCE
     -D_FORTIFY_SOURCE=2
     -Wall -Wextra -Wno-unused-parameter
     -Wmissing-prototypes -Wstrict-prototypes
@@ -246,7 +247,7 @@ _reg "synology_armv7" \
     "arm-ds216_play-linux-gnueabi-gcc" \
     "$BASE_URL/$PVER/Toolchain-synology_armv7.tar.xz" \
     "2a79d278f8096b146c045dbd9bf880fc" \
-    "-march=armv7-a -mfloat-abi=softfp -mtune=cortex-a9" "" \
+    "-march=armv7-a -mfpu=vfpv3-d16 -mfloat-abi=softfp -mtune=cortex-a9" "" \
     "-lpthread -Wl,--gc-sections -Wl,--strip-all" \
     "arm-ds216_play-linux-gnueabi-strip" "linux" "gcc-arm-linux-gnueabi" "1" "1"
 
@@ -394,7 +395,7 @@ _reg "ubnt_mips64" \
     "mips-ubnt-linux-gnu-gcc" \
     "$BASE_URL/$PVER/Toolchain-ubnt_mips64.tar.xz" \
     "a8be217a49ca688051ae1c5d166260d3" \
-    "-march=mips64r2 -mabi=64" "-U_FORTIFY_SOURCE" \
+    "-march=mips64r2 -mabi=n32" "-U_FORTIFY_SOURCE" \
     "-lpthread -Wl,--gc-sections -Wl,--strip-all" \
     "mips-ubnt-linux-gnu-strip" "linux" "gcc-mips64-linux-gnuabi64" "0" "1"
 
