@@ -1,9 +1,14 @@
 package com.tcmg.app;
 
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
+import android.provider.Settings;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
@@ -54,12 +59,31 @@ public final class MainActivity extends AppCompatActivity {
 
         initFragments();
         setupNavigation();
+        requestIgnoreBatteryOptimizations();
     }
 
     @Override
     protected void onSaveInstanceState(@NonNull Bundle out) {
         super.onSaveInstanceState(out);
         out.putString(KEY_TAB, activeTag);
+    }
+
+    // ── Battery Optimization ─────────────────────────────────────────────────
+
+    /**
+     * On Android 6+, ask the user to exempt this app from Doze/battery optimization.
+     * Without this, the OS may kill the foreground service when the screen is off.
+     */
+    private void requestIgnoreBatteryOptimizations() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return;
+        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+        if (pm == null) return;
+        String pkg = getPackageName();
+        if (!pm.isIgnoringBatteryOptimizations(pkg)) {
+            Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+            intent.setData(Uri.parse("package:" + pkg));
+            startActivity(intent);
+        }
     }
 
     // ── Theme ─────────────────────────────────────────────────────────────────

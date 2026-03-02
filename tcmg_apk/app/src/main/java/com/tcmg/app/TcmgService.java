@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.PowerManager;
 import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -36,6 +37,8 @@ public final class TcmgService extends Service {
     static final String CHANNEL_ID = "tcmg_service_channel";
     static final int    NOTIF_ID   = 1001;
 
+    private PowerManager.WakeLock mWakeLock;
+
     // ════════════════════════════════════════════════════════════════════════
 
     @Override
@@ -46,6 +49,7 @@ public final class TcmgService extends Service {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
             Log.i(TAG, "ACTION_STOP received");
             TcmgNative.stopServer();
+            releaseWakeLock();
             stopForeground(STOP_FOREGROUND_REMOVE); // API 24 = minSdk, always safe
             stopSelf();
             return START_NOT_STICKY;
@@ -53,6 +57,9 @@ public final class TcmgService extends Service {
 
         // Promote to foreground
         startForeground(NOTIF_ID, buildNotification());
+
+        // Acquire WakeLock to keep CPU alive when screen is off
+        acquireWakeLock();
 
         // Start native server (guard against duplicate starts)
         if (!TcmgNative.isRunning()) {
@@ -78,7 +85,30 @@ public final class TcmgService extends Service {
     public void onDestroy() {
         Log.i(TAG, "onDestroy — stopping native server");
         TcmgNative.stopServer();
+        releaseWakeLock();
         super.onDestroy();
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // WakeLock
+    // ════════════════════════════════════════════════════════════════════════
+
+    private void acquireWakeLock() {
+        if (mWakeLock != null && mWakeLock.isHeld()) return;
+        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+        if (pm == null) return;
+        mWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "tcmg:server");
+        mWakeLock.setReferenceCounted(false);
+        mWakeLock.acquire(); // held until releaseWakeLock() is called
+        Log.d(TAG, "WakeLock acquired");
+    }
+
+    private void releaseWakeLock() {
+        if (mWakeLock != null && mWakeLock.isHeld()) {
+            mWakeLock.release();
+            Log.d(TAG, "WakeLock released");
+        }
+        mWakeLock = null;
     }
 
     // ════════════════════════════════════════════════════════════════════════
