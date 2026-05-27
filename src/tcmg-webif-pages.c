@@ -59,11 +59,11 @@ void send_login_page(int fd, int failed)
 	pos=buf_printf(&buf,&bsz,pos,
 		"<form method='POST' action='/login'>"
 		"<div class='fg'>"
-		"  <label class='fl'>USERNAME</label>"
+		"  <label class='fld'>USERNAME</label>"
 		"  <input class='fi' type='text' name='u' placeholder='Enter username' autofocus autocomplete='username'>"
 		"</div>"
 		"<div class='fg'>"
-		"  <label class='fl'>PASSWORD</label>"
+		"  <label class='fld'>PASSWORD</label>"
 		"  <input class='fi' type='password' name='p' placeholder='Enter password' autocomplete='current-password'>"
 		"</div>"
 		"<button type='submit' class='btn bp' style='width:100%%;justify-content:center;padding:11px;margin-top:4px'>"
