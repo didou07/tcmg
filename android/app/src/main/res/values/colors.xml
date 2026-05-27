@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- ══════════════════════════════════════════════════════════
+         VOID — Deep Navy + Electric Blue  (single theme)
+         Matches HTML dashboard exactly.
+         ══════════════════════════════════════════════════════════ -->
+
+    <!-- Backgrounds -->
+    <color name="void_bg">#090d14</color>
+    <color name="void_surface">#0e1421</color>
+    <color name="void_surface_var">#141c2e</color>
+    <color name="void_surface_hover">#1a2340</color>
+
+    <!-- Primary: Electric Blue -->
+    <color name="void_primary">#3b82f6</color>
+    <color name="void_primary_dim">#2563eb</color>
+    <color name="void_primary_container">#1e2d47</color>
+    <color name="void_primary_glow">#2d3b82f6</color>
+
+    <!-- Secondary: Violet -->
+    <color name="void_secondary">#8b5cf6</color>
+    <color name="void_secondary_container">#1e1b4b</color>
+
+    <!-- Tertiary: Cyan -->
+    <color name="void_tertiary">#06b6d4</color>
+
+    <!-- Text -->
+    <color name="void_on_surface">#e8f0fe</color>
+    <color name="void_on_surface_var">#94a3b8</color>
+    <color name="void_on_primary">#ffffff</color>
+    <color name="void_on_secondary">#ffffff</color>
+
+    <!-- Borders -->
+    <color name="void_outline">#1e2d47</color>
+    <color name="void_outline_var">#141c2e</color>
+
+    <!-- Semantic status — no amber/yellow anywhere -->
+    <color name="color_running">#22c55e</color>
+    <color name="color_stopped">#ef4444</color>
+    <color name="color_warning">#f97316</color>
+
+    <!-- Terminal / log background -->
+    <color name="log_bg">#060a10</color>
+
+    <color name="warn_bar_bg">#1af97316</color>
+</resources>

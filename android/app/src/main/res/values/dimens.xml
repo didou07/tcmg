@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="content_h_padding">16dp</dimen>
+    <dimen name="text_app_title">22sp</dimen>
+    <dimen name="text_app_subtitle">9sp</dimen>
+    <dimen name="status_card_pad_h">18dp</dimen>
+    <dimen name="status_card_pad_v">18dp</dimen>
+    <dimen name="status_dot_size">14dp</dimen>
+    <dimen name="status_dot_margin">10dp</dimen>
+    <dimen name="text_status">18sp</dimen>
+    <dimen name="text_uptime">20sp</dimen>
+    <dimen name="btn_main_height">56dp</dimen>
+    <dimen name="btn_main_text">15sp</dimen>
+    <dimen name="status_row_margin_bottom">16dp</dimen>
+    <dimen name="network_card_pad">16dp</dimen>
+    <dimen name="network_label_width">72dp</dimen>
+    <dimen name="text_ip">14sp</dimen>
+    <dimen name="btn_webif_width">84dp</dimen>
+    <dimen name="btn_webif_height">36dp</dimen>
+    <dimen name="btn_webif_text">11sp</dimen>
+    <dimen name="network_row_height">46dp</dimen>
+    <dimen name="settings_row_height">52dp</dimen>
+    <dimen name="card_margin_bottom">12dp</dimen>
+    <dimen name="section_label_text">10sp</dimen>
+    <dimen name="section_label_margin">12dp</dimen>
+    <dimen name="editor_min_height">400dp</dimen>
+</resources>

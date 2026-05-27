@@ -1,0 +1,95 @@
+// =============================================================================
+// app/build.gradle
+//
+// Signing: reads credentials from android/keystore.properties (committed).
+// =============================================================================
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.tcmg.app'
+    compileSdk 35
+    ndkVersion  "27.2.12479018"
+
+    defaultConfig {
+        applicationId  "com.tcmg.app"
+        minSdk         24
+        targetSdk      35
+        versionCode    3
+        versionName    "3.0.0"
+
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64'
+        }
+
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_STL=none"
+            }
+        }
+    }
+
+    // ── Signing ──────────────────────────────────────────────────────────────
+    def propsFile = rootProject.file("keystore.properties")
+    def props = new Properties()
+    props.load(new FileInputStream(propsFile))
+
+    signingConfigs {
+        release {
+            storeFile     rootProject.file(props['storeFile'])
+            storePassword props['storePassword']
+            keyAlias      props['keyAlias']
+            keyPassword   props['keyPassword']
+        }
+    }
+
+    // ── NDK / CMake ───────────────────────────────────────────────────────────
+    externalNativeBuild {
+        cmake {
+            path    "src/main/jni/CMakeLists.txt"
+            version "3.22.1"
+        }
+    }
+
+    // ── Build features ────────────────────────────────────────────────────────
+    buildFeatures {
+        viewBinding true
+    }
+
+    // ── Build types ───────────────────────────────────────────────────────────
+    buildTypes {
+        debug {
+            versionNameSuffix "-debug"
+        }
+        release {
+            signingConfig    signingConfigs.release
+            minifyEnabled    true
+            shrinkResources  true
+            proguardFiles    getDefaultProguardFile('proguard-android-optimize.txt'),
+                             'proguard-rules.pro'
+        }
+    }
+
+    // ── Compile options ───────────────────────────────────────────────────────
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError false
+    }
+
+    packaging {
+        jniLibs { useLegacyPackaging true }
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'androidx.activity:activity:1.10.1'
+    implementation 'androidx.fragment:fragment:1.8.6'
+    implementation 'androidx.core:core:1.15.0'
+}

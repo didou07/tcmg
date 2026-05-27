@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- ════════════════════════════════════════════════════════
+         Theme.TCMG — VOID  (single theme, Deep Navy + Blue)
+         Identical to HTML dashboard color palette.
+         ════════════════════════════════════════════════════════ -->
+    <style name="Theme.TCMG" parent="Theme.Material3.Dark.NoActionBar">
+
+        <!-- Primary: Electric Blue #3b82f6 -->
+        <item name="colorPrimary">@color/void_primary</item>
+        <item name="colorOnPrimary">@color/void_on_primary</item>
+        <item name="colorPrimaryContainer">@color/void_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/void_on_surface</item>
+
+        <!-- Secondary: Violet #8b5cf6 -->
+        <item name="colorSecondary">@color/void_secondary</item>
+        <item name="colorOnSecondary">@color/void_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/void_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/void_on_surface</item>
+
+        <!-- Tertiary: Cyan #06b6d4 -->
+        <item name="colorTertiary">@color/void_tertiary</item>
+
+        <!-- Surfaces -->
+        <item name="colorSurface">@color/void_surface</item>
+        <item name="colorSurfaceVariant">@color/void_surface_var</item>
+        <item name="colorOnSurface">@color/void_on_surface</item>
+        <item name="colorOnSurfaceVariant">@color/void_on_surface_var</item>
+
+        <!-- Borders -->
+        <item name="colorOutline">@color/void_outline</item>
+        <item name="colorOutlineVariant">@color/void_outline_var</item>
+
+        <!-- Background -->
+        <item name="android:colorBackground">@color/void_bg</item>
+
+        <!-- System bars — transparent, dark icons off -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+
+        <!-- Widget overrides -->
+        <item name="materialButtonStyle">@style/Widget.TCMG.Button</item>
+        <item name="materialCardViewStyle">@style/Widget.TCMG.Card</item>
+        <item name="materialSwitchStyle">@style/Widget.TCMG.Switch</item>
+
+    </style>
+
+    <!-- ════ Shared Widget Styles ════════════════════════════════ -->
+
+    <style name="Widget.TCMG.Button" parent="Widget.Material3.Button">
+        <item name="android:minHeight">44dp</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.03</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.TCMG.Corner8</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+    </style>
+
+    <style name="Widget.TCMG.Card" parent="Widget.Material3.CardView.Elevated">
+        <item name="cardElevation">0dp</item>
+        <item name="cardCornerRadius">10dp</item>
+        <item name="strokeWidth">1dp</item>
+    </style>
+
+    <style name="Widget.TCMG.Switch" parent="Widget.Material3.CompoundButton.MaterialSwitch">
+        <!-- Switch thumb and track use colorPrimary automatically -->
+    </style>
+
+    <style name="ShapeAppearance.TCMG.Corner8" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">8dp</item>
+    </style>
+
+
+    <style name="TextAppearance.TCMG.NavLabel" parent="TextAppearance.Material3.LabelSmall">
+        <item name="android:textSize">10sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:letterSpacing">0.04</item>
+    </style>
+
+    <style name="Widget.TCMG.TabLayout" parent="Widget.Material3.TabLayout">
+        <item name="tabIndicatorAnimationMode">elastic</item>
+        <item name="tabIndicatorHeight">2dp</item>
+        <item name="tabIndicatorFullWidth">false</item>
+        <item name="tabTextAppearance">@style/TextAppearance.TCMG.Tab</item>
+        <item name="tabBackground">@android:color/transparent</item>
+    </style>
+
+    <style name="TextAppearance.TCMG.Tab" parent="TextAppearance.Material3.LabelLarge">
+        <item name="android:textSize">12sp</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:letterSpacing">0.02</item>
+    </style>
+
+</resources>

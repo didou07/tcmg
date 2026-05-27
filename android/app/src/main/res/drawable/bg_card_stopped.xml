@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#0e1421"/>
+            <stroke android:width="1dp" android:color="#1e2d47"/>
+            <corners android:radius="10dp"/>
+        </shape>
+    </item>
+    <!-- Top accent bar: blue → violet (matches stat-card.accent-blue) -->
+    <item android:gravity="top" android:height="2dp">
+        <shape android:shape="rectangle">
+            <gradient android:type="linear" android:angle="0"
+                android:startColor="#3b82f6"
+                android:endColor="#8b5cf6"/>
+            <corners android:topLeftRadius="10dp" android:topRightRadius="10dp"/>
+        </shape>
+    </item>
+</layer-list>

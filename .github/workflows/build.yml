@@ -1,0 +1,295 @@
+# =============================================================================
+# .github/workflows/build.yml
+#
+# Builds tcmg for all three platforms on every push to main/master.
+# Version is bumped manually before each commit — no auto-bump here.
+#
+# Jobs:
+#   linux    — GCC on ubuntu-latest   → tcmg (ELF x86-64)
+#   windows  — MinGW-w64              → tcmg_x64.exe
+#   android  — NDK 27 + Gradle        → signed release APK
+#   release  — tags & publishes GitHub Release using current version in code
+# =============================================================================
+
+name: Build & Release
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# =============================================================================
+#  1. LINUX — native GCC, x86-64 release binary
+# =============================================================================
+jobs:
+  linux:
+    name: Linux x86-64
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends gcc make
+
+      - name: Verify source tree
+        run: |
+          test -f src/tcmg.c        || { echo "ERROR: src/tcmg.c not found";        exit 1; }
+          test -f src/tcmg-globals.h || { echo "ERROR: src/tcmg-globals.h not found"; exit 1; }
+          echo "Source tree OK"
+
+      - name: Build (release)
+        run: make RELEASE=1 -j$(nproc)
+
+      - name: Smoke-test binary
+        run: |
+          file tcmg
+          ./tcmg --version 2>/dev/null || ./tcmg -V 2>/dev/null || true
+          ls -lh tcmg
+
+      - name: Read version
+        id: ver
+        run: |
+          V=$(grep -oP '#define\s+TCMG_VERSION\s+"\K[^"]+' src/tcmg-globals.h || echo "dev")
+          echo "version=${V}" >> "$GITHUB_OUTPUT"
+
+      - name: Package
+        run: |
+          ARCHIVE="tcmg-${{ steps.ver.outputs.version }}-linux-x86_64.tar.gz"
+          tar -czf "${ARCHIVE}" tcmg
+          sha256sum "${ARCHIVE}" > "${ARCHIVE}.sha256"
+          echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64
+          path: |
+            ${{ env.ARCHIVE }}
+            ${{ env.ARCHIVE }}.sha256
+          retention-days: 30
+
+# =============================================================================
+#  2. WINDOWS — MinGW-w64 (MSYS2), x64 release .exe
+# =============================================================================
+  windows:
+    name: Windows x64
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2 + MinGW-w64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update:  false
+          install: >-
+            mingw-w64-x86_64-gcc
+            make
+            zip
+
+      - name: Verify source tree
+        shell: msys2 {0}
+        run: |
+          test -f src/tcmg.c || { echo "ERROR: src/tcmg.c not found"; exit 1; }
+          echo "Source tree OK"
+
+      - name: Build (release)
+        shell: msys2 {0}
+        run: |
+          make RELEASE=1 \
+               CC=x86_64-w64-mingw32-gcc \
+               STRIP=strip \
+               -j$(nproc)
+
+      - name: Smoke-test
+        shell: msys2 {0}
+        run: |
+          file tcmg.exe
+          ls -lh tcmg.exe
+
+      - name: Read version
+        id: ver
+        shell: msys2 {0}
+        run: |
+          V=$(grep -oP '#define\s+TCMG_VERSION\s+"\K[^"]+' src/tcmg-globals.h || echo "dev")
+          echo "version=${V}" >> "$GITHUB_OUTPUT"
+
+      - name: Package
+        shell: msys2 {0}
+        run: |
+          ARCHIVE="tcmg-${{ steps.ver.outputs.version }}-windows-x64.zip"
+          zip "${ARCHIVE}" tcmg.exe
+          sha256sum "${ARCHIVE}" > "${ARCHIVE}.sha256"
+          echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: |
+            ${{ env.ARCHIVE }}
+            ${{ env.ARCHIVE }}.sha256
+          retention-days: 30
+
+# =============================================================================
+#  3. ANDROID — NDK 27, Gradle, signed release APK (keystore in repo)
+# =============================================================================
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify source tree
+        run: |
+          test -f src/tcmg.c                                  || { echo "ERROR: src/tcmg.c missing";     exit 1; }
+          test -f android/app/src/main/jni/CMakeLists.txt     || { echo "ERROR: CMakeLists.txt missing"; exit 1; }
+          test -f android/app/src/main/jni/tcmg_jni_bridge.c || { echo "ERROR: JNI bridge missing";     exit 1; }
+          test -f android/tcmg-key.jks                        || { echo "ERROR: keystore missing";       exit 1; }
+          test -f android/keystore.properties                  || { echo "ERROR: keystore.properties missing"; exit 1; }
+          echo "Source tree OK"
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Setup Android SDK + NDK + CMake
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK 27 and CMake 3.22.1
+        run: |
+          sdkmanager --install \
+            "ndk;27.2.12479018" \
+            "cmake;3.22.1" \
+          2>&1 | grep -v "^\[=" || true
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('android/**/*.gradle',
+                                    'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-
+
+      - name: Restore Gradle wrapper JAR
+        run: |
+          GRADLE_VER=$(grep distributionUrl \
+            android/gradle/wrapper/gradle-wrapper.properties \
+            | sed 's/.*gradle-\([0-9.]*\)-.*/\1/')
+          mkdir -p android/gradle/wrapper
+          curl -sSfL \
+            "https://raw.githubusercontent.com/gradle/gradle/v${GRADLE_VER}/gradle/wrapper/gradle-wrapper.jar" \
+            -o android/gradle/wrapper/gradle-wrapper.jar
+
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
+
+      - name: Build signed release APK
+        working-directory: android
+        run: |
+          ./gradlew assembleRelease \
+            --no-daemon \
+            --stacktrace \
+            -Pandroid.ndkVersion=27.2.12479018
+
+      - name: Locate release APK
+        id: apks
+        run: |
+          APK=$(find android -name "*-release*.apk" -print -quit 2>/dev/null || true)
+          [ -z "$APK" ] && { echo "ERROR: release APK not found"; exit 1; }
+          echo "release_apk=${APK}" >> "$GITHUB_OUTPUT"
+          ls -lh "${APK}"
+
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release-apk
+          path: ${{ steps.apks.outputs.release_apk }}
+          retention-days: 90
+
+# =============================================================================
+#  4. RELEASE — tag & publish GitHub Release using the current version in code.
+#     Runs only on push to main/master, not on pull requests.
+# =============================================================================
+  release:
+    name: Tag & Publish Release
+    runs-on: ubuntu-latest
+    needs: [ linux, windows, android ]
+    if: github.event_name == 'push'
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read version
+        id: ver
+        run: |
+          V=$(grep -oP '#define\s+TCMG_VERSION\s+"\K[^"]+' src/tcmg-globals.h || true)
+          if [[ -z "$V" ]]; then
+            echo "ERROR: TCMG_VERSION not found in src/tcmg-globals.h"
+            exit 1
+          fi
+          echo "version=${V}" >> "$GITHUB_OUTPUT"
+          echo "Version: ${V}"
+
+      - name: Create tag
+        run: |
+          TAG="v${{ steps.ver.outputs.version }}"
+          git tag -a "${TAG}" -m "Release ${TAG}" 2>/dev/null || echo "Tag ${TAG} already exists, skipping"
+          git push origin "${TAG}" 2>/dev/null || echo "Tag already pushed"
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+
+      - name: List release files
+        run: find dist/ -type f | sort
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name:               v${{ steps.ver.outputs.version }}
+          name:                   "tcmg v${{ steps.ver.outputs.version }}"
+          body: |
+            ## tcmg v${{ steps.ver.outputs.version }}
+
+            Released from commit `${{ github.sha }}`.
+
+            ### Downloads
+            | Platform | File |
+            |----------|------|
+            | Linux x86-64 | `tcmg-*-linux-x86_64.tar.gz` |
+            | Windows x64  | `tcmg-*-windows-x64.zip`     |
+            | Android      | `*.apk`                       |
+
+            SHA-256 checksums are included alongside each archive.
+          files:                  dist/**/*
+          fail_on_unmatched_files: false
