@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    fragment_log.xml  —  VOID theme terminal viewer
-    Chrome bar (traffic lights) · scrollable log · filter bar · status footer
+    fragment_log.xml
+    Terminal-style log viewer. Compact chrome bar, scrollable output, status footer.
 -->
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
@@ -10,7 +10,7 @@
     android:orientation="vertical"
     android:background="@color/log_bg">
 
-    <!-- ── Chrome title bar ────────────────────────────────────────── -->
+    <!-- Chrome title bar (44dp) -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="44dp"
@@ -20,7 +20,7 @@
         android:paddingStart="14dp"
         android:paddingEnd="14dp">
 
-        <!-- macOS-style traffic lights -->
+        <!-- macOS traffic lights -->
         <View
             android:layout_width="11dp"
             android:layout_height="11dp"
@@ -35,110 +35,27 @@
             android:layout_width="11dp"
             android:layout_height="11dp"
             android:background="@drawable/status_dot_running"
-            android:layout_marginEnd="16dp"/>
+            android:layout_marginEnd="14dp"/>
 
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="tcmg — server output"
+            android:text="tcmg  —  server output"
             android:fontFamily="monospace"
             android:textSize="11sp"
-            android:gravity="center"
-            android:textColor="@color/log_text_dim"/>
-
-        <!-- LIVE indicator -->
-        <TextView
-            android:id="@+id/tvLiveBadge"
-            android:layout_width="wrap_content"
-            android:layout_height="22dp"
-            android:text=" LIVE "
-            android:fontFamily="monospace"
-            android:textSize="9sp"
-            android:textStyle="bold"
-            android:letterSpacing="0.12"
-            android:textColor="@color/color_running"
-            android:background="@drawable/bg_live_badge"
+            android:textColor="@color/log_text_dim"
             android:gravity="center"/>
-    </LinearLayout>
 
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@color/log_separator"/>
-
-    <!-- ── Filter bar ──────────────────────────────────────────────── -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="40dp"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:background="@color/log_surface"
-        android:paddingStart="10dp"
-        android:paddingEnd="10dp">
-
-        <!-- Search icon -->
-        <ImageView
-            android:layout_width="16dp"
-            android:layout_height="16dp"
-            android:src="@drawable/ic_search"
-            android:contentDescription="@null"
-            android:tint="@color/log_text_dim"
-            android:layout_marginEnd="6dp"/>
-
-        <EditText
-            android:id="@+id/etLogFilter"
-            android:layout_width="0dp"
+        <TextView
+            android:id="@+id/tvRotateHint"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:hint="Filter log..."
+            android:text="@string/log_rotate_hint"
+            android:textSize="9sp"
             android:fontFamily="monospace"
-            android:textSize="12sp"
-            android:textColor="@color/log_text"
-            android:textColorHint="@color/log_text_dim"
-            android:background="@android:color/transparent"
-            android:inputType="text"
-            android:maxLines="1"
-            android:imeOptions="actionDone"/>
-
-        <!-- Clear filter -->
-        <ImageView
-            android:id="@+id/ivClearFilter"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
-            android:src="@drawable/ic_close"
-            android:contentDescription="Clear filter"
-            android:tint="@color/log_text_dim"
-            android:padding="6dp"
-            android:visibility="gone"/>
-
-        <View
-            android:layout_width="1dp"
-            android:layout_height="16dp"
-            android:background="@color/log_separator"
-            android:layout_marginStart="6dp"
-            android:layout_marginEnd="8dp"/>
-
-        <!-- Auto-scroll toggle -->
-        <ImageView
-            android:id="@+id/ivAutoScroll"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
-            android:src="@drawable/ic_scroll_down"
-            android:contentDescription="Auto-scroll"
-            android:tint="@color/color_running"
-            android:padding="4dp"/>
-
-        <!-- Pause toggle -->
-        <ImageView
-            android:id="@+id/ivPause"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
-            android:src="@drawable/ic_pause"
-            android:contentDescription="Pause"
-            android:tint="@color/log_text_dim"
-            android:padding="4dp"
-            android:layout_marginStart="4dp"/>
+            android:textColor="@color/log_text_dim"
+            android:alpha="0.4"/>
     </LinearLayout>
 
     <View
@@ -146,7 +63,7 @@
         android:layout_height="1dp"
         android:background="@color/log_separator"/>
 
-    <!-- ── Log content ─────────────────────────────────────────────── -->
+    <!-- Log content -->
     <ScrollView
         android:id="@+id/svLog"
         android:layout_width="match_parent"
@@ -155,7 +72,7 @@
         android:fillViewport="true"
         android:overScrollMode="never"
         android:clipToPadding="false"
-        android:paddingBottom="4dp">
+        android:paddingBottom="62dp">
 
         <TextView
             android:id="@+id/tvLog"
@@ -165,7 +82,7 @@
             android:textSize="12sp"
             android:textColor="@color/log_text"
             android:textIsSelectable="true"
-            android:lineSpacingMultiplier="1.65"
+            android:lineSpacingMultiplier="1.6"
             android:paddingStart="14dp"
             android:paddingEnd="14dp"
             android:paddingTop="10dp"
@@ -177,7 +94,7 @@
         android:layout_height="1dp"
         android:background="@color/log_separator"/>
 
-    <!-- ── Status footer ───────────────────────────────────────────── -->
+    <!-- Status footer (30dp) -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="32dp"
@@ -188,7 +105,6 @@
         android:paddingEnd="14dp">
 
         <View
-            android:id="@+id/vLogDot"
             android:layout_width="6dp"
             android:layout_height="6dp"
             android:background="@drawable/status_dot"

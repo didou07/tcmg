@@ -50,4 +50,6 @@
     <string name="about_title">TCMG v2.0</string>
     <string name="about_text">TCMG Card-Server for Android\n\n• Android 7+ (API 24)\n• Native core: tcmg 4.2\n• Neon Matrix UI\n• AGP 8.7.3 / Gradle 8.11.1</string>
 
+    <string name="theme_matrix">VOID</string>
+    <string name="theme_amber">EMBER</string>
 </resources>

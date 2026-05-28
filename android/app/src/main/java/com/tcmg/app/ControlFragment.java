@@ -63,6 +63,7 @@ public final class ControlFragment extends Fragment {
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
+        setupThemePill();
         setupListeners();
         restorePreferences();
     }
@@ -81,6 +82,46 @@ public final class ControlFragment extends Fragment {
         super.onDestroyView();
         handler.removeCallbacks(pollRunnable);
         binding = null;
+    }
+
+    // ── Theme Pill ───────────────────────────────────────────────────────────
+
+    private void setupThemePill() {
+        if (binding == null) return;
+        MainActivity host = (MainActivity) requireActivity();
+        boolean isAmber = host.isEmber();
+
+        // Update visual state
+        refreshPillState(isAmber);
+
+        binding.tvThemeMatrix.setOnClickListener(v -> {
+            if (host.isEmber()) host.switchTheme(false);
+        });
+        binding.tvThemeAmber.setOnClickListener(v -> {
+            if (!host.isEmber()) host.switchTheme(true);
+        });
+    }
+
+    private void refreshPillState(boolean isEmber) {
+        if (binding == null) return;
+        // Pill container background
+        binding.themePill.setBackgroundResource(
+                isEmber ? R.drawable.bg_theme_pill_ember : R.drawable.bg_theme_pill);
+        // Active chip — blue (Void) or amber (Ember)
+        int activeChipRes = isEmber ? R.drawable.bg_theme_active_ember : R.drawable.bg_theme_active;
+        // Inactive text color
+        int inactiveColor = isEmber ? 0xFFa87c3a : 0xFF94a3b8;
+        if (isEmber) {
+            binding.tvThemeAmber.setBackgroundResource(activeChipRes);
+            binding.tvThemeAmber.setTextColor(0xFF1a0f00);   // dark on amber
+            binding.tvThemeMatrix.setBackgroundResource(android.R.color.transparent);
+            binding.tvThemeMatrix.setTextColor(inactiveColor);
+        } else {
+            binding.tvThemeMatrix.setBackgroundResource(activeChipRes);
+            binding.tvThemeMatrix.setTextColor(0xFFffffff);
+            binding.tvThemeAmber.setBackgroundResource(android.R.color.transparent);
+            binding.tvThemeAmber.setTextColor(inactiveColor);
+        }
     }
 
     // ── Setup ────────────────────────────────────────────────────────────────
@@ -113,15 +154,8 @@ public final class ControlFragment extends Fragment {
         int     webifPort = running ? TcmgNative.getWebifPort() : -1;
         updateStatus(running);
         refreshNetwork();
-
-        // WebIF buttons: visible only when server is running; enabled when IP available
-        int webifVisibility = running ? View.VISIBLE : View.GONE;
-        binding.btnWebifWifi.setVisibility(webifVisibility);
-        binding.btnWebifHotspot.setVisibility(webifVisibility);
-        if (running) {
-            binding.btnWebifWifi.setEnabled(webifPort > 0 && wifiIp != null);
-            binding.btnWebifHotspot.setEnabled(webifPort > 0 && hotspotIp != null);
-        }
+        binding.btnWebifWifi.setEnabled(webifPort > 0 && wifiIp != null);
+        binding.btnWebifHotspot.setEnabled(webifPort > 0 && hotspotIp != null);
     }
 
     // ── Server ───────────────────────────────────────────────────────────────
@@ -146,76 +180,32 @@ public final class ControlFragment extends Fragment {
 
     private void updateStatus(boolean running) {
         if (binding == null) return;
-
+        MainActivity host = (MainActivity) requireActivity();
+        int stoppedBg = host.isEmber() ? R.drawable.bg_card_stopped_ember : R.drawable.bg_card_stopped;
         binding.statusCard.setBackground(ContextCompat.getDrawable(requireContext(),
-                running ? R.drawable.bg_card_running : R.drawable.bg_card_stopped));
+                running ? R.drawable.bg_card_running : stoppedBg));
         binding.statusDot.setImageResource(
                 running ? R.drawable.status_dot_running : R.drawable.status_dot_stopped);
-        binding.tvStatusText.setText(
-                running ? R.string.status_running : R.string.status_stopped);
-        binding.tvStatusText.setTextColor(running ? 0xFF3b82f6 : 0xFF94a3b8);
+        binding.tvStatusText.setText(running ? R.string.status_running : R.string.status_stopped);
+
+        // Running: primary color text; stopped: dim
+        int textColor = running
+                ? (host.isEmber() ? 0xFFf59e0b : 0xFF3b82f6)
+                : (host.isEmber() ? 0xFFfef3c7 : 0xFFe8f0fe);
+        binding.tvStatusText.setTextColor(textColor);
+
         binding.btnStart.setEnabled(!running);
         binding.btnStop.setEnabled(running);
 
-        // Uptime lives only in the stat grid (tvStatUptime) — no duplicate in status card
         if (running && serverStartMs > 0L) {
             long s = (System.currentTimeMillis() - serverStartMs) / 1000L;
-            String uptime = String.format(Locale.ROOT, "%02d:%02d:%02d",
-                    s / 3600, (s % 3600) / 60, s % 60);
-            binding.tvStatUptime.setText(uptime);
+            binding.tvUptime.setText(String.format(Locale.ROOT, "%02d:%02d:%02d",
+                    s / 3600, (s % 3600) / 60, s % 60));
+            binding.tvUptime.setVisibility(View.VISIBLE);
+            binding.tvUptimeLabel.setVisibility(View.VISIBLE);
         } else {
-            binding.tvStatUptime.setText("—");
-        }
-
-        // Update stat card colours for CW Miss
-        updateCwMissCard(running);
-        updateBansCard(running);
-    }
-
-    /** Update CW Miss icon badge: blue at 0, red when misses > 0. */
-    private void updateCwMissCard(boolean running) {
-        if (binding == null) return;
-        // Parse current value displayed
-        String raw = binding.tvStatCwMiss.getText().toString().replace(",", "").trim();
-        long miss = 0;
-        try { miss = Long.parseLong(raw); } catch (NumberFormatException ignored) {}
-
-        if (running && miss > 0) {
-            binding.iconBgCwMiss.setBackgroundResource(R.drawable.bg_badge_red);
-            binding.iconCwMiss.setColorFilter(
-                    ContextCompat.getColor(requireContext(), R.color.color_stopped));
-            binding.cardCwMiss.setStrokeColor(0x47ef4444);
-            binding.cardCwMiss.setCardBackgroundColor(0x0aef4444);
-        } else {
-            binding.iconBgCwMiss.setBackgroundResource(R.drawable.bg_badge_blue);
-            binding.iconCwMiss.setColorFilter(
-                    ContextCompat.getColor(requireContext(), R.color.void_on_surface_var));
-            binding.cardCwMiss.setStrokeColor(0x471e2d47);
-            binding.cardCwMiss.setCardBackgroundColor(
-                    ContextCompat.getColor(requireContext(), R.color.void_surface));
-        }
-    }
-
-    /** Update Banned IPs icon badge: blue at 0, orange when bans > 0. */
-    private void updateBansCard(boolean running) {
-        if (binding == null) return;
-        String raw = binding.tvStatBans.getText().toString().replace(",", "").trim();
-        long bans = 0;
-        try { bans = Long.parseLong(raw); } catch (NumberFormatException ignored) {}
-
-        if (running && bans > 0) {
-            binding.iconBgBans.setBackgroundResource(R.drawable.bg_badge_orange);
-            binding.iconBans.setColorFilter(
-                    ContextCompat.getColor(requireContext(), R.color.color_warning));
-            binding.cardBans.setStrokeColor(0x47f97316);
-            binding.cardBans.setCardBackgroundColor(0x0af97316);
-        } else {
-            binding.iconBgBans.setBackgroundResource(R.drawable.bg_badge_blue);
-            binding.iconBans.setColorFilter(
-                    ContextCompat.getColor(requireContext(), R.color.void_on_surface_var));
-            binding.cardBans.setStrokeColor(0x471e2d47);
-            binding.cardBans.setCardBackgroundColor(
-                    ContextCompat.getColor(requireContext(), R.color.void_surface));
+            binding.tvUptime.setVisibility(View.GONE);
+            binding.tvUptimeLabel.setVisibility(View.GONE);
         }
     }
 
@@ -225,7 +215,7 @@ public final class ControlFragment extends Fragment {
         if (binding == null) return;
         wifiIp    = detectWifiIp();
         hotspotIp = detectHotspotIp(wifiIp);
-        binding.tvWifiIp.setText(wifiIp       != null ? wifiIp    : getString(R.string.hint_not_available));
+        binding.tvWifiIp.setText(wifiIp    != null ? wifiIp    : getString(R.string.hint_not_available));
         binding.tvHotspotIp.setText(hotspotIp != null ? hotspotIp : getString(R.string.hint_not_available));
     }
 

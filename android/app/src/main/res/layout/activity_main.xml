@@ -1,8 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-    activity_main.xml
-    Root layout: fragment container + bottom navigation bar (VOID theme)
--->
+<!-- PORTRAIT: FragmentContainer + BottomNav — no toolbar -->
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -11,33 +8,23 @@
     android:orientation="vertical"
     android:background="?attr/android:colorBackground">
 
-    <!-- Fragment host -->
     <androidx.fragment.app.FragmentContainerView
         android:id="@+id/fragmentContainer"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"/>
 
-    <!-- Divider -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="?attr/colorOutline"/>
-
-    <!-- Bottom nav — 60dp, no shift animation, icons + labels -->
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottomNav"
         android:layout_width="match_parent"
-        android:layout_height="60dp"
+        android:layout_height="48dp"
         android:background="?attr/colorSurface"
         app:elevation="0dp"
         app:menu="@menu/bottom_nav_menu"
         app:itemTextColor="@color/nav_item_color"
         app:itemIconTint="@color/nav_item_color"
-        app:itemTextAppearanceActive="@style/TextAppearance.TCMG.NavLabel"
-        app:itemTextAppearanceInactive="@style/TextAppearance.TCMG.NavLabel"
-        app:itemPaddingTop="6dp"
-        app:itemPaddingBottom="4dp"
+        app:itemPaddingTop="2dp"
+        app:itemPaddingBottom="2dp"
         app:labelVisibilityMode="labeled"/>
 
 </LinearLayout>

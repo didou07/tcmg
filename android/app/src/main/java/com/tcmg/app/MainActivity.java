@@ -27,10 +27,11 @@ public final class MainActivity extends AppCompatActivity {
     public static final String PREF_FILE  = "tcmg_prefs";
     public static final String KEY_THEME  = "ui_theme";
     public static final String VAL_VOID   = "void";    // Indigo
-    // Single theme: VOID — no theme switching
+    public static final String VAL_EMBER  = "ember";   // Pink/Crimson
 
     /** Legacy compat — old "matrix" value maps to void */
     public static final String VAL_MATRIX = "matrix";
+    public static final String VAL_AMBER  = "amber";
 
     private static final String TAG_CONTROL = "frag_control";
     private static final String TAG_LOG     = "frag_log";
@@ -88,11 +89,20 @@ public final class MainActivity extends AppCompatActivity {
     // ── Theme ─────────────────────────────────────────────────────────────────
 
     private void applyTheme() {
-        // Single theme: VOID — always applied
-        setTheme(R.style.Theme_TCMG);
+        String t = prefs.getString(KEY_THEME, VAL_VOID);
+        boolean ember = VAL_EMBER.equals(t) || VAL_AMBER.equals(t);
+        setTheme(ember ? R.style.Theme_TCMG_Alt : R.style.Theme_TCMG);
     }
 
+    public boolean isEmber() {
+        String t = prefs.getString(KEY_THEME, VAL_VOID);
+        return VAL_EMBER.equals(t) || VAL_AMBER.equals(t);
+    }
 
+    public void switchTheme(boolean ember) {
+        prefs.edit().putString(KEY_THEME, ember ? VAL_EMBER : VAL_VOID).apply();
+        recreate();
+    }
 
     // ── Fragments ─────────────────────────────────────────────────────────────
 

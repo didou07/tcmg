@@ -1,221 +1,105 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <!-- ════════════════════════════════════════════════════════════
-         Theme.TCMG — VOID  (single theme, Deep Navy + Blue)
-         Matches HTML WebIF dashboard palette exactly.
-         ════════════════════════════════════════════════════════════ -->
+    <!-- ════════════════════════════════════════════════════
+         Theme.TCMG — VOID  (Deep Navy + Electric Blue)
+         ════════════════════════════════════════════════════ -->
     <style name="Theme.TCMG" parent="Theme.Material3.Dark.NoActionBar">
-
-        <!-- Primary: Electric Blue #3b82f6 -->
         <item name="colorPrimary">@color/void_primary</item>
         <item name="colorOnPrimary">@color/void_on_primary</item>
         <item name="colorPrimaryContainer">@color/void_primary_container</item>
         <item name="colorOnPrimaryContainer">@color/void_on_surface</item>
-
-        <!-- Secondary: Violet #8b5cf6 -->
         <item name="colorSecondary">@color/void_secondary</item>
         <item name="colorOnSecondary">@color/void_on_secondary</item>
         <item name="colorSecondaryContainer">@color/void_secondary_container</item>
         <item name="colorOnSecondaryContainer">@color/void_on_surface</item>
-
-        <!-- Tertiary: Cyan #06b6d4 -->
-        <item name="colorTertiary">@color/void_tertiary</item>
-        <item name="colorOnTertiary">@color/void_on_primary</item>
-        <item name="colorTertiaryContainer">#0a2a33</item>
-        <item name="colorOnTertiaryContainer">@color/void_on_surface</item>
-
-        <!-- Surfaces  (maps to --s1 / --s2) -->
+        <item name="colorTertiary">@color/void_accent</item>
         <item name="colorSurface">@color/void_surface</item>
         <item name="colorSurfaceVariant">@color/void_surface_var</item>
         <item name="colorOnSurface">@color/void_on_surface</item>
         <item name="colorOnSurfaceVariant">@color/void_on_surface_var</item>
-        <item name="colorSurfaceContainer">@color/void_surface_var</item>
-        <item name="colorSurfaceContainerHigh">@color/void_surface_hover</item>
-        <item name="colorSurfaceContainerHighest">@color/void_surface_active</item>
-        <item name="colorSurfaceContainerLow">@color/void_surface</item>
-        <item name="colorSurfaceContainerLowest">@color/void_bg</item>
-
-        <!-- Error: Red #ef4444 -->
-        <item name="colorError">@color/color_stopped</item>
-        <item name="colorOnError">@color/void_on_primary</item>
-        <item name="colorErrorContainer">#2d0f0f</item>
-        <item name="colorOnErrorContainer">@color/color_stopped</item>
-
-        <!-- Borders -->
         <item name="colorOutline">@color/void_outline</item>
         <item name="colorOutlineVariant">@color/void_outline_var</item>
-
-        <!-- Background = deepest navy -->
         <item name="android:colorBackground">@color/void_bg</item>
-
-        <!-- Scrim -->
-        <item name="colorScrim">#000000</item>
-
-        <!-- System bars — transparent, dark icons off -->
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
-
-        <!-- Widget overrides -->
         <item name="materialButtonStyle">@style/Widget.TCMG.Button</item>
         <item name="materialCardViewStyle">@style/Widget.TCMG.Card</item>
-        <item name="materialSwitchStyle">@style/Widget.TCMG.Switch</item>
-        <item name="bottomNavigationStyle">@style/Widget.TCMG.BottomNav</item>
-
     </style>
 
-    <!-- ════ Button ════════════════════════════════════════════════ -->
+    <!-- ════════════════════════════════════════════════════
+         Theme.TCMG.Alt — EMBER  (Warm Charcoal + Amber Gold)
+         Completely different feel: warm, earthy, energetic
+         ════════════════════════════════════════════════════ -->
+    <style name="Theme.TCMG.Alt" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/ember_primary</item>
+        <item name="colorOnPrimary">@color/ember_on_primary</item>
+        <item name="colorPrimaryContainer">@color/ember_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/ember_on_surface</item>
+        <item name="colorSecondary">@color/ember_secondary</item>
+        <item name="colorOnSecondary">@color/ember_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/ember_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/ember_on_surface</item>
+        <item name="colorTertiary">@color/ember_accent</item>
+        <item name="colorSurface">@color/ember_surface</item>
+        <item name="colorSurfaceVariant">@color/ember_surface_var</item>
+        <item name="colorOnSurface">@color/ember_on_surface</item>
+        <item name="colorOnSurfaceVariant">@color/ember_on_surface_var</item>
+        <item name="colorOutline">@color/ember_outline</item>
+        <item name="colorOutlineVariant">@color/ember_outline_var</item>
+        <item name="android:colorBackground">@color/ember_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="materialButtonStyle">@style/Widget.TCMG.Button</item>
+        <item name="materialCardViewStyle">@style/Widget.TCMG.Card</item>
+    </style>
+
+    <!-- ════════════════════════════════════════════════════
+         Shared Widget Styles
+         ════════════════════════════════════════════════════ -->
+
     <style name="Widget.TCMG.Button" parent="Widget.Material3.Button">
         <item name="android:minHeight">44dp</item>
         <item name="android:textSize">13sp</item>
         <item name="android:textStyle">bold</item>
-        <item name="android:letterSpacing">0.03</item>
-        <item name="shapeAppearance">@style/ShapeAppearance.TCMG.Corner8</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:letterSpacing">0.04</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.TCMG.Btn</item>
         <item name="android:insetTop">0dp</item>
         <item name="android:insetBottom">0dp</item>
+        <item name="iconSize">16dp</item>
     </style>
 
-    <!-- ════ Card ══════════════════════════════════════════════════ -->
     <style name="Widget.TCMG.Card" parent="Widget.Material3.CardView.Elevated">
         <item name="cardElevation">0dp</item>
         <item name="cardCornerRadius">10dp</item>
         <item name="strokeWidth">1dp</item>
-        <item name="strokeColor">@color/void_outline</item>
-        <item name="cardBackgroundColor">@color/void_surface</item>
     </style>
 
-    <!-- Stat card — coloured border variants -->
-    <style name="Widget.TCMG.Card.Blue" parent="Widget.TCMG.Card">
-        <item name="strokeColor">#473b82f6</item>
-        <item name="cardBackgroundColor">#0a3b82f6</item>
-    </style>
-    <style name="Widget.TCMG.Card.Green" parent="Widget.TCMG.Card">
-        <item name="strokeColor">#4722c55e</item>
-        <item name="cardBackgroundColor">#0a22c55e</item>
-    </style>
-    <style name="Widget.TCMG.Card.Violet" parent="Widget.TCMG.Card">
-        <item name="strokeColor">#478b5cf6</item>
-        <item name="cardBackgroundColor">#0a8b5cf6</item>
-    </style>
-    <style name="Widget.TCMG.Card.Cyan" parent="Widget.TCMG.Card">
-        <item name="strokeColor">#4706b6d4</item>
-        <item name="cardBackgroundColor">#0a06b6d4</item>
-    </style>
-    <style name="Widget.TCMG.Card.Red" parent="Widget.TCMG.Card">
-        <item name="strokeColor">#47ef4444</item>
-        <item name="cardBackgroundColor">#0aef4444</item>
-    </style>
-    <style name="Widget.TCMG.Card.Orange" parent="Widget.TCMG.Card">
-        <item name="strokeColor">#47f97316</item>
-        <item name="cardBackgroundColor">#0af97316</item>
-    </style>
-
-    <!-- ════ Switch ════════════════════════════════════════════════ -->
-    <style name="Widget.TCMG.Switch" parent="Widget.Material3.CompoundButton.MaterialSwitch"/>
-
-    <!-- ════ Bottom Nav ════════════════════════════════════════════ -->
-    <style name="Widget.TCMG.BottomNav" parent="Widget.Material3.BottomNavigationView">
-        <item name="android:background">@color/void_surface</item>
-        <item name="elevation">0dp</item>
-        <item name="itemActiveIndicatorStyle">@style/Widget.TCMG.BottomNav.Indicator</item>
-        <item name="itemTextAppearanceActive">@style/TextAppearance.TCMG.NavLabel</item>
-        <item name="itemTextAppearanceInactive">@style/TextAppearance.TCMG.NavLabel</item>
-        <item name="labelVisibilityMode">labeled</item>
-    </style>
-
-    <style name="Widget.TCMG.BottomNav.Indicator" parent="Widget.Material3.BottomNavigationView.ActiveIndicator">
-        <item name="android:color">@color/void_primary_container</item>
-        <item name="shapeAppearance">@style/ShapeAppearance.TCMG.Corner8</item>
-    </style>
-
-    <!-- ════ Shapes ════════════════════════════════════════════════ -->
-    <style name="ShapeAppearance.TCMG.Corner8" parent="">
-        <item name="cornerFamily">rounded</item>
-        <item name="cornerSize">8dp</item>
-    </style>
-
-    <style name="ShapeAppearance.TCMG.Corner6" parent="">
-        <item name="cornerFamily">rounded</item>
-        <item name="cornerSize">6dp</item>
-    </style>
-
-    <!-- ════ Typography ════════════════════════════════════════════ -->
-    <style name="TextAppearance.TCMG.NavLabel" parent="TextAppearance.Material3.LabelSmall">
-        <item name="android:textSize">10sp</item>
-        <item name="android:fontFamily">sans-serif-medium</item>
-        <item name="android:letterSpacing">0.04</item>
-    </style>
-
-    <style name="TextAppearance.TCMG.Tab" parent="TextAppearance.Material3.LabelLarge">
-        <item name="android:textSize">12sp</item>
-        <item name="android:fontFamily">monospace</item>
-        <item name="android:letterSpacing">0.02</item>
-    </style>
-
-    <style name="TextAppearance.TCMG.SectionLabel" parent="TextAppearance.Material3.LabelSmall">
-        <item name="android:textSize">10sp</item>
-        <item name="android:textAllCaps">true</item>
-        <item name="android:letterSpacing">0.10</item>
-        <item name="android:textColor">@color/void_on_surface_var</item>
-    </style>
-
-    <style name="TextAppearance.TCMG.Mono" parent="TextAppearance.Material3.BodyMedium">
-        <item name="android:fontFamily">monospace</item>
-        <item name="android:textSize">12sp</item>
-    </style>
-
-    <style name="TextAppearance.TCMG.StatValue" parent="TextAppearance.Material3.HeadlineMedium">
-        <item name="android:textSize">22sp</item>
-        <item name="android:textStyle">bold</item>
-        <item name="android:textColor">@color/void_on_surface</item>
-    </style>
-
-    <style name="TextAppearance.TCMG.StatLabel" parent="TextAppearance.Material3.LabelSmall">
-        <item name="android:textSize">10sp</item>
-        <item name="android:textAllCaps">true</item>
-        <item name="android:letterSpacing">0.10</item>
-        <item name="android:textColor">@color/void_on_surface_var</item>
-    </style>
-
-    <!-- ════ TabLayout ═════════════════════════════════════════════ -->
     <style name="Widget.TCMG.TabLayout" parent="Widget.Material3.TabLayout">
+        <item name="tabTextAppearance">@style/TextAppearance.TCMG.Tab</item>
         <item name="tabIndicatorAnimationMode">elastic</item>
         <item name="tabIndicatorHeight">2dp</item>
         <item name="tabIndicatorFullWidth">false</item>
-        <item name="tabTextAppearance">@style/TextAppearance.TCMG.Tab</item>
-        <item name="tabBackground">@android:color/transparent</item>
-        <item name="tabSelectedTextColor">@color/void_primary</item>
-        <item name="tabTextColor">@color/void_on_surface_var</item>
-        <item name="tabIndicatorColor">@color/void_primary</item>
     </style>
 
-    <!-- ════ Badge (stat chip) ══════════════════════════════════════ -->
-    <style name="Widget.TCMG.Badge.Blue" parent="">
-        <item name="android:background">@drawable/bg_badge_blue</item>
-        <item name="android:textColor">@color/void_primary</item>
-        <item name="android:textSize">11sp</item>
-        <item name="android:fontFamily">monospace</item>
-        <item name="android:paddingStart">8dp</item>
-        <item name="android:paddingEnd">8dp</item>
-        <item name="android:paddingTop">2dp</item>
-        <item name="android:paddingBottom">2dp</item>
+    <style name="TextAppearance.TCMG.Tab" parent="TextAppearance.Material3.LabelLarge">
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.04</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textSize">12sp</item>
     </style>
 
-    <style name="Widget.TCMG.Badge.Green" parent="Widget.TCMG.Badge.Blue">
-        <item name="android:background">@drawable/bg_badge_green</item>
-        <item name="android:textColor">@color/color_running</item>
+    <style name="Widget.TCMG.NavRail.Indicator"
+           parent="Widget.Material3.NavigationRailView.ActiveIndicator">
+        <item name="shapeAppearance">@style/ShapeAppearance.TCMG.Btn</item>
     </style>
 
-    <style name="Widget.TCMG.Badge.Orange" parent="Widget.TCMG.Badge.Blue">
-        <item name="android:background">@drawable/bg_badge_orange</item>
-        <item name="android:textColor">@color/color_warning2</item>
-    </style>
-
-    <style name="Widget.TCMG.Badge.Red" parent="Widget.TCMG.Badge.Blue">
-        <item name="android:background">@drawable/bg_badge_red</item>
-        <item name="android:textColor">@color/color_stopped</item>
+    <style name="ShapeAppearance.TCMG.Btn" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">8dp</item>
     </style>
 
 </resources>
