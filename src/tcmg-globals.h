@@ -245,6 +245,8 @@ typedef struct s_account
 	volatile int64_t  cw_time_total_ms;
 	volatile time_t   last_seen;
 	volatile time_t   first_login;
+	volatile int64_t  cw_time_min_ms;  /* fastest ECM response ever       */
+	volatile int64_t  cw_time_max_ms;  /* slowest ECM response ever        */
 
 	struct s_account *next;
 } S_ACCOUNT;
@@ -267,6 +269,7 @@ typedef struct s_config
 	int8_t   ecm_log;
 	uint8_t  des_key[14];
 	char     logfile[CFGPATH_LEN];
+	char     usrfile[CFGPATH_LEN];  /* user statistics log, like OSCam usrfile */
 
 	/* [webif] */
 	int8_t   webif_enabled;

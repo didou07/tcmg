@@ -274,6 +274,9 @@ static bool handle_login(S_CLIENT *cl,
 	tcmg_strlcpy(cl->client_name, cfg_client_name(sid),    sizeof(cl->client_name));
 	cl->account   = acc;
 
+	/* Set per-thread user context for log ring (inspired by OSCam cl_text/usr) */
+	log_set_user(acc->user);
+
 	__sync_fetch_and_add(&acc->active, 1);
 	acc->last_seen = time(NULL);
 	if (acc->first_login == 0) acc->first_login = time(NULL);
@@ -600,6 +603,11 @@ int main(int argc, char *argv[])
 	{
 		log_set_file(g_cfg.logfile);
 		tcmg_log("logging to file: %s", g_cfg.logfile);
+	}
+	if (g_cfg.usrfile[0])
+	{
+		log_set_usrfile(g_cfg.usrfile);
+		tcmg_log("user statistics file: %s", g_cfg.usrfile);
 	}
 
 	emu_init();

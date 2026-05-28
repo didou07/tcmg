@@ -16,15 +16,19 @@ const S_DBLEVEL_NAME g_dblevel_names[MAX_DEBUG_LEVELS] = {
 static int8_t          s_ecm_log  = 1;
 static pthread_mutex_t s_log_mtx  = PTHREAD_MUTEX_INITIALIZER;
 
-/* Log file support */
+/* ── Log file ── */
 static FILE  *s_log_fp      = NULL;
 static char   s_log_path[CFGPATH_LEN] = "";
-#define LOG_FILE_MAX_BYTES  (10 * 1024 * 1024)  /* 10 MB rotation threshold */
+#define LOG_FILE_MAX_BYTES  (10 * 1024 * 1024)   /* 10 MB rotation */
+
+/* ── User statistics file (inspired by OSCam usrfile / cs_statistics) ── */
+static FILE  *s_usr_fp      = NULL;
+static char   s_usr_path[CFGPATH_LEN] = "";
+#define USR_FILE_MAX_BYTES  (5 * 1024 * 1024)    /* 5 MB rotation  */
 
 void log_set_file(const char *path)
 {
 	pthread_mutex_lock(&s_log_mtx);
-	/* If same path already open, do nothing */
 	if (path && *path && strcmp(path, s_log_path) == 0)
 	{
 		pthread_mutex_unlock(&s_log_mtx);
@@ -41,8 +45,32 @@ void log_set_file(const char *path)
 	pthread_mutex_unlock(&s_log_mtx);
 }
 
-/* Check & rotate log file (called inside s_log_mtx) */
-static void maybe_rotate(void)
+/*
+ * log_set_usrfile — open user statistics log (inspired by OSCam usrfile).
+ * Each CW hit is written here in OSCam-compatible format.
+ * Pass NULL or "" to disable.
+ */
+void log_set_usrfile(const char *path)
+{
+	pthread_mutex_lock(&s_log_mtx);
+	if (path && *path && strcmp(path, s_usr_path) == 0)
+	{
+		pthread_mutex_unlock(&s_log_mtx);
+		return;
+	}
+	if (s_usr_fp) { fclose(s_usr_fp); s_usr_fp = NULL; }
+	s_usr_path[0] = '\0';
+	if (path && *path)
+	{
+		s_usr_fp = fopen(path, "a");
+		if (s_usr_fp)
+			tcmg_strlcpy(s_usr_path, path, sizeof(s_usr_path));
+	}
+	pthread_mutex_unlock(&s_log_mtx);
+}
+
+/* ── Log file rotation (called inside s_log_mtx) ── */
+static void maybe_rotate_log(void)
 {
 	if (!s_log_fp || !s_log_path[0]) return;
 	long pos = ftell(s_log_fp);
@@ -54,10 +82,42 @@ static void maybe_rotate(void)
 	s_log_fp = fopen(s_log_path, "a");
 }
 
-/* Circular ring buffer */
-static char    *s_ring[LOG_RING_MAX];
-static int32_t  s_ring_head  = 0;   /* next write slot */
-static int32_t  s_ring_total = 0;   /* ever-increasing serial counter */
+static void maybe_rotate_usr(void)
+{
+	if (!s_usr_fp || !s_usr_path[0]) return;
+	long pos = ftell(s_usr_fp);
+	if (pos < USR_FILE_MAX_BYTES) return;
+	fclose(s_usr_fp);
+	char rotated[CFGPATH_LEN + 2];
+	snprintf(rotated, sizeof(rotated), "%s.1", s_usr_path);
+	rename(s_usr_path, rotated);
+	s_usr_fp = fopen(s_usr_path, "a");
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+ * Ring buffer — inspired by OSCam log_history with counter + usr field.
+ * Each entry stores:  line text  +  user context (empty for system msgs)
+ * ══════════════════════════════════════════════════════════════════════*/
+typedef struct s_ring_entry
+{
+	char    *line;               /* full formatted log line  */
+	char     usr[CFGKEY_LEN];   /* username, "" = system    */
+} S_RING_ENTRY;
+
+static S_RING_ENTRY s_ring[LOG_RING_MAX];
+static int32_t      s_ring_head  = 0;   /* next write slot          */
+static int32_t      s_ring_total = 0;   /* ever-increasing counter  */
+
+/* Thread-local user context — set by net.c per-connection thread */
+static __thread char t_log_user[CFGKEY_LEN] = "";
+
+void log_set_user(const char *user)
+{
+	if (user && *user)
+		tcmg_strlcpy(t_log_user, user, sizeof(t_log_user));
+	else
+		t_log_user[0] = '\0';
+}
 
 static void now_str(char *buf, size_t sz)
 {
@@ -88,10 +148,10 @@ static void emit(const char *mod, const char *body)
 	puts(line);
 	fflush(stdout);
 
-	/* log file (if configured) */
+	/* main log file */
 	if (s_log_fp)
 	{
-		maybe_rotate();
+		maybe_rotate_log();
 		if (s_log_fp)
 		{
 			fputs(line, s_log_fp);
@@ -100,9 +160,11 @@ static void emit(const char *mod, const char *body)
 		}
 	}
 
-	/* overwrite oldest slot if ring is full */
-	free(s_ring[s_ring_head]);
-	s_ring[s_ring_head] = strdup(line);
+	/* Ring buffer — store line + user context (like OSCam log_history) */
+	free(s_ring[s_ring_head].line);
+	s_ring[s_ring_head].line = strdup(line);
+	tcmg_strlcpy(s_ring[s_ring_head].usr, t_log_user,
+	             sizeof(s_ring[s_ring_head].usr));
 	s_ring_head = (s_ring_head + 1) % LOG_RING_MAX;
 	s_ring_total++;
 
@@ -130,8 +192,6 @@ void tcmg_log_hex(const char *mod, const uint8_t *buf, int32_t n,
 	vsnprintf(prefix, sizeof(prefix), fmt, ap);
 	va_end(ap);
 
-	/* Fixed ceiling: at most 512 bytes → at most 512*3+1 hex chars = 1537.
-	 * We cap at 512 bytes per call which is well above any protocol packet. */
 	if (n > 512) n = 512;
 	char hex[512 * 3 + 1];
 	for (i = 0; i < n; i++)
@@ -141,11 +201,10 @@ void tcmg_log_hex(const char *mod, const uint8_t *buf, int32_t n,
 	}
 	hex[pos] = '\0';
 
-	char body[2048];   /* prefix(256) + ": " + hex(512*3) = ~1794, rounded up */
+	char body[2048];
 	snprintf(body, sizeof(body), "%s: %s", prefix, hex);
 	emit(mod, body);
 }
-
 
 /*
  * log_ecm_raw -- compact hex dump of raw ECM payload (D_ECM only).
@@ -157,14 +216,9 @@ void log_ecm_raw(const uint8_t *data, int32_t len)
 
 	if (!(D_ECM & g_dblevel)) return;
 
-	/* ── Header line ── */
 	snprintf(line, sizeof(line), "ECM  length=%02X", len);
 	emit("ecm", line);
 
-	/* ── Continuation rows: 16 bytes each.
-	 * emit() with module:    "YYYY/MM/DD HH:MM:SS %10s body"  (col 31)
-	 * emit() without module: "YYYY/MM/DD HH:MM:SS body"       (col 20)
-	 * Prepend 11 spaces to body so hex columns align with header. ── */
 	for (i = 0; i < len; i += 16)
 	{
 		pos = snprintf(line, sizeof(line), "           "); /* 11 spaces */
@@ -181,10 +235,12 @@ void log_ecm_raw(const uint8_t *data, int32_t len)
 }
 
 /*
- * log_cw_result -- always printed when ecm_log=1 (D_ECM not required).
- * Normal mode (0):
- *   (cw      ) [hit]  0B00:0001  28FDEF307A1BFBBA 43F55D8627A87C5C  0ms  user
- * With D_ECM (16): same format, payload already printed by log_ecm_raw.
+ * log_cw_result -- log CW result + write to user statistics file.
+ * The usrfile format is inspired by OSCam cs_statistics() so that
+ * external log parsers (e.g. streamboard tools) can read both.
+ *
+ * usrfile line format (tab-separated):
+ *   YYYY/MM/DD HH:MM:SS  user  ip  caid  sid  hit|miss  ms  channel
  */
 void log_cw_result(uint16_t caid, uint16_t sid, int32_t len,
                    const uint8_t *cw, bool hit, int32_t ms, const char *user)
@@ -222,27 +278,49 @@ void log_cw_result(uint16_t caid, uint16_t sid, int32_t len,
 			         caid, sid, (uint8_t)len, ms, user ? user : "?");
 	}
 	emit("cw", line);
+
+	/* ── Write to user statistics file (inspired by OSCam usrfile) ── */
+	if (s_usr_fp && user && *user)
+	{
+		char ts[24];
+		now_str(ts, sizeof(ts));
+		pthread_mutex_lock(&s_log_mtx);
+		maybe_rotate_usr();
+		if (s_usr_fp)
+		{
+			fprintf(s_usr_fp, "%s\t%s\t%04X\t%04X\t%s\t%d\t%s\n",
+			        ts,
+			        user,
+			        caid, sid,
+			        hit ? "hit" : "miss",
+			        ms,
+			        ch ? ch : "");
+			fflush(s_usr_fp);
+		}
+		pthread_mutex_unlock(&s_log_mtx);
+	}
 }
 
-/* Legacy ECM-log switch (maps to D_ECM presence) */
 void   log_ecm_set(int8_t on) { s_ecm_log = on ? 1 : 0; }
 int8_t log_ecm_get(void)      { return s_ecm_log; }
 
 
 /*
- * log_ring_since -- copy lines with serial id in [from_id, ...).
- * Call with from_id=0 on first poll to get the last LOG_RING_MAX entries.
- * Returns count; *out_next = next id to pass next time.
+ * log_ring_since — copy entries with serial id >= from_id.
+ * Inspired by OSCam's log_history iterator with counter field.
+ * Returns count; *out_next = id to pass on next call.
+ *
+ * out_lines: caller-allocated array of at least max_lines char* pointers.
+ * out_users: caller-allocated array of at least max_lines char* pointers.
  * Caller must free() each returned string.
  */
-int32_t log_ring_since(int32_t from_id, char **out_lines,
+int32_t log_ring_since(int32_t from_id, char **out_lines, char **out_users,
                         int32_t max_lines, int32_t *out_next)
 {
 	int32_t count = 0;
 
 	pthread_mutex_lock(&s_log_mtx);
 
-	/* oldest serial currently in ring */
 	int32_t oldest = s_ring_total - LOG_RING_MAX;
 	if (oldest < 0) oldest = 0;
 	if (from_id < oldest) from_id = oldest;
@@ -250,11 +328,22 @@ int32_t log_ring_since(int32_t from_id, char **out_lines,
 	int32_t i;
 	for (i = from_id; i < s_ring_total && count < max_lines; i++)
 	{
-		/* slot for serial i */
 		int32_t slot = i % LOG_RING_MAX;
-		const char *src = s_ring[slot] ? s_ring[slot] : "";
+		const char *src  = s_ring[slot].line ? s_ring[slot].line : "";
+		const char *usr  = s_ring[slot].usr;
+
 		out_lines[count] = strdup(src);
-		if (!out_lines[count]) break;   /* OOM — stop here */
+		if (!out_lines[count]) break;
+
+		if (out_users)
+		{
+			out_users[count] = strdup(usr[0] ? usr : "");
+			if (!out_users[count])
+			{
+				free(out_lines[count]);
+				break;
+			}
+		}
 		count++;
 	}
 	*out_next = s_ring_total;

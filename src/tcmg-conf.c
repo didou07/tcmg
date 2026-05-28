@@ -8,6 +8,7 @@ const S_CFG_FIELD cfg_server_fields[] =
 	DEF_OPT_INT8 ("ECM_LOG",        S_CONFIG, ecm_log,        1              ),
 	DEF_OPT_HEX14("DES_KEY",        S_CONFIG, des_key                        ),
 	DEF_OPT_STR  ("LOGFILE",        S_CONFIG, logfile,        ""             ),
+	DEF_OPT_STR  ("USRFILE",        S_CONFIG, usrfile,        ""             ),
 	DEF_OPT_END
 };
 
@@ -534,6 +535,7 @@ bool cfg_write_default(const char *path)
 	"SOCKET_TIMEOUT      = 30             # Client socket timeout in seconds (5-600)\n"
 	"ECM_LOG             = 1              # Log ECM requests: 1=on 0=off\n"
 	"# LOGFILE           = /var/log/tcmg.log   # Log to file (empty = stdout only; rotates at 10 MB)\n"
+	"# USRFILE           = /var/log/tcmg.usr   # User statistics log (tab-separated; compatible with OSCam usrfile parsers; rotates at 5 MB)\n"
 	"\n"
 	"[webif]\n"
 	"ENABLED             = 1              # Enable web interface: 1=on 0=off\n"
@@ -617,6 +619,7 @@ bool cfg_reload(const char *file, char *errbuf, size_t errsz)
 	g_cfg.ecm_log     = ncfg.ecm_log;
 	g_cfg.webif_refresh = ncfg.webif_refresh;
 	tcmg_strlcpy(g_cfg.logfile,    ncfg.logfile,    CFGPATH_LEN);
+	tcmg_strlcpy(g_cfg.usrfile,    ncfg.usrfile,    CFGPATH_LEN);
 	tcmg_strlcpy(g_cfg.webif_user, ncfg.webif_user, CFGKEY_LEN);
 	tcmg_strlcpy(g_cfg.webif_pass, ncfg.webif_pass, CFGKEY_LEN);
 	tcmg_strlcpy(g_cfg.config_file, file, CFGPATH_LEN);
@@ -629,6 +632,8 @@ bool cfg_reload(const char *file, char *errbuf, size_t errsz)
 	log_ecm_set(g_cfg.ecm_log);
 	/* Re-open log file if it changed */
 	log_set_file(g_cfg.logfile[0] ? g_cfg.logfile : NULL);
+	/* Re-open user statistics file (inspired by OSCam usrfile) */
+	log_set_usrfile(g_cfg.usrfile[0] ? g_cfg.usrfile : NULL);
 	tcmg_log("reloaded: %s (%d accounts)", file, g_cfg.naccounts);
 	return true;
 }

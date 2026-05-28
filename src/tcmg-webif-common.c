@@ -467,6 +467,9 @@ void handle_reset_stats(void)
 		a->cw_found         = 0;
 		a->cw_not           = 0;
 		a->cw_time_total_ms = 0;
+		a->cw_time_min_ms   = 0;
+		a->cw_time_max_ms   = 0;
+		a->first_login      = 0;
 	}
 	pthread_rwlock_unlock(&g_cfg.acc_lock);
 	tcmg_log("all user stats reset");

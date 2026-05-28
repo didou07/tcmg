@@ -119,6 +119,7 @@ void send_api_user_get(int fd, const char *qs);
 void handle_user_save(int fd, const char *body);
 void handle_user_add(int fd, const char *body);
 void handle_user_delete(int fd, const char *qs);
+void handle_user_resetstats(int fd, const char *qs);
 
 /* ── Srvid2 API ─────────────────────────────────────────────────────────── */
 void handle_srvid2_save(int fd, const char *body);

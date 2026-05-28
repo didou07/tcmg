@@ -61,7 +61,21 @@ int8_t log_ecm_get(void);
  */
 void log_set_file(const char *path);
 
-int32_t log_ring_since(int32_t from_id, char **out_lines,
+/*
+ * log_set_usrfile — open user statistics file (inspired by OSCam usrfile).
+ * Each CW result is written here in tab-separated format.
+ * Pass NULL or "" to disable. File is rotated at 5 MB.
+ */
+void log_set_usrfile(const char *path);
+
+/*
+ * log_set_user — set per-thread user context for log ring entries.
+ * Call from the client thread after authentication.
+ * Pass NULL or "" to clear (system/server messages).
+ */
+void log_set_user(const char *user);
+
+int32_t log_ring_since(int32_t from_id, char **out_lines, char **out_users,
                         int32_t max_lines, int32_t *out_next);
 int32_t log_ring_total(void);
 

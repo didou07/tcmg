@@ -167,7 +167,8 @@ void handle_request(int fd, const char *client_ip)
 	else if (strcmp(p, "/api/status")       == 0) send_api_status(fd);
 	else if (strcmp(p, "/api/user/toggle")  == 0) handle_user_toggle(fd, qs);
 	else if (strcmp(p, "/api/user/get")     == 0) send_api_user_get(fd, qs);
-	else if (strcmp(p, "/api/user/delete")  == 0) handle_user_delete(fd, qs);
+	else if (strcmp(p, "/api/user/resetstats") == 0) handle_user_resetstats(fd, qs);
+	else if (strcmp(p, "/api/user/delete")     == 0) handle_user_delete(fd, qs);
 	else if (strcmp(p, "/api/user/save")    == 0 && strcmp(req.method, "POST") == 0)
 		handle_user_save(fd, req.body ? req.body : "");
 	else if (strcmp(p, "/api/user/add")     == 0 && strcmp(req.method, "POST") == 0)

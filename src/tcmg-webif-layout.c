@@ -249,12 +249,16 @@ const char CSS[] =
 
 /* ══ LOG TERMINAL ══ */
 ".lc{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}"
-".ls{background:var(--s2);border:1px solid var(--bd2);color:var(--t0);border-radius:var(--rsm);padding:5px 10px;font-family:var(--mono);font-size:12px;width:200px;outline:none}"
+".ls{background:var(--s2);border:1px solid var(--bd2);color:var(--t0);border-radius:var(--rsm);padding:5px 10px;font-family:var(--mono);font-size:12px;width:220px;outline:none}"
 ".ls:focus{border-color:var(--pg)}"
 "select.lsel{background:var(--s2);color:var(--t1);border:1px solid var(--bd2);border-radius:var(--rsm);padding:5px 8px;font-size:12px}"
-"#lw{background:#040810;border:1px solid var(--bd);border-radius:var(--r);height:480px;overflow:auto;padding:14px 16px;position:relative}"
-"#lw::before{content:'LIVE';position:absolute;top:10px;right:12px;font-size:9px;font-family:var(--mono);font-weight:700;letter-spacing:.12em;color:var(--gr);opacity:.5}"
-"#lp{margin:0;font-family:var(--mono);font-size:12.5px;line-height:1.9;white-space:pre;color:var(--t1)}"
+/* Live log window — increased height, subtle scanline feel */
+"#lw{background:#030b14;border:1px solid var(--bd);border-radius:var(--r);height:520px;overflow:auto;padding:14px 4px 14px 14px;position:relative;scroll-behavior:smooth}"
+"#lw::before{content:'LIVE';position:absolute;top:10px;right:12px;font-size:9px;font-family:var(--mono);font-weight:700;letter-spacing:.12em;color:var(--gr);opacity:.4;pointer-events:none}"
+/* Log pre — each <span> is now display:block with usr badge column */
+"#lp{margin:0;font-family:var(--mono);font-size:12.5px;line-height:1.85;color:var(--t1)}"
+"#lp span{display:block;white-space:pre;border-radius:2px;padding:0 4px}"
+"#lp span:hover{background:rgba(255,255,255,0.04)}"
 ".lok{color:#4ade80;font-weight:700}"
 ".lwarn{color:var(--or2);font-weight:700}"
 ".lerr{color:var(--re);font-weight:700}"

@@ -370,7 +370,12 @@ void send_page_users(int fd)
 		"<th>CW OK / NOK</th>"
 		"<th class='sortable' onclick='sortTable(6)' title='Hit rate %%'>Rate</th>"
 		"<th class='sortable' onclick='sortTable(7)' title='Average ECM response ms'>Avg&nbsp;ms</th>"
-		"<th class='sortable' onclick='sortTable(8)'>Last Seen</th>"
+		"<th title='Min/Max ECM response ms'>Min/Max</th>"
+		"<th class='sortable' onclick='sortTable(9)'>Proto</th>"
+		"<th>IP</th>"
+		"<th class='sortable' onclick='sortTable(11)'>Idle</th>"
+		"<th class='sortable' onclick='sortTable(12)'>First Login</th>"
+		"<th class='sortable' onclick='sortTable(13)'>Last Seen</th>"
 		"<th>Expiry</th><th></th>"
 		"</tr></thead><tbody id='usrBody'>");
 
@@ -392,7 +397,7 @@ void send_page_users(int fd)
 
 		int64_t tot = a->cw_found + a->cw_not;
 		double  hr  = tot > 0 ? (double)a->cw_found * 100.0 / (double)tot : -1.0;
-		char hrstr[16], avgstr[16];
+		char hrstr[16], avgstr[16], minmaxstr[32];
 		if (hr >= 0) snprintf(hrstr,  sizeof(hrstr),  "%.1f%%", hr);
 		else         tcmg_strlcpy(hrstr, "&mdash;", sizeof(hrstr));
 		if (a->cw_found > 0)
@@ -400,6 +405,42 @@ void send_page_users(int fd)
 			         (long long)(a->cw_time_total_ms / a->cw_found));
 		else
 			tcmg_strlcpy(avgstr, "&mdash;", sizeof(avgstr));
+		if (a->cw_found > 0 && a->cw_time_min_ms > 0)
+			snprintf(minmaxstr, sizeof(minmaxstr), "%lld / %lld",
+			         (long long)a->cw_time_min_ms,
+			         (long long)a->cw_time_max_ms);
+		else
+			tcmg_strlcpy(minmaxstr, "&mdash;", sizeof(minmaxstr));
+
+		/* Protocol + IP from active connections */
+		const char *proto_str = "&mdash;";
+		char ip_str[MAXIPLEN] = "";
+		time_t last_ecm_t = 0;
+		char first_login_str[32];
+		format_time((time_t)a->first_login, first_login_str, sizeof(first_login_str));
+
+		/* Scan active clients for this account */
+		pthread_mutex_lock(&g_clients_mtx);
+		for (int ci = 0; ci < MAX_ACTIVE_CLIENTS; ci++) {
+			S_CLIENT *cl = g_clients[ci];
+			if (!cl || !cl->account) continue;
+			if (strcmp(cl->account->user, a->user) != 0) continue;
+			proto_str = cl->is_mgcamd ? "mgcamd" : "newcamd";
+			tcmg_strlcpy(ip_str, cl->ip, sizeof(ip_str));
+			if (cl->last_ecm_time > last_ecm_t)
+				last_ecm_t = cl->last_ecm_time;
+		}
+		pthread_mutex_unlock(&g_clients_mtx);
+
+		/* Idle time */
+		char idle_str[32];
+		if (a->active > 0 && last_ecm_t > 0) {
+			time_t idle_s = time(NULL) - last_ecm_t;
+			if (idle_s < 0) idle_s = 0;
+			format_uptime(idle_s, idle_str, sizeof(idle_str));
+		} else {
+			tcmg_strlcpy(idle_str, "&mdash;", sizeof(idle_str));
+		}
 
 		const char *btn_cls = a->enabled ? "pw-btn on" : "pw-btn off";
 		tot_cw_ok  += a->cw_found;
@@ -441,9 +482,20 @@ void send_page_users(int fd)
 			"<td class='mono'><span class='%s'>%s</span></td>"
 			"<td class='mono tm'>%s</td>"
 			"<td class='mono tm' style='font-size:11px'>%s</td>"
+			"<td class='mono'><span class='%s' style='font-size:11px'>%s</span></td>"
+			"<td class='mono' style='font-size:11px;color:var(--t1)'>%s</td>"
+			"<td class='mono tm' style='font-size:11px'>%s</td>"
+			"<td class='mono tm' style='font-size:11px'>%s</td>"
+			"<td class='mono tm' style='font-size:11px'>%s</td>"
 			"<td style='font-size:12px'>%s</td>"
-			"<td><button class='btn bd_ sm' onclick=\"delUser('%s')\" title='Delete'>"
-			ICO_KILLBTN "</button></td>"
+			"<td>"
+			"  <div style='display:flex;gap:4px'>"
+			"    <button class='btn bg sm' onclick=\"resetStats('%s')\" title='Reset stats' "
+			"      style='padding:4px 7px;font-size:11px'>&#8635;</button>"
+			"    <button class='btn bd_ sm' onclick=\"delUser('%s')\" title='Delete'>"
+			ICO_KILLBTN "</button>"
+			"  </div>"
+			"</td>"
 			"</tr>",
 			a->user,
 			btn_cls, a->user, a->user,
@@ -458,7 +510,17 @@ void send_page_users(int fd)
 			hr > 80.0 ? "tg" : hr >= 0 ? (hr > 50.0 ? "to" : "tr") : "tm",
 			hrstr,
 			avgstr,
-			last, expiry, a->user);
+			minmaxstr,
+			/* proto */
+			a->active > 0 ? "badge bcy" : "tm", proto_str,
+			/* IP */
+			ip_str[0] ? ip_str : "&mdash;",
+			/* idle */
+			idle_str,
+			/* first_login */
+			first_login_str,
+			/* last_seen */
+			last, expiry, a->user, a->user);
 	}
 	pthread_rwlock_unlock(&g_cfg.acc_lock);
 
@@ -482,17 +544,17 @@ void send_page_users(int fd)
 			"  <span class='tfl'>Totals &mdash; %d users</span>"
 			"</td>"
 			"<td>"
-			"  <span class='tg tfs'>%lld</span>"
+			"  <span class='tg tfs'>%ld</span>"
 			"  <span style='color:var(--t2);margin:0 4px'>/</span>"
-			"  <span class='%s tfs'>%lld</span>"
+			"  <span class='%s tfs'>%ld</span>"
 			"</td>"
 			"<td><span class='tfs %s'>%.1f%%</span></td>"
-			"<td colspan='4'></td>"
+			"<td colspan='9'></td>"
 			"</tr></tfoot>"
 			"</table></div>",
 			row,
-			tot_cw_ok,
-			tot_cw_nok > 0 ? "tr" : "tm", tot_cw_nok,
+			(long)tot_cw_ok,
+			tot_cw_nok > 0 ? "tr" : "tm", (long)tot_cw_nok,
 			tot_hr > 80 ? "tg" : tot_hr > 50 ? "to" : "tr",
 			tot_hr);
 	}
@@ -541,6 +603,12 @@ void send_page_users(int fd)
 		"  </div>"
 		"</div></div>"
 		"<script>"
+		"function resetStats(u){"
+		"  if(!confirm('Reset stats for '+u+'?'))return;"
+		"  fetch('/api/user/resetstats?user='+encodeURIComponent(u))"
+		"    .then(r=>r.json())"
+		"    .then(d=>{if(d.ok)location.reload();else alert('Error: '+d.msg);});"
+		"}"
 		/* ── Toggle on/off ── */
 		"function tgUser(u,btn){"
 		"  fetch('/api/user/toggle?user='+encodeURIComponent(u))"
@@ -1002,10 +1070,15 @@ void send_page_livelog(int fd)
 		(g_dblevel == D_ALL) ? " on" : "", g_dblevel);
 
 	/* Controls */
+	/* Controls - inspired by OSCam's logpage controls */
 	pos = buf_printf(&buf, &bsz, pos,
 		"<div class='lc'>"
 		"<button class='btn bg sm' onclick='clearLog()'>" ICO_TRASH "&nbsp;Clear</button>"
-		"<input class='ls' id='filter' placeholder='Search log...' oninput='applyFilter()'>"
+		/* Save log — like OSCam's 'Save Log' button */
+		"<a id='savelog' download='tcmg.log'>"
+		"  <button class='btn bg sm' onclick='prepSave()'>&#128190;&nbsp;Save</button>"
+		"</a>"
+		"<input class='ls' id='filter' placeholder='Filter (regex)...' oninput='applyFilter()' title='Supports regex, e.g.: hit|miss'>"
 		"<label class='flex gap8' style='font-size:12px;color:var(--t1)'>"
 		"<input type='checkbox' id='asc' checked>&nbsp;Auto-scroll</label>"
 		"<label class='flex gap8' style='font-size:12px;color:var(--t1)'>"
@@ -1015,7 +1088,21 @@ void send_page_livelog(int fd)
 		"<option value='200' selected>200</option>"
 		"<option value='500'>500</option>"
 		"<option value='1000'>1000</option>"
-		"</select></span>"
+		"<option value='2000'>2000</option>"
+		"</select>"
+		"&nbsp;<span id='linecnt' style='font-family:var(--mono);color:var(--t2)'>0</span>&nbsp;shown"
+		"</span>"
+		"</div>"
+		/* Color legend */
+		"<div style='display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-size:11px;font-family:var(--mono)'>"
+		"<span style='color:#4ade80'>&#9632; hit</span>"
+		"<span style='color:#f87171'>&#9632; miss</span>"
+		"<span style='color:#60a5fa'>&#9632; webif</span>"
+		"<span style='color:#fb923c'>&#9632; ban</span>"
+		"<span style='color:#c084fc'>&#9632; net</span>"
+		"<span style='color:#22d3ee'>&#9632; proto</span>"
+		"<span style='color:#fde68a'>&#9632; conf</span>"
+		"<span style='color:#f87171'>&#9632; error/warn</span>"
 		"</div>");
 
 	pos = buf_printf(&buf, &bsz, pos,
@@ -1027,7 +1114,7 @@ void send_page_livelog(int fd)
 	pos = buf_printf(&buf, &bsz, pos,
 		"<script>"
 		"var lastid=Math.max(0,%d-200),curmask=%u,hovered=0;"
-		"var masks=[%s],filterStr='';"
+		"var masks=[%s],filterRe=null,filterStr='';"
 
 		"function updateDbgUI(){"
 		"  document.getElementById('dbmask').textContent="
@@ -1041,19 +1128,41 @@ void send_page_livelog(int fd)
 		"function toggleDbg(m){curmask^=m;updateDbgUI();poll();}"
 		"function toggleAll(){curmask=(curmask===65535)?0:65535;updateDbgUI();poll();}"
 
+		/* Regex-based filter (like OSCam's multi-pattern search) */
 		"function applyFilter(){"
-		"  filterStr=document.getElementById('filter').value.toLowerCase();"
+		"  filterStr=document.getElementById('filter').value;"
+		"  try{filterRe=filterStr?new RegExp(filterStr,'i'):null;}catch(e){filterRe=null;}"
 		"  var spans=document.getElementById('lp').children;"
+		"  var vis=0;"
 		"  for(var i=0;i<spans.length;i++){"
-		"    var txt=spans[i].textContent.toLowerCase();"
-		"    spans[i].style.display=(!filterStr||txt.includes(filterStr))?'':'none';"
+		"    var txt=spans[i].getAttribute('data-raw')||'';"
+		"    var show=!filterRe||filterRe.test(txt);"
+		"    spans[i].style.display=show?'':'none';"
+		"    if(show)vis++;"
 		"  }"
+		"  document.getElementById('linecnt').textContent=vis;"
 		"}"
 
 		"function clearLog(){"
 		"  document.getElementById('lp').innerHTML='';"
+		"  document.getElementById('linecnt').textContent='0';"
 		"  fetch('/logpoll?since=999999999&debug='+curmask)"
 		"    .then(r=>r.json()).then(d=>{if(d.next!==undefined)lastid=d.next;});"
+		"}"
+
+		/* Save log — collect visible lines with usr context (like OSCam Save Log) */
+		"function prepSave(){"
+		"  var spans=document.getElementById('lp').children;"
+		"  var txt='';"
+		"  for(var i=0;i<spans.length;i++){"
+		"    if(spans[i].style.display==='none')continue;"
+		"    var usr=spans[i].getAttribute('data-usr')||'';"
+		"    var raw=spans[i].getAttribute('data-raw')||'';"
+		"    txt+=(usr?'['+usr+'] ':'')+raw+'\n';"
+		"  }"
+		"  var blob=new Blob([txt],{type:'text/plain'});"
+		"  var a=document.getElementById('savelog');"
+		"  a.href=URL.createObjectURL(blob);"
 		"}"
 
 		"var CM={"
@@ -1069,24 +1178,54 @@ void send_page_livelog(int fd)
 		"  if(s.includes('(ban'))  return CM.ban;"
 		"  if(s.includes('(net'))  return CM.net;"
 		"  if(s.includes('(proto'))return CM.proto;"
+		"  if(s.includes('(conf')) return CM.conf;"
 		"  if(s.includes('error')) return CM.err;"
 		"  if(s.includes('warn'))  return CM.warn;"
 		"  return null;"
 		"}"
 
-		"function appendLines(lines){"
+		"function updateLineCnt(){"
+		"  var spans=document.getElementById('lp').children;"
+		"  var vis=0;"
+		"  for(var i=0;i<spans.length;i++)"
+		"    if(spans[i].style.display!=='none')vis++;"
+		"  document.getElementById('linecnt').textContent=vis;"
+		"}"
+
+		"function appendLines(entries){"
 		"  var pre=document.getElementById('lp');"
 		"  var maxl=parseInt(document.getElementById('maxlines').value)||200;"
-		"  lines.forEach(function(line){"
+		"  entries.forEach(function(e){"
+		"    var line=e.line||e;"
+		"    var usr=e.usr||'';"
 		"    var span=document.createElement('span');"
+		"    span.style.display='block';"
+		"    span.style.whiteSpace='pre';"
 		"    var c=colorLine(line);"
 		"    if(c)span.style.color=c;"
-		"    span.textContent=line+'\\n';"
-		"    if(filterStr&&!line.toLowerCase().includes(filterStr))"
-		"      span.style.display='none';"
+		"    span.setAttribute('data-raw',line);"
+		"    if(usr)span.setAttribute('data-usr',usr);"
+		/* User badge — inspired by OSCam's <li class="username"> per log entry */
+		"    if(usr){"
+		"      var badge=document.createElement('span');"
+		"      badge.textContent=usr+' ';"
+		"      badge.style.cssText='display:inline-block;min-width:9ch;font-size:10px;"
+		"        color:#60a5fa;opacity:0.75;margin-right:4px;font-family:var(--mono);';"
+		"      badge.title='User: '+usr;"
+		"      span.appendChild(badge);"
+		"    } else {"
+		"      var ph=document.createElement('span');"
+		"      ph.style.cssText='display:inline-block;min-width:9ch;margin-right:4px;';"
+		"      span.appendChild(ph);"
+		"    }"
+		"    var txt=document.createTextNode(line+'\n');"
+		"    span.appendChild(txt);"
+		"    var show=!filterRe||filterRe.test(line)||(usr&&filterRe.test(usr));"
+		"    if(!show)span.style.display='none';"
 		"    pre.appendChild(span);"
 		"  });"
 		"  while(pre.children.length>maxl)pre.removeChild(pre.firstChild);"
+		"  updateLineCnt();"
 		"  var w=document.getElementById('lw');"
 		"  if(!hovered&&document.getElementById('asc').checked)"
 		"    w.scrollTop=w.scrollHeight;"
@@ -1099,6 +1238,7 @@ void send_page_livelog(int fd)
 		"    .then(d=>{"
 		"      if(d.debug!==undefined&&d.debug!==curmask){curmask=d.debug;updateDbgUI();}"
 		"      if(d.next!==undefined)lastid=d.next;"
+		/* Handle both OSCam-style [{id,usr,line}] and flat [string] */
 		"      if(d.lines&&d.lines.length)appendLines(d.lines);"
 		"    }).catch(()=>{});"
 		"}"
@@ -1132,21 +1272,36 @@ void send_logpoll(int fd, const char *qs)
 	if (from_id < 0) from_id = 0;
 
 	char    *lines[WEB_MAX_LINES_POLL];
+	char    *users[WEB_MAX_LINES_POLL];
 	int32_t  next_id;
-	int32_t  count = log_ring_since(from_id, lines, WEB_MAX_LINES_POLL, &next_id);
+	/* Pass users array to get per-entry user context (like OSCam {usr, line}) */
+	int32_t  count = log_ring_since(from_id, lines, users,
+	                                WEB_MAX_LINES_POLL, &next_id);
 
-	int   bsz = count * 256 + 256, pos = 0;
+	/* Each entry: {"id":N,"usr":"...","line":"..."} */
+	int   bsz = count * 512 + 256, pos = 0;
 	char *buf = (char *)malloc(bsz);
-	if (!buf) return;
+	if (!buf) {
+		for (int i = 0; i < count; i++) { free(lines[i]); free(users[i]); }
+		return;
+	}
 
 	pos = buf_printf(&buf, &bsz, pos,
 		"{\"debug\":%u,\"next\":%d,\"lines\":[", g_dblevel, next_id);
 
 	for (int i = 0; i < count; i++) {
-		char escaped[512];
-		json_escape(lines[i], escaped, sizeof(escaped));   /* single canonical call */
+		char esc_line[512], esc_usr[64];
+		json_escape(lines[i], esc_line, sizeof(esc_line));
+		json_escape(users[i][0] ? users[i] : "", esc_usr, sizeof(esc_usr));
 		free(lines[i]);
-		pos = buf_printf(&buf, &bsz, pos, "%s\"%s\"", i ? "," : "", escaped);
+		free(users[i]);
+		/* OSCam-compatible: {id, usr, line} per entry */
+		pos = buf_printf(&buf, &bsz, pos,
+			"%s{\"id\":%d,\"usr\":\"%s\",\"line\":\"%s\"}",
+			i ? "," : "",
+			from_id + i,
+			esc_usr,
+			esc_line);
 	}
 	pos = buf_printf(&buf, &bsz, pos, "]}");
 	send_response(fd, 200, "OK", "application/json", buf, pos);
@@ -1448,6 +1603,43 @@ void handle_user_add(int fd, const char *post_body)
 
 	cfg_save(&g_cfg);
 	tcmg_log("user '%s' added via webif", uname);
+	const char *j = "{\"ok\":true}";
+	send_response(fd, 200, "OK", "application/json", j, (int)strlen(j));
+}
+
+/* GET /api/user/resetstats?user=<name>
+ * Inspired by OSCam's per-user statistics reset (resetuserstats action).
+ * Resets ECM counters, CW found/not, timing, and min/max ms for one account. */
+void handle_user_resetstats(int fd, const char *qs)
+{
+	char uname[CFGKEY_LEN] = "";
+	get_param(qs, "user", uname, sizeof(uname));
+
+	if (!uname[0]) {
+		const char *e = "{\"ok\":false,\"msg\":\"missing user\"}";
+		send_response(fd, 400, "Bad Request", "application/json", e, (int)strlen(e));
+		return;
+	}
+
+	pthread_rwlock_wrlock(&g_cfg.acc_lock);
+	S_ACCOUNT *a = g_cfg.accounts;
+	while (a && strcmp(a->user, uname) != 0) a = a->next;
+	if (!a) {
+		pthread_rwlock_unlock(&g_cfg.acc_lock);
+		const char *e = "{\"ok\":false,\"msg\":\"user not found\"}";
+		send_response(fd, 404, "Not Found", "application/json", e, (int)strlen(e));
+		return;
+	}
+	a->ecm_total        = 0;
+	a->cw_found         = 0;
+	a->cw_not           = 0;
+	a->cw_time_total_ms = 0;
+	a->cw_time_min_ms   = 0;
+	a->cw_time_max_ms   = 0;
+	a->first_login      = 0;
+	pthread_rwlock_unlock(&g_cfg.acc_lock);
+
+	tcmg_log("stats reset for user '%s' via webif", uname);
 	const char *j = "{\"ok\":true}";
 	send_response(fd, 200, "OK", "application/json", j, (int)strlen(j));
 }

@@ -138,11 +138,19 @@ done:
 			{
 				ctx->account->cw_found++;
 				ctx->account->cw_time_total_ms += (int64_t)ms;
+				/* Track min/max ECM response time (inspired by OSCam cwlastresptimes) */
+				if (ctx->account->cw_time_min_ms == 0 || (int64_t)ms < ctx->account->cw_time_min_ms)
+					ctx->account->cw_time_min_ms = (int64_t)ms;
+				if ((int64_t)ms > ctx->account->cw_time_max_ms)
+					ctx->account->cw_time_max_ms = (int64_t)ms;
 			}
 			else
 			{
 				ctx->account->cw_not++;
 			}
+			/* Record first login time on first successful ECM */
+			if (ctx->account->first_login == 0 && hit)
+				ctx->account->first_login = time(NULL);
 			pthread_mutex_unlock(&s_stat_mtx);
 		}
 	}
