@@ -1,7 +1,21 @@
 // =============================================================================
 // app/build.gradle
 //
-// Signing: reads credentials from android/keystore.properties (committed).
+// Signing: reads credentials from environment variables (CI) or from
+// android/keystore.properties (local dev — git-ignored, never committed).
+//
+// Required for release builds:
+//   CI (GitHub Actions secrets):
+//     KEYSTORE_BASE64      base64-encoded .jks file
+//     KEYSTORE_PASSWORD    keystore store password
+//     KEY_ALIAS            key alias inside the keystore
+//     KEY_PASSWORD         key password
+//
+//   Local dev — create android/keystore.properties:
+//     storeFile=../tcmg-key.jks
+//     storePassword=YOUR_STORE_PASSWORD
+//     keyAlias=tcmg-key
+//     keyPassword=YOUR_KEY_PASSWORD
 // =============================================================================
 plugins {
     id 'com.android.application'
@@ -31,16 +45,49 @@ android {
     }
 
     // ── Signing ──────────────────────────────────────────────────────────────
-    def propsFile = rootProject.file("keystore.properties")
-    def props = new Properties()
-    props.load(new FileInputStream(propsFile))
+    //
+    // Priority:
+    //   1. Environment variables (GitHub Actions CI)
+    //   2. android/keystore.properties (local dev)
+    //
+    def ksFile     = null
+    def ksPwd      = null
+    def keyAlias_  = null
+    def keyPwd     = null
+
+    def envKsB64   = System.getenv("KEYSTORE_BASE64")
+    def envKsPwd   = System.getenv("KEYSTORE_PASSWORD")
+    def envAlias   = System.getenv("KEY_ALIAS")
+    def envKeyPwd  = System.getenv("KEY_PASSWORD")
+
+    if (envKsB64 && envKsPwd && envAlias && envKeyPwd) {
+        // CI path: keystore was already decoded to disk by the workflow step.
+        // The workflow writes it to android/tcmg-key.jks before Gradle runs.
+        ksFile    = rootProject.file("tcmg-key.jks")
+        ksPwd     = envKsPwd
+        keyAlias_ = envAlias
+        keyPwd    = envKeyPwd
+    } else {
+        // Local dev path: read from keystore.properties if it exists
+        def propsFile = rootProject.file("keystore.properties")
+        if (propsFile.exists()) {
+            def props = new Properties()
+            props.load(new FileInputStream(propsFile))
+            ksFile    = rootProject.file(props['storeFile'])
+            ksPwd     = props['storePassword']
+            keyAlias_ = props['keyAlias']
+            keyPwd    = props['keyPassword']
+        }
+    }
 
     signingConfigs {
         release {
-            storeFile     rootProject.file(props['storeFile'])
-            storePassword props['storePassword']
-            keyAlias      props['keyAlias']
-            keyPassword   props['keyPassword']
+            if (ksFile != null) {
+                storeFile     ksFile
+                storePassword ksPwd
+                keyAlias      keyAlias_
+                keyPassword   keyPwd
+            }
         }
     }
 
