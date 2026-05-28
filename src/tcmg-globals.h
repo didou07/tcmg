@@ -398,4 +398,6 @@ static inline void format_time(time_t t, char *out, size_t sz)
 	strftime(out, sz, "%Y-%m-%d %H:%M", &tm);
 }
 
+#include "tcmg-platform.h"
+
 #endif /* TCMG_GLOBALS_H_ */

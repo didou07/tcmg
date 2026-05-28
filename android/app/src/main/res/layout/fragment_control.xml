@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
     fragment_control.xml — VOID theme
-    Stat cards + status + network + settings, matching WebIF dashboard layout.
+    Cleaned: removed duplicate version badge from header (version already in Toolbar),
+    removed duplicate Uptime from status card (kept in stat grid only),
+    WebIF buttons hidden (GONE) when server is stopped,
+    CW Miss and Banned IPs icon badges now use correct colour drawables.
 -->
 <androidx.core.widget.NestedScrollView
     xmlns:android="http://schemas.android.com/apk/res/android"
@@ -21,56 +24,7 @@
         android:paddingTop="12dp"
         android:paddingBottom="80dp">
 
-        <!-- ══ HEADER ════════════════════════════════════════════════ -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:layout_marginBottom="14dp">
-
-            <!-- Logo icon box (matches WebIF .li) -->
-            <LinearLayout
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:background="@drawable/bg_version_badge"
-                android:gravity="center"
-                android:layout_marginEnd="10dp">
-                <ImageView
-                    android:layout_width="18dp"
-                    android:layout_height="18dp"
-                    android:src="@drawable/ic_nav_control"
-                    android:contentDescription="@null"
-                    android:tint="@color/void_primary"/>
-            </LinearLayout>
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/app_name"
-                android:textSize="17sp"
-                android:textStyle="bold"
-                android:fontFamily="sans-serif-medium"
-                android:letterSpacing="0.01"
-                android:textColor="?attr/colorOnSurface"/>
-
-            <!-- Version badge -->
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="v4.4"
-                android:fontFamily="monospace"
-                android:textSize="10sp"
-                android:textColor="?attr/colorPrimary"
-                android:background="@drawable/bg_version_badge"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp"
-                android:paddingTop="3dp"
-                android:paddingBottom="3dp"/>
-        </LinearLayout>
-
-        <!-- ══ STATUS CARD ═══════════════════════════════════════════ -->
+        <!-- STATUS CARD -->
         <LinearLayout
             android:id="@+id/statusCard"
             android:layout_width="match_parent"
@@ -80,7 +34,7 @@
             android:layout_marginBottom="12dp"
             android:background="@drawable/bg_card_stopped">
 
-            <!-- Row 1: pulse dot + status text + uptime -->
+            <!-- Row 1: pulse dot + status text -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="38dp"
@@ -107,35 +61,6 @@
                     android:fontFamily="sans-serif-medium"
                     android:textColor="?attr/colorOnSurface"/>
 
-                <!-- Uptime (GONE when stopped) -->
-                <LinearLayout
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:gravity="end">
-
-                    <TextView
-                        android:id="@+id/tvUptimeLabel"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/status_uptime"
-                        android:textSize="8sp"
-                        android:fontFamily="monospace"
-                        android:letterSpacing="0.18"
-                        android:textColor="?attr/colorOnSurfaceVariant"
-                        android:visibility="gone"/>
-
-                    <TextView
-                        android:id="@+id/tvUptime"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="00:00:00"
-                        android:textSize="15sp"
-                        android:fontFamily="monospace"
-                        android:textColor="?attr/colorPrimary"
-                        android:textStyle="bold"
-                        android:visibility="gone"/>
-                </LinearLayout>
             </LinearLayout>
 
             <!-- Row 2: START | STOP buttons -->
@@ -173,9 +98,7 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- ══ STAT CARDS GRID (2×3) ══════════════════════════════════
-             Matches WebIF stat card layout .cg / .sc
-        ══════════════════════════════════════════════════════════════ -->
+        <!-- STAT CARDS GRID (2x3): matches WebIF .cg / .sc -->
         <GridLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -184,7 +107,7 @@
             android:useDefaultMargins="false"
             android:layout_marginBottom="14dp">
 
-            <!-- Uptime card (blue) -->
+            <!-- Uptime card (blue) — single source of truth for uptime -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardUptime"
                 android:layout_width="0dp"
@@ -227,7 +150,7 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Connections card (green when active) -->
+            <!-- Connections card -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardConns"
                 android:layout_width="0dp"
@@ -246,12 +169,14 @@
                     android:padding="12dp"
                     android:gravity="center_vertical">
                     <LinearLayout
+                        android:id="@+id/iconBgConns"
                         android:layout_width="38dp"
                         android:layout_height="38dp"
                         android:background="@drawable/bg_badge_blue"
                         android:gravity="center"
                         android:layout_marginEnd="10dp">
-                        <ImageView android:layout_width="20dp" android:layout_height="20dp"
+                        <ImageView android:id="@+id/iconConns"
+                            android:layout_width="20dp" android:layout_height="20dp"
                             android:src="@drawable/ic_stat_users"
                             android:tint="@color/void_primary"
                             android:contentDescription="@null"/>
@@ -313,7 +238,7 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- CW Miss (red when > 0) -->
+            <!-- CW Miss: icon badge turns red when misses > 0 (fixed from always-blue) -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardCwMiss"
                 android:layout_width="0dp"
@@ -332,12 +257,15 @@
                     android:padding="12dp"
                     android:gravity="center_vertical">
                     <LinearLayout
+                        android:id="@+id/iconBgCwMiss"
                         android:layout_width="38dp"
                         android:layout_height="38dp"
                         android:background="@drawable/bg_badge_blue"
                         android:gravity="center"
                         android:layout_marginEnd="10dp">
-                        <ImageView android:layout_width="20dp" android:layout_height="20dp"
+                        <ImageView
+                            android:id="@+id/iconCwMiss"
+                            android:layout_width="20dp" android:layout_height="20dp"
                             android:src="@drawable/ic_stat_x"
                             android:tint="@color/void_on_surface_var"
                             android:contentDescription="@null"/>
@@ -395,7 +323,6 @@
                             android:layout_width="wrap_content" android:layout_height="wrap_content"
                             android:text="0.0%" android:textSize="22sp" android:textStyle="bold"
                             android:fontFamily="monospace" android:textColor="@color/void_on_surface"/>
-                        <!-- Hit bar -->
                         <ProgressBar
                             android:id="@+id/pbHitRate"
                             style="@android:style/Widget.ProgressBar.Horizontal"
@@ -410,7 +337,7 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Banned IPs (orange when > 0) -->
+            <!-- Banned IPs: icon badge turns orange when bans > 0 (fixed from always-blue) -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardBans"
                 android:layout_width="0dp"
@@ -429,12 +356,15 @@
                     android:padding="12dp"
                     android:gravity="center_vertical">
                     <LinearLayout
+                        android:id="@+id/iconBgBans"
                         android:layout_width="38dp"
                         android:layout_height="38dp"
                         android:background="@drawable/bg_badge_blue"
                         android:gravity="center"
                         android:layout_marginEnd="10dp">
-                        <ImageView android:layout_width="20dp" android:layout_height="20dp"
+                        <ImageView
+                            android:id="@+id/iconBans"
+                            android:layout_width="20dp" android:layout_height="20dp"
                             android:src="@drawable/ic_stat_shield"
                             android:tint="@color/void_on_surface_var"
                             android:contentDescription="@null"/>
@@ -455,7 +385,7 @@
 
         </GridLayout>
 
-        <!-- ══ NETWORK CARD ══════════════════════════════════════════ -->
+        <!-- NETWORK CARD: WebIF buttons visible only when server is running -->
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -516,6 +446,7 @@
                         android:textSize="13sp"
                         android:textColor="?attr/colorOnSurface"/>
 
+                    <!-- Hidden by default; shown only when TCMG is running -->
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnWebifWifi"
                         android:layout_width="80dp"
@@ -525,6 +456,7 @@
                         android:insetTop="0dp"
                         android:insetBottom="0dp"
                         android:enabled="false"
+                        android:visibility="gone"
                         app:cornerRadius="6dp"
                         style="@style/Widget.Material3.Button.OutlinedButton"/>
                 </LinearLayout>
@@ -558,6 +490,7 @@
                         android:textSize="13sp"
                         android:textColor="?attr/colorOnSurface"/>
 
+                    <!-- Hidden by default; shown only when TCMG is running -->
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnWebifHotspot"
                         android:layout_width="80dp"
@@ -567,13 +500,14 @@
                         android:insetTop="0dp"
                         android:insetBottom="0dp"
                         android:enabled="false"
+                        android:visibility="gone"
                         app:cornerRadius="6dp"
                         style="@style/Widget.Material3.Button.OutlinedButton"/>
                 </LinearLayout>
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- ══ SETTINGS CARD ════════════════════════════════════════ -->
+        <!-- SETTINGS CARD -->
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -603,7 +537,6 @@
                     android:textColor="?attr/colorOnSurfaceVariant"
                     android:layout_marginBottom="10dp"/>
 
-                <!-- Autostart row -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="52dp"

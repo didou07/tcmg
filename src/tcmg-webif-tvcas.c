@@ -2,12 +2,6 @@
 #include "tcmg-globals.h"
 #include "tcmg-crypto.h"
 #include "tcmg-log.h"
-
-#ifndef TCMG_OS_WINDOWS
-#  include <netdb.h>
-#  include <sys/select.h>
-#endif
-
 #include "tcmg-webif-internal.h"
 
 void send_page_tvcas(int fd)

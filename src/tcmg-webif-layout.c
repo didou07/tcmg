@@ -2,10 +2,6 @@
 #include "tcmg-globals.h"
 #include "tcmg-crypto.h"
 #include "tcmg-log.h"
-#ifndef TCMG_OS_WINDOWS
-#  include <netdb.h>
-#  include <sys/select.h>
-#endif
 #include "tcmg-webif-internal.h"
 
 /* ═══════════════════════════════════════════════════════════════
@@ -79,7 +75,8 @@ const char CSS[] =
 ".pulse.sm{width:6px;height:6px}"
 "@keyframes pa{0%{box-shadow:0 0 0 0 rgba(34,197,94,.5)}70%{box-shadow:0 0 0 6px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}"
 
-"@media(max-width:900px){#sb{left:calc(-1 * var(--sbw))}#sb.mob{left:0}#tb,#mn{margin-left:0!important}}"
+"@media(max-width:900px){#sb{left:calc(-1 * var(--sbw))}#sb.mob{left:0}#tb,#mn{margin-left:0!important}#tgBtn{display:none}}"
+"@media(min-width:901px){#mbBtn{display:none}}"
 
 /* ══ TOPBAR ══ */
 "#tb{position:fixed;top:0;left:var(--sbw);right:0;height:var(--tbh);background:var(--s1);border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;padding:0 20px;z-index:1030;transition:left .28s var(--ease)}"
@@ -107,6 +104,7 @@ const char CSS[] =
 ".pc input{width:28px;background:none;border:none;outline:none;color:var(--t0);font-family:var(--mono);font-size:12px;text-align:center}"
 ".pc button{color:var(--t2);font-size:13px;line-height:1;padding:0 2px;border-radius:3px}"
 ".pc button:hover{color:var(--t0);background:var(--s3)}"
+"body.pg-config .pc,body.pg-users .pc,body.pg-failban .pc,body.pg-tvcas .pc,body.pg-restart .pc,body.pg-shutdown .pc{display:none}"
 
 /* ══ MAIN ══ */
 "#mn{margin-left:var(--sbw);margin-top:var(--tbh);padding:22px 22px 30px;min-height:calc(100vh - var(--tbh));transition:margin-left .28s var(--ease)}"
@@ -130,9 +128,9 @@ const char CSS[] =
 ".btn.sm{padding:5px 11px;font-size:12px}"
 
 /* ══ STAT CARDS ══ */
-".cg{display:grid;grid-template-columns:repeat(auto-fill,minmax(195px,1fr));gap:14px;margin-bottom:22px}"
+".cg{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:22px;align-items:start}"
 ".sc{background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);padding:16px;display:flex;align-items:flex-start;gap:14px;position:relative;overflow:hidden;transition:border-color .22s,transform .18s,box-shadow .22s;animation:fu .35s var(--ease) both}"
-".sc:hover{transform:translateY(-2px)}"
+".sc:hover{transform:none}"
 
 /* Colour variants */
 ".sc.bl{border-color:rgba(59,130,246,.28);background:rgba(59,130,246,.04)}"
@@ -229,6 +227,22 @@ const char CSS[] =
 ".kb:hover{opacity:1;background:var(--res)}"
 ".kb svg{width:13px;height:13px}"
 
+/* Power toggle button (Users page) */
+".pw-btn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;"
+"border-radius:6px;border:none;cursor:pointer;transition:all .15s;padding:0}"
+".pw-btn svg{width:15px;height:15px;pointer-events:none}"
+".pw-btn.on{background:rgba(74,222,128,.15);color:#4ade80}"
+".pw-btn.off{background:var(--s3);color:var(--t3);opacity:.5}"
+".pw-btn:hover{opacity:1!important;filter:brightness(1.2)}"
+/* Clickable username */
+".u-link{cursor:pointer;color:var(--t1)}"
+".u-link:hover{color:var(--p);text-decoration:underline}"
+/* Config editor tabs */
+".ctab{padding:7px 16px;font-size:12px;font-weight:600;letter-spacing:.05em;"
+"border:1px solid var(--s3);border-bottom:none;border-radius:6px 6px 0 0;"
+"background:var(--s2);color:var(--t2);cursor:pointer;transition:all .15s}"
+".ctab.act{background:var(--s1);color:var(--t1);border-color:var(--s3)}"
+
 /* Hit bar */
 ".hbw{background:var(--s3);border-radius:4px;height:5px;width:80px;overflow:hidden}"
 ".hbf{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--gr),var(--cy));transition:width .4s}"
@@ -322,7 +336,60 @@ const char CSS[] =
 "::-webkit-scrollbar{width:5px;height:5px}"
 "::-webkit-scrollbar-track{background:transparent}"
 "::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:4px}"
-"::-webkit-scrollbar-thumb:hover{background:var(--bd)}";
+"::-webkit-scrollbar-thumb:hover{background:var(--bd)}"
+
+/* ══ SORTABLE TABLE HEADERS ══ */
+"th.sortable{cursor:pointer;user-select:none;position:relative}"
+"th.sortable:hover{color:var(--t0);background:rgba(59,130,246,.08)}"
+"th.sort-asc::after{content:' \u2191';color:var(--p)}"
+"th.sort-desc::after{content:' \u2193';color:var(--p)}"
+
+/* ══ TABLE TOOLBAR (search + actions above table) ══ */
+".ttb{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}"
+".ttb-r{margin-left:auto;display:flex;gap:8px;align-items:center}"
+".tsrch{background:var(--s2);border:1px solid var(--bd2);color:var(--t0);"
+"border-radius:var(--rsm);padding:6px 12px;font-family:var(--mono);font-size:12px;"
+"width:220px;outline:none;transition:border-color .18s}"
+".tsrch:focus{border-color:var(--pg)}"
+".tsrch::placeholder{color:var(--t2)}"
+
+/* ══ TABLE FOOTER aggregate row ══ */
+"tfoot tr{background:var(--s2)}"
+"tfoot td{padding:9px 14px;font-size:11px;font-weight:700;"
+"color:var(--t2);border-top:2px solid var(--bd);letter-spacing:.04em}"
+"tfoot .tfs{font-size:13px;color:var(--t0)}"
+"tfoot .tfl{font-size:10px;color:var(--t2);text-transform:uppercase;letter-spacing:.1em}"
+
+/* ══ INFO SUMMARY BAR (horizontal row of key stats) ══ */
+".sbar{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));"
+"border:1px solid var(--bd);border-radius:var(--r);overflow:hidden;margin-bottom:22px;"
+"background:var(--s1)}"
+".sbar-item{padding:12px 16px;border-right:1px solid var(--bd);display:flex;"
+"flex-direction:column;gap:3px;transition:background .18s}"
+".sbar-item:last-child{border-right:none}"
+".sbar-item:hover{background:var(--s2)}"
+".sbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--t2)}"
+".sbv{font-size:18px;font-weight:700;color:var(--t0);font-variant-numeric:tabular-nums}"
+".sbv.sm{font-size:13px;font-family:var(--mono)}"
+".sbv.tg{color:var(--gr)}.sbv.tr{color:var(--re)}.sbv.tb{color:var(--p)}.sbv.to{color:var(--or2)}"
+
+/* ══ TWO-COLUMN LAYOUT ══ */
+".row2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}"
+".row2.r7030{grid-template-columns:7fr 3fr}"
+".row2.r6040{grid-template-columns:6fr 4fr}"
+"@media(max-width:900px){.row2,.row2.r7030,.row2.r6040{grid-template-columns:1fr}}"
+
+/* ══ ECM STACKED BAR ══ */
+".ecm-bk{display:flex;gap:2px;height:6px;border-radius:4px;overflow:hidden;margin:6px 0 2px;width:100%;background:var(--s3)}"
+".ecm-bk span{height:100%;transition:width .4s}"
+".ecm-ok{background:var(--gr)}"
+".ecm-nok{background:var(--re)}"
+
+/* ══ MINI STAT ROW (inline key=value) ══ */
+".msr{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:12px;font-family:var(--mono)}"
+".msr-kv{display:flex;gap:5px;align-items:center}"
+".msr-k{color:var(--t2);font-size:10px;text-transform:uppercase;letter-spacing:.08em;font-family:var(--sans);font-weight:600}"
+".msr-v{color:var(--t0);font-weight:600}";
 
 /* ═══ ICONS ═══ */
 #define ICO_LOGO \
@@ -393,8 +460,6 @@ int emit_header(char **buf, int *bsz, int pos,
                 const char *title, const char *active)
 {
 	int is_status = (strcmp(active,"status")==0);
-	char upstr[32];
-	format_uptime(time(NULL)-g_start_time, upstr, sizeof(upstr));
 
 	pos = buf_printf(buf,bsz,pos,
 		"<!DOCTYPE html><html lang='en'><head>"
@@ -402,8 +467,8 @@ int emit_header(char **buf, int *bsz, int pos,
 		"<meta name='viewport' content='width=device-width,initial-scale=1'>"
 		"<title>TCMG &mdash; %s</title>"
 		"<style>%s</style>"
-		"</head><body>",
-		title, CSS);
+		"</head><body class='pg-%s'>",
+		title, CSS, active);
 
 	pos = buf_printf(buf,bsz,pos,"<div id='ov'></div>");
 
@@ -457,9 +522,8 @@ int emit_header(char **buf, int *bsz, int pos,
 		"  <div class='pulse'></div>"
 		"  <div class='si'>"
 		"    <span class='sl'>RUNNING</span>"
-		"    <span class='su' id='sb_up'>%s</span>"
 		"  </div>"
-		"</div></aside>",upstr);
+		"</div></aside>");
 
 	/* ── TOPBAR ── */
 	char srv_addr[64];
@@ -529,7 +593,6 @@ int emit_header(char **buf, int *bsz, int pos,
 		"    .then(function(r){return r.json();})"
 		"    .then(function(d){"
 		"      var e;"
-		"      e=document.getElementById('sb_up');  if(e)e.textContent=d.uptime_str;"
 		"      e=document.getElementById('tb_conn');if(e)e.textContent=d.active_connections;"
 		"      setTimeout(_tp,_pm);"
 		"    }).catch(function(){setTimeout(_tp,_pm*3);});"
@@ -574,7 +637,6 @@ int emit_header(char **buf, int *bsz, int pos,
 			"  if(e)e.textContent=d.hit_rate_pct.toFixed(1)+'%%';"
 			"  /* hit bar */ var hb=document.getElementById('p_hbf');"
 			"  if(hb)hb.style.width=d.hit_rate_pct.toFixed(0)+'%%';"
-			"  document.getElementById('sb_up').textContent=d.uptime_str;"
 			"  document.getElementById('tb_conn').textContent=d.active_connections;"
 			"  var tb=document.getElementById('p_clients');"
 			"  if(!tb)return;"

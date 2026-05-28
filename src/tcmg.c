@@ -96,65 +96,9 @@ static void clients_relink_accounts(void)
 	pthread_mutex_unlock(&g_clients_mtx);
 }
 
-/* Signal handling */
-#ifndef TCMG_OS_WINDOWS
+/* Signal handling — delegated to tcmg_setup_signals() in tcmg-platform.h */
 
-static void sig_handler(int sig)
-{
-	(void)sig;
-	g_running = 0;
-}
-
-static void setup_signals(void)
-{
-	struct sigaction sa;
-	memset(&sa, 0, sizeof(sa));
-	sa.sa_handler = sig_handler;
-	sigemptyset(&sa.sa_mask);
-	sigaction(SIGINT,  &sa, NULL);
-	sigaction(SIGTERM, &sa, NULL);
-	signal(SIGPIPE, SIG_IGN);
-}
-
-#else
-
-static BOOL WINAPI console_handler(DWORD event)
-{
-	if (event == CTRL_C_EVENT || event == CTRL_BREAK_EVENT ||
-	    event == CTRL_CLOSE_EVENT)
-	{
-		g_running = 0;
-		return TRUE;
-	}
-	return FALSE;
-}
-
-static void setup_signals(void)
-{
-	SetConsoleCtrlHandler(console_handler, TRUE);
-}
-
-#endif
-
-/* Build cfgdir/filename path */
-static void build_cfg_path(char *dst, size_t dstsz, const char *filename)
-{
-	tcmg_strlcpy(dst, g_cfgdir, dstsz);
-	size_t dlen = strlen(dst);
-	/* Strip any trailing separator so we always append exactly one */
-	while (dlen > 0 && (dst[dlen-1] == '/' || dst[dlen-1] == '\\'))
-		dst[--dlen] = '\0';
-	if (dlen + 1 + strlen(filename) + 1 <= dstsz)
-	{
-		dst[dlen] = '/';
-		dst[dlen + 1] = '\0';
-		tcmg_strlcat(dst, filename, dstsz);
-	}
-#ifdef TCMG_OS_WINDOWS
-	for (char *p = dst; *p; p++)
-		if (*p == '/') *p = '\\';
-#endif
-}
+/* Path building — delegated to tcmg_build_path() in tcmg-platform.h */
 
 static void print_usage(const char *prog)
 {
@@ -560,7 +504,7 @@ int main(int argc, char *argv[])
 	g_start_time = time(NULL);
 	g_argv_saved = argv;
 	tcmg_winsock_init();
-	setup_signals();
+	tcmg_setup_signals(&g_running);
 
 	int do_daemon = 0;
 	(void)do_daemon; /* suppress unused-variable warning on Windows */
@@ -592,24 +536,8 @@ int main(int argc, char *argv[])
 		}
 	}
 
-#if !defined(TCMG_OS_WINDOWS) && !defined(NO_DAEMON_SUPPORT)
-	if (do_daemon)
-	{
-		pid_t pid = fork();
-		if (pid < 0) { perror("fork"); return 1; }
-		if (pid > 0) return 0;   /* parent exits */
-		setsid();
-		/* redirect std fds to /dev/null */
-		int devnull = open("/dev/null", O_RDWR);
-		if (devnull >= 0)
-		{
-			dup2(devnull, STDIN_FILENO);
-			dup2(devnull, STDOUT_FILENO);
-			dup2(devnull, STDERR_FILENO);
-			if (devnull > 2) close(devnull);
-		}
-	}
-#endif
+	if (do_daemon && tcmg_daemonise() < 0)
+		return 1;
 
 	printf(
 		"\n"
@@ -627,14 +555,9 @@ int main(int argc, char *argv[])
 	pthread_mutex_init(&g_cfg.ban_lock, NULL);
 
 	char cfgpath[CFGPATH_LEN];
-	build_cfg_path(cfgpath, sizeof(cfgpath), TCMG_CFG_FILE);
+	tcmg_build_path(cfgpath, sizeof(cfgpath), g_cfgdir, TCMG_CFG_FILE);
 
-	/* Create config directory if it does not exist */
-#ifdef TCMG_OS_WINDOWS
-	CreateDirectoryA(g_cfgdir, NULL); /* no-op if already exists */
-#else
-	mkdir(g_cfgdir, 0755);           /* no-op if already exists */
-#endif
+	tcmg_mkdir(g_cfgdir);   /* no-op if already exists */
 
 	if (!cfg_load(cfgpath, &g_cfg))
 	{
@@ -652,7 +575,7 @@ int main(int argc, char *argv[])
 	log_ecm_set(g_cfg.ecm_log);
 
 	/* Load channel names */
-	build_cfg_path(srvidpath, sizeof(srvidpath), TCMG_SRVID_FILE);
+	tcmg_build_path(srvidpath, sizeof(srvidpath), g_cfgdir, TCMG_SRVID_FILE);
 
 	/* If tcmg.srvid2 is missing from cfgdir, generate a default one */
 	{
@@ -688,9 +611,6 @@ int main(int argc, char *argv[])
 	int opt = 1;
 	setsockopt(srv_fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt, sizeof(opt));
 
-#ifdef TCMG_OS_MACOS
-	setsockopt(srv_fd, SOL_SOCKET, SO_NOSIGPIPE, &opt, sizeof(opt));
-#endif
 
 	memset(&sa, 0, sizeof(sa));
 	sa.sin_family      = AF_INET;
@@ -811,29 +731,7 @@ int main(int argc, char *argv[])
 	if (g_restart)
 	{
 		tcmg_log("restarting process...");
-#if defined(TCMG_OS_WINDOWS)
-		/* Windows: spawn a new process and exit */
-		STARTUPINFOA si;
-		PROCESS_INFORMATION pi;
-		ZeroMemory(&si, sizeof(si));
-		si.cb = sizeof(si);
-		ZeroMemory(&pi, sizeof(pi));
-		char cmdline[4096];
-		cmdline[0] = '\0';
-		for (int i = 0; g_argv_saved[i]; i++) {
-			if (i > 0) tcmg_strlcat(cmdline, " ", sizeof(cmdline));
-			tcmg_strlcat(cmdline, g_argv_saved[i], sizeof(cmdline));
-		}
-		if (CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
-			CloseHandle(pi.hThread);
-			CloseHandle(pi.hProcess);
-		}
-#else
-		/* Unix: re-exec same binary with same args -- clean and portable */
-		execv(g_argv_saved[0], g_argv_saved);
-		/* execv only returns on error */
-		perror("execv restart failed");
-#endif
+		tcmg_exec_restart(g_argv_saved);
 	}
 
 	return 0;

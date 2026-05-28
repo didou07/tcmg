@@ -2,25 +2,70 @@
 #include "tcmg-globals.h"
 #include "tcmg-crypto.h"
 #include "tcmg-log.h"
-
-#ifndef TCMG_OS_WINDOWS
-#  include <netdb.h>
-#  include <sys/select.h>
-#endif
-
 #include "tcmg-webif-internal.h"
 
+/* ────────────────────────────────────────────────────────────────────────────
+ * tcmg-webif-pages.c  —  HTML pages + JSON API handlers
+ *
+ * OSCam philosophy applied:
+ *   · emit_stat_card() eliminates 7× duplicated stat-card markup
+ *   · file_read_escaped() (common.c) eliminates 2× duplicated file-read+escape
+ *   · send_page_action()  eliminates duplicate Shutdown/Restart pages
+ *   · form_get()          now calls url_decode() (no more dual decode logic)
+ *   · send_api_status()   JSON correctly wrapped in { }
+ *   · send_api_user_get() no longer leaks password hash
+ *   · tcmg_build_path()   used for all path construction
+ * ────────────────────────────────────────────────────────────────────────────*/
 
-/* =
- *  LOGIN PAGE
- * = */
+/* ════════════════════════════════════════════════════════════════════════════
+ * Private helpers
+ * ════════════════════════════════════════════════════════════════════════════*/
+
+/*
+ * emit_stat_card — render one card in the dashboard grid.
+ *
+ *   color  : CSS class suffix ("bl","gr","vi","cy","re","or")
+ *   icon   : ICO_* macro string
+ *   label  : card header label (ALL-CAPS)
+ *   sv_id  : DOM id for the value span (NULL = no id)
+ *   value  : initial value text
+ *   sub    : small sub-text below value (HTML allowed)
+ *   extra  : optional HTML injected after the value div (progress bar etc.),
+ *            NULL for none
+ */
+static int emit_stat_card(char **buf, int *bsz, int pos,
+                          const char *color, const char *icon,
+                          const char *label, const char *sv_id,
+                          const char *value, const char *sub,
+                          const char *extra)
+{
+	pos = buf_printf(buf, bsz, pos,
+		"<div class='sc %s'>"
+		"<div class='si_'>%s</div>"
+		"<div class='sb_'>"
+		"  <div class='sl_'>%s</div>"
+		"  <div class='sv'%s%s%s>%s</div>"
+		"%s"
+		"  <div class='sd'>%s</div>"
+		"</div><div class='sg'></div></div>",
+		color, icon, label,
+		sv_id ? " id='" : "", sv_id ? sv_id : "", sv_id ? "'" : "",
+		value,
+		extra ? extra : "",
+		sub);
+	return pos;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * Login page
+ * ════════════════════════════════════════════════════════════════════════════*/
 void send_login_page(int fd, int failed)
 {
-	int bsz=8192, pos=0;
-	char *buf=(char *)malloc(bsz);
-	if(!buf)return;
+	int   bsz = 8192, pos = 0;
+	char *buf = (char *)malloc(bsz);
+	if (!buf) return;
 
-	pos=buf_printf(&buf,&bsz,pos,
+	pos = buf_printf(&buf, &bsz, pos,
 		"<!DOCTYPE html><html lang='en'><head>"
 		"<meta charset='UTF-8'>"
 		"<meta name='viewport' content='width=device-width,initial-scale=1'>"
@@ -29,7 +74,7 @@ void send_login_page(int fd, int failed)
 		"</head><body>",
 		CSS);
 
-	pos=buf_printf(&buf,&bsz,pos,
+	pos = buf_printf(&buf, &bsz, pos,
 		"<div class='lb'><div class='lcard'>"
 		"<div class='ll'>"
 		"  <div class='lli'>"
@@ -45,8 +90,8 @@ void send_login_page(int fd, int failed)
 		"  </div>"
 		"</div>");
 
-	if(failed)
-		pos=buf_printf(&buf,&bsz,pos,
+	if (failed)
+		pos = buf_printf(&buf, &bsz, pos,
 			"<div class='le'>"
 			"<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>"
 			"<circle cx='12' cy='12' r='10'/>"
@@ -56,7 +101,7 @@ void send_login_page(int fd, int failed)
 			"Invalid credentials &mdash; please try again."
 			"</div>");
 
-	pos=buf_printf(&buf,&bsz,pos,
+	pos = buf_printf(&buf, &bsz, pos,
 		"<form method='POST' action='/login'>"
 		"<div class='fg'>"
 		"  <label class='fld'>USERNAME</label>"
@@ -76,177 +121,159 @@ void send_login_page(int fd, int failed)
 		"</div></div>"
 		"</body></html>");
 
-	send_response(fd,200,"OK","text/html",buf,pos);
+	send_response(fd, 200, "OK", "text/html", buf, pos);
 	free(buf);
 }
 
-/* =
- *  STATS helpers
- * = */
-void handle_reset_stats(void)
-{
-	pthread_rwlock_wrlock(&g_cfg.acc_lock);
-	S_ACCOUNT *a = g_cfg.accounts;
-	while (a) {
-		a->ecm_total = 0; a->cw_found = 0; a->cw_not = 0;
-		a->cw_time_total_ms = 0;
-		a = a->next;
-	}
-	pthread_rwlock_unlock(&g_cfg.acc_lock);
-	tcmg_log("all user stats reset");
-}
-
-S_STATS aggregate_stats(void)
-{
-	S_STATS s = {0, 0, 0};
-	time_t now = time(NULL);
-	pthread_rwlock_rdlock(&g_cfg.acc_lock);
-	for (const S_ACCOUNT *a = g_cfg.accounts; a; a = a->next)
-		{ s.cw_found += a->cw_found; s.cw_not += a->cw_not; }
-	pthread_rwlock_unlock(&g_cfg.acc_lock);
-	pthread_mutex_lock(&g_cfg.ban_lock);
-	for (const S_BAN_ENTRY *b = g_cfg.bans; b; b = b->next)
-		if (now < b->until) s.nbans++;
-	pthread_mutex_unlock(&g_cfg.ban_lock);
-	return s;
-}
-
-/* =
- *  STATUS PAGE
- * = */
+/* ════════════════════════════════════════════════════════════════════════════
+ * Dashboard (status page)
+ * ════════════════════════════════════════════════════════════════════════════*/
 void send_page_status(int fd)
 {
-	int bsz=32768, pos=0;
-	char *buf=(char *)malloc(bsz);
-	if(!buf)return;
+	int   bsz = 32768, pos = 0;
+	char *buf = (char *)malloc(bsz);
+	if (!buf) return;
 
-	pos=emit_header(&buf,&bsz,pos,"Dashboard","status");
+	pos = emit_header(&buf, &bsz, pos, "Dashboard", "status");
 
-	time_t now=time(NULL);
-	char upstr[32];
-	format_uptime(now-g_start_time, upstr, sizeof(upstr));
+	S_SERVER_STATS st = collect_stats();
+	char hrstr[16];
+	snprintf(hrstr, sizeof(hrstr),
+	         st.ecm_total > 0 ? "%.1f%%" : "0.0%%", st.hit_rate);
 
-	S_STATS st=aggregate_stats();
-	int64_t cw_found=st.cw_found, cw_not=st.cw_not;
-	int nbans=st.nbans, naccounts;
-	pthread_rwlock_rdlock(&g_cfg.acc_lock);
-	naccounts=g_cfg.naccounts;
-	pthread_rwlock_unlock(&g_cfg.acc_lock);
-
-	int64_t ecm_total=cw_found+cw_not;
-	double  hitrate=ecm_total>0 ? (double)cw_found*100.0/(double)ecm_total : 0.0;
-	char    hrstr[16]="0.0%";
-	if(ecm_total>0) snprintf(hrstr,sizeof(hrstr),"%.1f%%",hitrate);
-
-	/* Page header */
-	pos=buf_printf(&buf,&bsz,pos,
+	/* Page header with action buttons */
+	pos = buf_printf(&buf, &bsz, pos,
 		"<div class='ph'>"
-		"  <div>"
-		"    <div class='pt'>Dashboard</div>"
-		"    <div class='ps'>Live server statistics &mdash; auto-refreshing</div>"
-		"  </div>"
 		"  <div class='ha'>"
-		"    <a href='#' onclick=\"if(confirm('Reset all stats?')){fetch('/api/resetstats').then(()=>{location.reload();});}return false\""
-		"       class='btn bg sm'>"
-		"      <svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>"
-		"        <polyline points='23 4 23 10 17 10'/>"
-		"        <path d='M20.49 15a9 9 0 1 1-2.12-9.36L23 10'/>"
-		"      </svg>Reset Stats"
-		"    </a>"
-		"    <a href='#' onclick=\"fetch('/api/reload').then(()=>{this.textContent='\u2713 Done';this.disabled=true;});return false\""
-		"       class='btn bp sm'>"
-		"      <svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>"
-		"        <polyline points='1 4 1 10 7 10'/>"
-		"        <path d='M3.51 15a9 9 0 1 0 .49-4.95'/>"
-		"      </svg>Reload Config"
-		"    </a>"
+		"    <a href='#'"
+		"       onclick=\"if(confirm('Reset all stats?')){fetch('/api/resetstats').then(()=>location.reload());}return false\""
+		"       class='btn bg sm'>" ICO_RESET "&nbsp;Reset Stats</a>"
 		"  </div>"
 		"</div>");
 
-	/* Stat cards */
-	pos=buf_printf(&buf,&bsz,pos,"<div class='cg'>");
+	/* ── Stat cards grid ── */
+	char hbf_extra[192];
+	snprintf(hbf_extra, sizeof(hbf_extra),
+	         "  <div class='hbw' style='margin-top:4px'>"
+	         "<div class='hbf' id='p_hbf' style='width:%.0f%%'></div></div>",
+	         st.hit_rate);
 
-	/* Uptime */
-	pos=buf_printf(&buf,&bsz,pos,
-		"<div class='sc bl'>"
-		"<div class='si_'>" ICO_CLOCK "</div>"
-		"<div class='sb_'>"
-		"  <div class='sl_'>Uptime</div>"
-		"  <div class='sv mono' id='p_up'>%s</div>"
-		"  <div class='sd'>since start</div>"
-		"</div><div class='sg'></div></div>", upstr);
+	pos = buf_printf(&buf, &bsz, pos, "<div class='cg'>");
 
-	/* Connections */
-	pos=buf_printf(&buf,&bsz,pos,
-		"<div class='sc %s'>"
-		"<div class='si_'>" ICO_USERS2 "</div>"
-		"<div class='sb_'>"
-		"  <div class='sl_'>Connections</div>"
-		"  <div class='sv' id='p_conn'>%d</div>"
-		"  <div class='sd'>of <span id='p_acc'>%d</span> accounts</div>"
-		"</div><div class='sg'></div></div>",
-		g_active_conns>0?"gr":"bl",
-		g_active_conns, naccounts);
+	pos = emit_stat_card(&buf, &bsz, pos, "bl", ICO_CLOCK,
+	    "Uptime",       "p_up",   st.uptime_str,           "since start",        NULL);
 
-	/* ECM Total */
-	pos=buf_printf(&buf,&bsz,pos,
-		"<div class='sc vi'>"
-		"<div class='si_'>" ICO_ZAP "</div>"
-		"<div class='sb_'>"
-		"  <div class='sl_'>ECM Total</div>"
-		"  <div class='sv' id='p_ecm'>%lld</div>"
-		"  <div class='sd'>requests processed</div>"
-		"</div><div class='sg'></div></div>", (long long)ecm_total);
+	{
+		char conn_val[16], conn_sub[48];
+		snprintf(conn_val, sizeof(conn_val), "%d", st.active_conns);
+		snprintf(conn_sub, sizeof(conn_sub), "of <span id='p_acc'>%d</span> accounts", st.naccounts);
+		pos = emit_stat_card(&buf, &bsz, pos,
+		    st.active_conns > 0 ? "gr" : "bl", ICO_USERS2,
+		    "Connections", "p_conn", conn_val, conn_sub, NULL);
+	}
 
-	/* CW Found */
-	pos=buf_printf(&buf,&bsz,pos,
-		"<div class='sc gr'>"
-		"<div class='si_'>" ICO_CHECK "</div>"
-		"<div class='sb_'>"
-		"  <div class='sl_'>CW Found</div>"
-		"  <div class='sv' id='p_hit'>%lld</div>"
-		"  <div class='sd'>cache hits</div>"
-		"</div><div class='sg'></div></div>", (long long)cw_found);
+	{
+		char ecm_val[24];
+		snprintf(ecm_val, sizeof(ecm_val), "%lld", (long long)st.ecm_total);
+		pos = emit_stat_card(&buf, &bsz, pos, "vi", ICO_ZAP,
+		    "ECM Total",   "p_ecm",  ecm_val, "requests processed", NULL);
+	}
 
-	/* CW Miss */
-	pos=buf_printf(&buf,&bsz,pos,
-		"<div class='sc %s'>"
-		"<div class='si_'>" ICO_X "</div>"
-		"<div class='sb_'>"
-		"  <div class='sl_'>CW Miss</div>"
-		"  <div class='sv' id='p_miss'>%lld</div>"
-		"  <div class='sd'>not found</div>"
-		"</div><div class='sg'></div></div>",
-		cw_not>0?"re":"bl", (long long)cw_not);
+	{
+		char cw_val[24];
+		snprintf(cw_val, sizeof(cw_val), "%lld", (long long)st.cw_found);
+		pos = emit_stat_card(&buf, &bsz, pos, "gr", ICO_CHECK,
+		    "CW Found",    "p_hit",  cw_val,  "cache hits",         NULL);
+	}
 
-	/* Hit Rate */
-	pos=buf_printf(&buf,&bsz,pos,
-		"<div class='sc cy'>"
-		"<div class='si_'>" ICO_PERCENT "</div>"
-		"<div class='sb_'>"
-		"  <div class='sl_'>Hit Rate</div>"
-		"  <div class='sv' id='p_hr'>%s</div>"
-		"  <div class='sd' style='display:flex;align-items:center;gap:6px;margin-top:4px'>"
-		"    <div class='hbw' style='width:100px'><div class='hbf' id='p_hbf' style='width:%.0f%%'></div></div>"
-		"  </div>"
-		"</div><div class='sg'></div></div>",
-		hrstr, hitrate);
+	{
+		char miss_val[24];
+		snprintf(miss_val, sizeof(miss_val), "%lld", (long long)st.cw_not);
+		pos = emit_stat_card(&buf, &bsz, pos,
+		    st.cw_not > 0 ? "re" : "bl", ICO_X,
+		    "CW Miss",     "p_miss", miss_val, "not found",         NULL);
+	}
 
-	/* Banned */
-	pos=buf_printf(&buf,&bsz,pos,
-		"<div class='sc %s'>"
-		"<div class='si_'>" ICO_SHIELD "</div>"
-		"<div class='sb_'>"
-		"  <div class='sl_'>Banned IPs</div>"
-		"  <div class='sv' id='p_ban'>%d</div>"
-		"  <div class='sd'><a href='/failban' style='color:inherit;opacity:.7;font-size:11px'>view list &rarr;</a></div>"
-		"</div><div class='sg'></div></div>",
-		nbans>0?"or":"bl", nbans);
+	pos = emit_stat_card(&buf, &bsz, pos, "cy", ICO_PERCENT,
+	    "Hit Rate",    "p_hr",   hrstr, "", hbf_extra);
 
-	pos=buf_printf(&buf,&bsz,pos,"</div>"); /* /cg */
+	{
+		char ban_val[8];
+		snprintf(ban_val, sizeof(ban_val), "%d", st.nbans);
+		pos = emit_stat_card(&buf, &bsz, pos,
+		    st.nbans > 0 ? "or" : "bl", ICO_SHIELD,
+		    "Banned IPs",  "p_ban",  ban_val,
+		    "<a href='/failban' style='color:inherit;opacity:.7;font-size:11px'>view list &rarr;</a>",
+		    NULL);
+	}
 
-	/* Active connections table */
-	pos=buf_printf(&buf,&bsz,pos,
+	pos = buf_printf(&buf, &bsz, pos, "</div>"); /* /cg */
+
+	/* ── ECM Breakdown + Users Summary bar (OSCam-style info section) ── */
+	{
+		int total_users = 0, disabled_u = 0, expired_u = 0;
+		time_t now = time(NULL);
+		pthread_rwlock_rdlock(&g_cfg.acc_lock);
+		for (S_ACCOUNT *a = g_cfg.accounts; a; a = a->next) {
+			total_users++;
+			if (!a->enabled) disabled_u++;
+			if (a->expirationdate > 0 && now > a->expirationdate) expired_u++;
+		}
+		pthread_rwlock_unlock(&g_cfg.acc_lock);
+
+		/* ECM stacked bar */
+		double ok_pct  = st.ecm_total > 0 ? (double)st.cw_found * 100.0 / st.ecm_total : 0.0;
+		double nok_pct = st.ecm_total > 0 ? (double)st.cw_not   * 100.0 / st.ecm_total : 0.0;
+
+		char ok_pct_s[16], nok_pct_s[16];
+		snprintf(ok_pct_s,  sizeof(ok_pct_s),  "%.1f%%", ok_pct);
+		snprintf(nok_pct_s, sizeof(nok_pct_s), "%.1f%%", nok_pct);
+
+		pos = buf_printf(&buf, &bsz, pos,
+			/* ── Users summary bar ── */
+			"<div class='sbar'>"
+			"<div class='sbar-item'>"
+			"  <div class='sbl'>Total Users</div>"
+			"  <div class='sbv tb'>%d</div>"
+			"</div>"
+			"<div class='sbar-item'>"
+			"  <div class='sbl'>Connected</div>"
+			"  <div class='sbv%s'>%d</div>"
+			"</div>"
+			"<div class='sbar-item'>"
+			"  <div class='sbl'>Disabled</div>"
+			"  <div class='sbv%s'>%d</div>"
+			"</div>"
+			"<div class='sbar-item'>"
+			"  <div class='sbl'>Expired</div>"
+			"  <div class='sbv%s'>%d</div>"
+			"</div>"
+			"<div class='sbar-item'>"
+			"  <div class='sbl'>ECM OK</div>"
+			"  <div class='sbv tg'>%s</div>"
+			"  <div class='ecm-bk'>"
+			"    <span class='ecm-ok' style='width:%.0f%%'></span>"
+			"    <span class='ecm-nok' style='width:%.0f%%'></span>"
+			"  </div>"
+			"</div>"
+			"<div class='sbar-item'>"
+			"  <div class='sbl'>ECM NOK</div>"
+			"  <div class='sbv tr'>%s</div>"
+			"</div>"
+			"<div class='sbar-item'>"
+			"  <div class='sbl'>Total ECM</div>"
+			"  <div class='sbv sm'>%lld</div>"
+			"</div>"
+			"</div>",
+			total_users,
+			st.active_conns > 0 ? " tg" : "", st.active_conns,
+			disabled_u > 0 ? " to" : "", disabled_u,
+			expired_u > 0  ? " tr" : "", expired_u,
+			ok_pct_s,  ok_pct, nok_pct,
+			nok_pct_s,
+			(long long)st.ecm_total);
+	}
+	pos = buf_printf(&buf, &bsz, pos,
 		"<div class='shd'>"
 		"  <div class='stl'>"
 		"    <svg width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='var(--p)' stroke-width='1.8' style='flex-shrink:0'>"
@@ -260,413 +287,617 @@ void send_page_status(int fd)
 		"<th>User</th><th>IP Address</th><th>CAID</th>"
 		"<th>SID</th><th>Channel</th><th>Connected</th><th>Idle</th><th></th>"
 		"</tr></thead>"
-		"<tbody id='p_clients'>");
+		"<tbody id='p_clients'>"
+		"<tr class='erow'><td colspan='8'>"
+		"<div class='pulse sm' style='display:inline-block;margin-right:8px'></div>Loading&hellip;"
+		"</td></tr>"
+		"</tbody></table></div>");
 
-	pthread_mutex_lock(&g_clients_mtx);
-	int shown=0;
-	for(int i=0;i<MAX_ACTIVE_CLIENTS;i++)
-	{
-		S_CLIENT *cl=g_clients[i];
-		if(!cl||!cl->account)continue;
-		char conn_str[32], idle_str[32];
-		format_uptime(now-cl->connect_time, conn_str, sizeof(conn_str));
-		format_uptime(now-cl->account->last_seen, idle_str, sizeof(idle_str));
-		char init[3]={0};
-		init[0]=(cl->user[0]>='a'&&cl->user[0]<='z')?(cl->user[0]-32):cl->user[0];
-		init[1]=(cl->user[1]>='a'&&cl->user[1]<='z')?(cl->user[1]-32):cl->user[1];
-		pos=buf_printf(&buf,&bsz,pos,
-			"<tr id='row_%u'>"
-			"<td><div class='flex gap8'><span class='av'>%.2s</span><span class='bold'>%s</span></div></td>"
-			"<td class='mono'>%s</td>"
-			"<td class='mono'><span class='badge bbl'>%04X</span></td>"
-			"<td class='mono'>%04X</td>"
-			"<td>%s</td>"
-			"<td class='mono tm'>%s</td>"
-			"<td class='mono tm'>%s</td>"
-			"<td><button class='kb' onclick=\"if(confirm('Disconnect %s?')){"
-			"fetch('/status?kill=%u&user=%s');"
-			"var r=document.getElementById('row_%u');if(r){r.style.opacity='.3';setTimeout(()=>r.remove(),400);}"
-			"}\" title='Disconnect'>"
-			"<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>"
-			"<line x1='18' y1='6' x2='6' y2='18'/><line x1='6' y1='6' x2='18' y2='18'/>"
-			"</svg></button></td>"
-			"</tr>",
-			cl->thread_id,
-			init, cl->user, cl->ip,
-			cl->last_caid, cl->last_srvid,
-			cl->last_channel[0]?cl->last_channel:"<span class='tm'>&mdash;</span>",
-			conn_str, idle_str,
-			cl->user, cl->thread_id, cl->user, cl->thread_id);
-		shown++;
-	}
-	pthread_mutex_unlock(&g_clients_mtx);
-
-	if(!shown)
-		pos=buf_printf(&buf,&bsz,pos,
-			"<tr class='erow'><td colspan='8'>"
-			"<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'"
-			" style='vertical-align:-3px;margin-right:6px;opacity:.35'>"
-			"<circle cx='12' cy='12' r='10'/><line x1='8' y1='12' x2='16' y2='12'/>"
-			"</svg>No active connections"
-			"</td></tr>");
-
-	pos=buf_printf(&buf,&bsz,pos,"</tbody></table></div>");
-	pos=emit_footer(&buf,&bsz,pos);
-	send_response(fd,200,"OK","text/html",buf,pos);
+	pos = emit_footer(&buf, &bsz, pos);
+	send_response(fd, 200, "OK", "text/html", buf, pos);
 	free(buf);
 }
 
-/* =
- *  USERS PAGE
- * = */
+/* ════════════════════════════════════════════════════════════════════════════
+ * Users page
+ * ════════════════════════════════════════════════════════════════════════════*/
 void send_page_users(int fd)
 {
-	int bsz=65536, pos=0;
-	char *buf=(char *)malloc(bsz);
-	if(!buf)return;
+	int   bsz = 65536, pos = 0;
+	char *buf = (char *)malloc(bsz);
+	if (!buf) return;
 
-	pos=emit_header(&buf,&bsz,pos,"Users","users");
+	pos = emit_header(&buf, &bsz, pos, "Users", "users");
 
+	/* Count totals for summary bar */
+	int total_u = 0, active_u = 0, disabled_u = 0, expired_u = 0, online_u = 0;
+	time_t now_u = time(NULL);
 	pthread_rwlock_rdlock(&g_cfg.acc_lock);
-	int naccs=g_cfg.naccounts;
-	pthread_rwlock_unlock(&g_cfg.acc_lock);
-
-	pos=buf_printf(&buf,&bsz,pos,
-		"<div class='ph'>"
-		"  <div>"
-		"    <div class='pt'>Users</div>"
-		"    <div class='ps'>%d account%s configured</div>"
-		"  </div>"
-		"</div>",
-		naccs, naccs==1?"":"s");
-
-	pos=buf_printf(&buf,&bsz,pos,
-		"<div class='tw'><table>"
-		"<thead><tr>"
-		"<th>User</th><th>CAID</th><th>Status</th>"
-		"<th>Active</th><th>Max</th>"
-		"<th>CW Hit</th><th>CW Miss</th><th>Hit %%</th><th>Avg ms</th>"
-		"<th>Hit Bar</th><th>First Login</th><th>Last Seen</th><th>Expiry</th>"
-		"</tr></thead><tbody>");
-
-	pthread_rwlock_rdlock(&g_cfg.acc_lock);
-	S_ACCOUNT *a=g_cfg.accounts;
-	int row=0;
-	while(a)
-	{
-		char last[32],first_l[32],expiry[128];
-		format_time((time_t)a->last_seen,   last,    sizeof(last));
-		format_time((time_t)a->first_login, first_l, sizeof(first_l));
-
-		if(a->expirationdate>0){
-			format_time(a->expirationdate,expiry,sizeof(expiry));
-			if(time(NULL)>a->expirationdate)
-				snprintf(expiry,sizeof(expiry),"<span class='badge bban'>EXPIRED</span>");
-		} else snprintf(expiry,sizeof(expiry),"<span class='tm'>&mdash;</span>");
-
-		int64_t tot=a->cw_found+a->cw_not;
-		double  hr=tot>0?(double)a->cw_found*100.0/(double)tot:-1.0;
-		char hrstr[16]="&mdash;";
-		if(hr>=0) snprintf(hrstr,sizeof(hrstr),"%.1f%%",hr);
-
-		char avgstr[16]="&mdash;";
-		if(a->cw_found>0)
-			snprintf(avgstr,sizeof(avgstr),"%lld",(long long)(a->cw_time_total_ms/a->cw_found));
-
-		const char *st_badge=a->enabled
-			?"<span class='badge bon'>&#9679;&nbsp;on</span>"
-			:"<span class='badge boff'>&#9679;&nbsp;off</span>";
-
-		/* Avatar initials */
-		char init[3]={0};
-		init[0]=(a->user[0]>='a'&&a->user[0]<='z')?(a->user[0]-32):a->user[0];
-		init[1]=(a->user[1]>='a'&&a->user[1]<='z')?(a->user[1]-32):a->user[1];
-
-		pos=buf_printf(&buf,&bsz,pos,
-			"<tr>"
-			"<td><div class='flex gap8'><span class='av'>%.2s</span><span class='bold'>%s</span></div></td>"
-			"<td class='mono'><span class='badge bbl'>%04X</span></td>"
-			"<td>%s</td>"
-			"<td class='mono'>%d</td>"
-			"<td class='mono tm'>%lld</td>"
-			"<td class='mono tg'>%lld</td>"
-			"<td class='mono %s'>%lld</td>"
-			"<td class='mono'>%s</td>"
-			"<td class='mono tm'>%s</td>"
-			"<td><div class='hbw'><div class='hbf' style='width:%.0f%%'></div></div></td>"
-			"<td class='mono tm' style='font-size:11px'>%s</td>"
-			"<td class='mono tm' style='font-size:11px'>%s</td>"
-			"<td style='font-size:12px'>%s</td>"
-			"</tr>",
-			init, a->user,
-			a->caid,
-			st_badge,
-			(int)a->active,
-			(long long)a->max_connections,
-			(long long)a->cw_found,
-			a->cw_not>0?"tr":"", (long long)a->cw_not,
-			hrstr, avgstr,
-			hr>=0?hr:0.0,
-			first_l, last, expiry);
-		a=a->next;
-		row++;
+	for (S_ACCOUNT *a = g_cfg.accounts; a; a = a->next) {
+		total_u++;
+		if (!a->enabled) disabled_u++;
+		else if (a->expirationdate > 0 && now_u > a->expirationdate) expired_u++;
+		else active_u++;
+		if (a->active > 0) online_u++;
 	}
 	pthread_rwlock_unlock(&g_cfg.acc_lock);
 
-	if(!row)
-		pos=buf_printf(&buf,&bsz,pos,
-			"<tr class='erow'><td colspan='13'>"
+	/* ── Users summary bar ── */
+	pos = buf_printf(&buf, &bsz, pos,
+		"<div class='sbar'>"
+		"<div class='sbar-item'><div class='sbl'>Total</div>"
+		"  <div class='sbv tb'>%d</div></div>"
+		"<div class='sbar-item'><div class='sbl'>Active</div>"
+		"  <div class='sbv tg'>%d</div></div>"
+		"<div class='sbar-item'><div class='sbl'>Online</div>"
+		"  <div class='sbv%s'>%d</div></div>"
+		"<div class='sbar-item'><div class='sbl'>Disabled</div>"
+		"  <div class='sbv%s'>%d</div></div>"
+		"<div class='sbar-item'><div class='sbl'>Expired</div>"
+		"  <div class='sbv%s'>%d</div></div>"
+		"</div>",
+		total_u, active_u,
+		online_u   > 0 ? " tg" : "", online_u,
+		disabled_u > 0 ? " to" : "", disabled_u,
+		expired_u  > 0 ? " tr" : "", expired_u);
+
+	/* ── Table toolbar: search + Add User button ── */
+	pos = buf_printf(&buf, &bsz, pos,
+		"<div class='ttb'>"
+		"<input class='tsrch' id='usrSearch' placeholder='&#128269; Search users...' "
+		"oninput='filterUsers()' autocomplete='off'>"
+		"<div class='ttb-r'>"
+		"  <button class='btn bg sm' onclick='location.reload()'>"
+		ICO_RELOAD "&nbsp;Refresh</button>"
+		"  <button class='btn bp sm' onclick=\"openAddUser()\">"
+		"<svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>"
+		"<line x1='12' y1='5' x2='12' y2='19'/><line x1='5' y1='12' x2='19' y2='12'/>"
+		"</svg>&nbsp;Add User</button>"
+		"</div>"
+		"</div>");
+
+	S_SERVER_STATS st = collect_stats();
+	(void)st;
+
+	pos = buf_printf(&buf, &bsz, pos,
+		"<div class='tw'><table id='usrTable'>"
+		"<thead><tr>"
+		"<th style='width:36px'></th>"
+		"<th class='sortable' onclick='sortTable(1)'>User</th>"
+		"<th class='sortable' onclick='sortTable(2)'>CAID</th>"
+		"<th class='sortable' onclick='sortTable(3)' title='Active connections'>Active</th>"
+		"<th>Max</th>"
+		"<th>CW OK / NOK</th>"
+		"<th class='sortable' onclick='sortTable(6)' title='Hit rate %%'>Rate</th>"
+		"<th class='sortable' onclick='sortTable(7)' title='Average ECM response ms'>Avg&nbsp;ms</th>"
+		"<th class='sortable' onclick='sortTable(8)'>Last Seen</th>"
+		"<th>Expiry</th><th></th>"
+		"</tr></thead><tbody id='usrBody'>");
+
+	pthread_rwlock_rdlock(&g_cfg.acc_lock);
+	int row = 0;
+	int64_t tot_cw_ok = 0, tot_cw_nok = 0;
+	for (S_ACCOUNT *a = g_cfg.accounts; a; a = a->next, row++) {
+		char last[32], expiry[128];
+		format_time((time_t)a->last_seen, last, sizeof(last));
+
+		if (a->expirationdate > 0) {
+			format_time(a->expirationdate, expiry, sizeof(expiry));
+			if (time(NULL) > a->expirationdate)
+				snprintf(expiry, sizeof(expiry),
+				         "<span class='badge bban'>EXPIRED</span>");
+		} else {
+			snprintf(expiry, sizeof(expiry), "<span class='tm'>&mdash;</span>");
+		}
+
+		int64_t tot = a->cw_found + a->cw_not;
+		double  hr  = tot > 0 ? (double)a->cw_found * 100.0 / (double)tot : -1.0;
+		char hrstr[16], avgstr[16];
+		if (hr >= 0) snprintf(hrstr,  sizeof(hrstr),  "%.1f%%", hr);
+		else         tcmg_strlcpy(hrstr, "&mdash;", sizeof(hrstr));
+		if (a->cw_found > 0)
+			snprintf(avgstr, sizeof(avgstr), "%lld",
+			         (long long)(a->cw_time_total_ms / a->cw_found));
+		else
+			tcmg_strlcpy(avgstr, "&mdash;", sizeof(avgstr));
+
+		const char *btn_cls = a->enabled ? "pw-btn on" : "pw-btn off";
+		tot_cw_ok  += a->cw_found;
+		tot_cw_nok += a->cw_not;
+
+		/* hit-bar width for the mini bar under OK/NOK */
+		double bar_w = hr >= 0 ? hr : 0.0;
+
+		/* Format max-connections: 0 = unlimited */
+		char maxconn_str[16];
+		if (a->max_connections <= 0)
+			tcmg_strlcpy(maxconn_str, "&infin;", sizeof(maxconn_str));
+		else
+			snprintf(maxconn_str, sizeof(maxconn_str), "%d", (int)a->max_connections);
+
+		pos = buf_printf(&buf, &bsz, pos,
+			"<tr data-user='%s'>"
+			"<td><button class='%s' id='pw_%.32s' onclick=\"tgUser('%s',this)\" title='Toggle'>"
+			"<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>"
+			"<path d='M18.36 6.64a9 9 0 1 1-12.73 0'/><line x1='12' y1='2' x2='12' y2='12'/>"
+			"</svg></button></td>"
+			"<td><div class='flex gap8'>"
+			"  <span class='av'>%.2s</span>"
+			"  <span class='u-link bold' onclick=\"editUser('%s')\">%s</span>"
+			"</div></td>"
+			"<td class='mono'><span class='badge bbl'>%04X</span></td>"
+			"<td class='mono%s'>%d</td>"
+			"<td class='mono tm'>%s</td>"
+			"<td>"
+			"  <div class='msr'>"
+			"    <span class='msr-kv'><span class='msr-k'>OK</span>"
+			"      <span class='msr-v tg'>%lld</span></span>"
+			"    <span class='msr-kv'><span class='msr-k'>NOK</span>"
+			"      <span class='msr-v%s'>%lld</span></span>"
+			"  </div>"
+			"  <div class='hbw' style='margin-top:4px'>"
+			"<div class='hbf' style='width:%.0f%%'></div></div>"
+			"</td>"
+			"<td class='mono'><span class='%s'>%s</span></td>"
+			"<td class='mono tm'>%s</td>"
+			"<td class='mono tm' style='font-size:11px'>%s</td>"
+			"<td style='font-size:12px'>%s</td>"
+			"<td><button class='btn bd_ sm' onclick=\"delUser('%s')\" title='Delete'>"
+			ICO_KILLBTN "</button></td>"
+			"</tr>",
+			a->user,
+			btn_cls, a->user, a->user,
+			a->user, /* avatar initials (%.2s takes first 2 chars) */
+			a->user, a->user,
+			a->caid,
+			a->active > 0 ? " tg bold" : "", (int)a->active,
+			maxconn_str,
+			(long long)a->cw_found,
+			a->cw_not > 0 ? " tr" : "", (long long)a->cw_not,
+			bar_w,
+			hr > 80.0 ? "tg" : hr >= 0 ? (hr > 50.0 ? "to" : "tr") : "tm",
+			hrstr,
+			avgstr,
+			last, expiry, a->user);
+	}
+	pthread_rwlock_unlock(&g_cfg.acc_lock);
+
+	if (!row)
+		pos = buf_printf(&buf, &bsz, pos,
+			"<tr class='erow'><td colspan='11'>"
 			"<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'"
 			" style='vertical-align:-3px;margin-right:6px;opacity:.35'>"
 			"<path d='M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2'/><circle cx='9' cy='7' r='4'/>"
 			"</svg>No accounts configured"
 			"</td></tr>");
 
-	pos=buf_printf(&buf,&bsz,pos,"</tbody></table></div>");
-	pos=emit_footer(&buf,&bsz,pos);
-	send_response(fd,200,"OK","text/html",buf,pos);
+	/* ── tfoot aggregate row ── */
+	{
+		int64_t tot_all = tot_cw_ok + tot_cw_nok;
+		double  tot_hr  = tot_all > 0 ? (double)tot_cw_ok * 100.0 / tot_all : 0.0;
+		pos = buf_printf(&buf, &bsz, pos,
+			"</tbody>"
+			"<tfoot><tr>"
+			"<td colspan='5'>"
+			"  <span class='tfl'>Totals &mdash; %d users</span>"
+			"</td>"
+			"<td>"
+			"  <span class='tg tfs'>%lld</span>"
+			"  <span style='color:var(--t2);margin:0 4px'>/</span>"
+			"  <span class='%s tfs'>%lld</span>"
+			"</td>"
+			"<td><span class='tfs %s'>%.1f%%</span></td>"
+			"<td colspan='4'></td>"
+			"</tr></tfoot>"
+			"</table></div>",
+			row,
+			tot_cw_ok,
+			tot_cw_nok > 0 ? "tr" : "tm", tot_cw_nok,
+			tot_hr > 80 ? "tg" : tot_hr > 50 ? "to" : "tr",
+			tot_hr);
+	}
+
+	/* Edit/Add user modals + Search/Sort JS */
+	pos = buf_printf(&buf, &bsz, pos,
+		/* ── Shared modal overlay ── */
+		"<div id='uModal' style='display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);"
+		"z-index:1000;align-items:center;justify-content:center'>"
+		"<div class='card' style='width:380px;max-width:95vw;padding:24px'>"
+		"  <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:16px'>"
+		"    <span id='umTitle' style='font-weight:700;font-size:15px'>Edit User</span>"
+		"    <button class='btn bg sm' onclick='closeUM()'>&#10005;</button>"
+		"  </div>"
+		"  <input type='hidden' id='em_user'>"
+		"  <div id='em_udisp_wrap' class='fg'><label class='fld'>USERNAME</label>"
+		"    <input class='fi mono' id='em_udisp' disabled style='opacity:.6'></div>"
+		"  <div id='em_unew_wrap' class='fg' style='display:none'><label class='fld'>USERNAME</label>"
+		"    <input class='fi mono' id='em_unew' placeholder='new_user' autocomplete='off'></div>"
+		"  <div class='fg'><label class='fld'>PASSWORD</label>"
+		"    <input class='fi mono' id='em_pass' type='password' placeholder='leave blank to keep'></div>"
+		"  <div style='display:grid;grid-template-columns:1fr 1fr;gap:10px'>"
+		"    <div class='fg'><label class='fld'>CAID (hex)</label>"
+		"      <input class='fi mono' id='em_caid' maxlength='4' placeholder='09B5'></div>"
+		"    <div class='fg'><label class='fld'>MAX CONN (0=&infin;)</label>"
+		"      <input class='fi mono' id='em_maxconn' type='number' min='0' value='0'></div>"
+		"  </div>"
+		"  <div class='fg'><label class='fld'>EXPIRY DATE (YYYY-MM-DD, 0=never)</label>"
+		"    <input class='fi mono' id='em_expiry' placeholder='2030-12-31'></div>"
+		"  <div style='display:flex;align-items:center;gap:10px;margin:12px 0'>"
+		"    <label style='font-size:12px;font-weight:700;color:var(--t2);"
+		"text-transform:uppercase;letter-spacing:.08em'>Enabled</label>"
+		"    <input type='checkbox' id='em_enabled' checked>"
+		"  </div>"
+		"  <div id='em_err' style='display:none' class='le'>"
+		"    <svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>"
+		"<circle cx='12' cy='12' r='10'/><line x1='12' y1='8' x2='12' y2='12'/>"
+		"<line x1='12' y1='16' x2='12.01' y2='16'/></svg>"
+		"    <span id='em_err_msg'>Error</span>"
+		"  </div>"
+		"  <div style='display:flex;gap:8px;margin-top:16px'>"
+		"    <button class='btn bp sm' id='em_saveBtn' style='flex:1;justify-content:center'"
+		"     onclick='saveUM()'>Save</button>"
+		"    <button class='btn bg sm' style='flex:1;justify-content:center'"
+		"     onclick='closeUM()'>Cancel</button>"
+		"  </div>"
+		"</div></div>"
+		"<script>"
+		/* ── Toggle on/off ── */
+		"function tgUser(u,btn){"
+		"  fetch('/api/user/toggle?user='+encodeURIComponent(u))"
+		"    .then(r=>r.json())"
+		"    .then(d=>{"
+		"      if(!d.ok)return;"
+		"      btn.className='pw-btn '+(d.enabled?'on':'off');"
+		"    });"
+		"}"
+		/* ── Edit user ── */
+		"function editUser(u){"
+		"  fetch('/api/user/get?user='+encodeURIComponent(u))"
+		"    .then(r=>r.json())"
+		"    .then(d=>{"
+		"      document.getElementById('umTitle').textContent='Edit User';"
+		"      document.getElementById('em_unew_wrap').style.display='none';"
+		"      document.getElementById('em_udisp_wrap').style.display='';"
+		"      document.getElementById('em_user').value=d.user;"
+		"      document.getElementById('em_udisp').value=d.user;"
+		"      document.getElementById('em_pass').value='';"
+		"      document.getElementById('em_caid').value=d.caid;"
+		"      document.getElementById('em_maxconn').value=d.max_connections;"
+		"      document.getElementById('em_enabled').checked=!!d.enabled;"
+		"      document.getElementById('em_expiry').value=d.expiry||'';"
+		"      document.getElementById('em_err').style.display='none';"
+		"      document.getElementById('uModal').style.display='flex';"
+		"    });"
+		"}"
+		/* ── Add user ── */
+		"function openAddUser(){"
+		"  document.getElementById('umTitle').textContent='Add User';"
+		"  document.getElementById('em_unew_wrap').style.display='';"
+		"  document.getElementById('em_udisp_wrap').style.display='none';"
+		"  document.getElementById('em_user').value='';"
+		"  document.getElementById('em_unew').value='';"
+		"  document.getElementById('em_pass').value='';"
+		"  document.getElementById('em_caid').value='';"
+		"  document.getElementById('em_maxconn').value='0';"
+		"  document.getElementById('em_enabled').checked=true;"
+		"  document.getElementById('em_expiry').value='';"
+		"  document.getElementById('em_err').style.display='none';"
+		"  document.getElementById('uModal').style.display='flex';"
+		"  setTimeout(()=>document.getElementById('em_unew').focus(),80);"
+		"}"
+		"function closeUM(){document.getElementById('uModal').style.display='none';}"
+		"function delUser(u){"
+		"  if(!confirm('Delete user '+u+'?\\nThis cannot be undone.'))return;"
+		"  fetch('/api/user/delete?user='+encodeURIComponent(u))"
+		"    .then(r=>r.json())"
+		"    .then(d=>{if(d.ok)location.reload();else alert('Error: '+d.msg);});"
+		"}"
+		"function saveUM(){"
+		"  var isAdd=!document.getElementById('em_user').value;"
+		"  var username=isAdd"
+		"    ?document.getElementById('em_unew').value.trim()"
+		"    :document.getElementById('em_user').value;"
+		"  if(!username){document.getElementById('em_err_msg').textContent='Username required';"
+		"    document.getElementById('em_err').style.display='flex';return;}"
+		"  var p=new URLSearchParams();"
+		"  p.set('user',username);"
+		"  p.set('pass',document.getElementById('em_pass').value);"
+		"  p.set('caid',document.getElementById('em_caid').value||'0');"
+		"  p.set('maxconn',document.getElementById('em_maxconn').value||'0');"
+		"  p.set('enabled',document.getElementById('em_enabled').checked?'1':'0');"
+		"  p.set('expiry',document.getElementById('em_expiry').value||'0');"
+		"  var url=isAdd?'/api/user/add':'/api/user/save';"
+		"  fetch(url,{method:'POST',body:p.toString(),"
+		"    headers:{'Content-Type':'application/x-www-form-urlencoded'}})"
+		"    .then(r=>r.json())"
+		"    .then(d=>{if(d.ok){closeUM();location.reload();}"
+		"      else{document.getElementById('em_err_msg').textContent=d.msg||'Error';"
+		"           document.getElementById('em_err').style.display='flex';}});"
+		"}"
+		/* ── Live search/filter ── */
+		"function filterUsers(){"
+		"  var q=document.getElementById('usrSearch').value.toLowerCase();"
+		"  var rows=document.getElementById('usrBody').rows;"
+		"  for(var i=0;i<rows.length;i++){"
+		"    var u=(rows[i].getAttribute('data-user')||'').toLowerCase();"
+		"    rows[i].style.display=(!q||u.includes(q))?'':' none';"
+		"  }"
+		"}"
+		/* ── Column sort ── */
+		"var _sortCol=-1,_sortDir=1;"
+		"function sortTable(col){"
+		"  var tb=document.getElementById('usrTable');"
+		"  var ths=tb.querySelectorAll('th');"
+		"  ths.forEach(function(t){t.classList.remove('sort-asc','sort-desc');});"
+		"  if(_sortCol===col){_sortDir*=-1;}else{_sortCol=col;_sortDir=1;}"
+		"  ths[col].classList.add(_sortDir===1?'sort-asc':'sort-desc');"
+		"  var body=document.getElementById('usrBody');"
+		"  var rows=Array.from(body.rows);"
+		"  rows.sort(function(a,b){"
+		"    var av=a.cells[col]?a.cells[col].textContent.trim():'';"
+		"    var bv=b.cells[col]?b.cells[col].textContent.trim():'';"
+		"    var an=parseFloat(av),bn=parseFloat(bv);"
+		"    var cmp=isNaN(an)||isNaN(bn)?av.localeCompare(bv):an-bn;"
+		"    return cmp*_sortDir;"
+		"  });"
+		"  rows.forEach(function(r){body.appendChild(r);});"
+		"}"
+		"</script>");
+
+	pos = emit_footer(&buf, &bsz, pos);
+	send_response(fd, 200, "OK", "text/html", buf, pos);
 	free(buf);
 }
 
-/* =
- *  FAIL-BAN PAGE
- * = */
+/* ════════════════════════════════════════════════════════════════════════════
+ * Fail-ban page
+ * ════════════════════════════════════════════════════════════════════════════*/
 void send_page_failban(int fd, const char *qs)
 {
 	char action[32], clearip[MAXIPLEN];
-	get_param(qs,"action",action,sizeof(action));
-	get_param(qs,"ip",    clearip,sizeof(clearip));
+	get_param(qs, "action", action,  sizeof(action));
+	get_param(qs, "ip",     clearip, sizeof(clearip));
 
-	if(strcmp(action,"clear")==0 && clearip[0]){
+	/* Mutate under lock before rendering */
+	if (strcmp(action, "clear") == 0 && clearip[0]) {
 		pthread_mutex_lock(&g_cfg.ban_lock);
-		S_BAN_ENTRY *b=g_cfg.bans;
-		while(b){if(strcmp(b->ip,clearip)==0)b->until=0;b=b->next;}
+		for (S_BAN_ENTRY *b = g_cfg.bans; b; b = b->next)
+			if (strcmp(b->ip, clearip) == 0) b->until = 0;
 		pthread_mutex_unlock(&g_cfg.ban_lock);
-		tcmg_log("cleared ban for %s",clearip);
-	} else if(strcmp(action,"clearall")==0){
+		tcmg_log("cleared ban for %s", clearip);
+	} else if (strcmp(action, "clearall") == 0) {
 		pthread_mutex_lock(&g_cfg.ban_lock);
-		S_BAN_ENTRY *b=g_cfg.bans;
-		while(b){b->until=0;b=b->next;}
+		for (S_BAN_ENTRY *b = g_cfg.bans; b; b = b->next) b->until = 0;
 		pthread_mutex_unlock(&g_cfg.ban_lock);
 		tcmg_log("cleared all bans");
 	}
 
-	int bsz=16384,pos=0;
-	char *buf=(char *)malloc(bsz);
-	if(!buf)return;
+	int   bsz = 16384, pos = 0;
+	char *buf = (char *)malloc(bsz);
+	if (!buf) return;
 
-	pos=emit_header(&buf,&bsz,pos,"Fail-Ban","failban");
+	pos = emit_header(&buf, &bsz, pos, "Fail-Ban", "failban");
 
-	int total_bans=0;
-	time_t now=time(NULL);
+	int    total_bans = 0, total_fails = 0;
+	time_t now        = time(NULL);
 	pthread_mutex_lock(&g_cfg.ban_lock);
-	for(S_BAN_ENTRY *b=g_cfg.bans;b;b=b->next)
-		if(b->until>now)total_bans++;
+	for (S_BAN_ENTRY *b = g_cfg.bans; b; b = b->next)
+		if (b->until > now) { total_bans++; total_fails += b->fails; }
 	pthread_mutex_unlock(&g_cfg.ban_lock);
 
-	pos=buf_printf(&buf,&bsz,pos,
-		"<div class='ph'>"
-		"  <div>"
-		"    <div class='pt'>Fail-Ban</div>"
-		"    <div class='ps'>%s</div>"
-		"  </div>"
-		"  %s"
+	/* ── Summary bar ── */
+	pos = buf_printf(&buf, &bsz, pos,
+		"<div class='sbar'>"
+		"<div class='sbar-item'><div class='sbl'>Active Bans</div>"
+		"  <div class='sbv%s'>%d</div></div>"
+		"<div class='sbar-item'><div class='sbl'>Total Fails</div>"
+		"  <div class='sbv%s sm'>%d</div></div>"
+		"<div class='sbar-item'><div class='sbl'>Max Fails</div>"
+		"  <div class='sbv sm'>%d</div></div>"
+		"<div class='sbar-item'><div class='sbl'>Ban Duration</div>"
+		"  <div class='sbv sm'>%ds</div></div>"
 		"</div>",
-		total_bans>0
-			? "<span class='badge bban' style='font-size:12px'>&nbsp;"
-			  "<svg width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' style='vertical-align:-1px'>"
-			  "<circle cx='12' cy='12' r='10'/><line x1='4.93' y1='4.93' x2='19.07' y2='19.07'/></svg>"
-			  "&nbsp;</span> Active bans"
-			: "No active bans",
-		total_bans>0
-			? "<a href='/failban?action=clearall' class='btn bd_ sm'>"
-			  "<svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>"
-			  "<polyline points='3 6 5 6 21 6'/>"
-			  "<path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2'/>"
-			  "</svg>Clear All</a>"
-			: "");
+		total_bans > 0 ? " tr" : " tg", total_bans,
+		total_fails > 0 ? " to" : "", total_fails,
+		BAN_MAX_FAILS,
+		BAN_SECS);
 
-	pos=buf_printf(&buf,&bsz,pos,
+	/* ── Toolbar ── */
+	pos = buf_printf(&buf, &bsz, pos,
+		"<div class='ttb'>"
+		"<div class='ttb-r'>");
+	if (total_bans > 0)
+		pos = buf_printf(&buf, &bsz, pos,
+			"  <a href='/failban?action=clearall' class='btn bd_ sm'>"
+			ICO_TRASH "&nbsp;Clear All</a>");
+	pos = buf_printf(&buf, &bsz, pos,
+		"  <button class='btn bg sm' onclick='location.reload()'>"
+		ICO_RELOAD "&nbsp;Refresh</button>"
+		"</div></div>");
+
+	pos = buf_printf(&buf, &bsz, pos,
 		"<div class='tw'><table>"
 		"<thead><tr>"
 		"<th>IP Address</th><th>Fail Count</th>"
 		"<th>Expires At</th><th>Remaining</th><th>Action</th>"
 		"</tr></thead><tbody>");
 
-	int shown=0;
+	int shown = 0;
 	pthread_mutex_lock(&g_cfg.ban_lock);
-	S_BAN_ENTRY *b=g_cfg.bans;
-	while(b){
-		if(b->until>now){
-			char exp[32];
-			struct tm tm_s;
-			localtime_r(&b->until,&tm_s);
-			strftime(exp,sizeof(exp),"%H:%M:%S",&tm_s);
-			long secs_left=(long)(b->until-now);
-			pos=buf_printf(&buf,&bsz,pos,
-				"<tr>"
-				"<td class='mono bold'>%s</td>"
-				"<td><span class='badge bban'>%d fails</span></td>"
-				"<td class='mono tm'>%s</td>"
-				"<td class='mono to' id='cd_%s'>%lds</td>"
-				"<td><a href='/failban?action=clear&ip=%s' class='btn bg sm'>"
-				"<svg width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>"
-				"<circle cx='12' cy='12' r='10'/><line x1='4.93' y1='4.93' x2='19.07' y2='19.07'/>"
-				"</svg>Unban</a></td>"
-				"</tr>",
-				b->ip, b->fails, exp,
-				b->ip, secs_left,
-				b->ip);
-			shown++;
-		}
-		b=b->next;
+	for (S_BAN_ENTRY *b = g_cfg.bans; b; b = b->next) {
+		if (b->until <= now) continue;
+		char exp[32];
+		struct tm tm_s;
+		localtime_r(&b->until, &tm_s);
+		strftime(exp, sizeof(exp), "%H:%M:%S", &tm_s);
+		long secs_left = (long)(b->until - now);
+		pos = buf_printf(&buf, &bsz, pos,
+			"<tr>"
+			"<td class='mono bold'>%s</td>"
+			"<td><span class='badge bban'>%d fails</span></td>"
+			"<td class='mono tm'>%s</td>"
+			"<td class='mono to' id='cd_%s'>%lds</td>"
+			"<td><a href='/failban?action=clear&ip=%s' class='btn bg sm'>"
+			ICO_UNBAN "&nbsp;Unban</a></td>"
+			"</tr>",
+			b->ip, b->fails, exp, b->ip, secs_left, b->ip);
+		shown++;
 	}
 	pthread_mutex_unlock(&g_cfg.ban_lock);
 
-	if(!shown)
-		pos=buf_printf(&buf,&bsz,pos,
+	if (!shown)
+		pos = buf_printf(&buf, &bsz, pos,
 			"<tr class='erow'><td colspan='5'>"
-			"<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'"
-			" style='vertical-align:-3px;margin-right:6px;color:var(--gr)'>"
+			"<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='var(--gr)' stroke-width='1.8'"
+			" style='vertical-align:-3px;margin-right:6px'>"
 			"<path d='M22 11.08V12a10 10 0 1 1-5.93-9.14'/>"
 			"<polyline points='22 4 12 14.01 9 11.01'/>"
 			"</svg><span class='tg'>All clear</span> &mdash; no active bans"
 			"</td></tr>");
 
-	pos=buf_printf(&buf,&bsz,pos,
+	pos = buf_printf(&buf, &bsz, pos,
 		"</tbody></table></div>"
-		/* Countdown JS */
-		"<script>"
-		"(function(){"
+		"<script>(function(){"
 		"  var els=document.querySelectorAll('[id^=\"cd_\"]');"
 		"  setInterval(function(){"
 		"    els.forEach(function(el){"
-		"      var v=parseInt(el.textContent);if(v>0){el.textContent=(v-1)+'s';}else{el.textContent='expired';}"
+		"      var v=parseInt(el.textContent);"
+		"      el.textContent=(v>0?v-1:0)+'s';"
 		"    });"
 		"  },1000);"
-		"})();"
-		"</script>");
+		"})();</script>");
 
-	pos=emit_footer(&buf,&bsz,pos);
-	send_response(fd,200,"OK","text/html",buf,pos);
+	pos = emit_footer(&buf, &bsz, pos);
+	send_response(fd, 200, "OK", "text/html", buf, pos);
 	free(buf);
 }
 
-/* =
- *  CONFIG PAGE
- * = */
+/* ════════════════════════════════════════════════════════════════════════════
+ * Config editor page
+ * ════════════════════════════════════════════════════════════════════════════*/
 void send_page_config(int fd)
 {
-	int bsz=65536,pos=0;
-	char *buf=(char *)malloc(bsz);
-	if(!buf)return;
+	int   bsz = 65536, pos = 0;
+	char *buf = (char *)malloc(bsz);
+	if (!buf) return;
 
-	pos=emit_header(&buf,&bsz,pos,"Config","config");
+	pos = emit_header(&buf, &bsz, pos, "Config", "config");
 
-	char cfgpath[CFGPATH_LEN+16];
-	snprintf(cfgpath,sizeof(cfgpath),"%s/" TCMG_CFG_FILE,g_cfgdir);
+	/* Read both files — html_escape done once each via file_read_escaped() */
+	char cfgpath[CFGPATH_LEN], srvpath[CFGPATH_LEN];
+	tcmg_build_path(cfgpath, sizeof(cfgpath), g_cfgdir, TCMG_CFG_FILE);
+	tcmg_build_path(srvpath, sizeof(srvpath), g_cfgdir, TCMG_SRVID_FILE);
 
-	FILE *fp=fopen(cfgpath,"r");
-	char filebuf[16384]="";
-	int  filelen=0, truncated=0;
-	if(fp){
-		filelen=(int)fread(filebuf,1,sizeof(filebuf)-1,fp);
-		if(filelen<0)filelen=0;
-		filebuf[filelen]='\0';
-		if(!feof(fp))truncated=1;
-		fclose(fp);
+	int  cfg_trunc = 0, srv_trunc = 0;
+	char *escaped = file_read_escaped(cfgpath, 16384, &cfg_trunc);
+	char *srvesc  = file_read_escaped(srvpath, 32768, &srv_trunc);
+
+	if (!escaped || !srvesc) {
+		free(escaped); free(srvesc); free(buf);
+		const char *e = "Out of memory";
+		send_response(fd, 500, "Internal Error", "text/plain", e, (int)strlen(e));
+		return;
 	}
 
-	char *escaped=(char *)malloc(filelen*6+64);
-	if(!escaped){free(buf);return;}
-	int ei=0;
-	for(int i=0;filebuf[i];i++){
-		if     (filebuf[i]=='<'){memcpy(escaped+ei,"&lt;", 4);ei+=4;}
-		else if(filebuf[i]=='>'){memcpy(escaped+ei,"&gt;", 4);ei+=4;}
-		else if(filebuf[i]=='&'){memcpy(escaped+ei,"&amp;",5);ei+=5;}
-		else                      escaped[ei++]=filebuf[i];
-	}
-	escaped[ei]='\0';
-
-	pos=buf_printf(&buf,&bsz,pos,
+	pos = buf_printf(&buf, &bsz, pos,
 		"<div class='ph'>"
-		"  <div>"
-		"    <div class='pt'>Config Editor</div>"
-		"    <div class='ps'>Edit configuration directly in the browser</div>"
-		"  </div>"
+		"  <div><div class='pt'>Config Editor</div></div>"
+		"</div>"
+		/* Tab bar */
+		"<div style='display:flex;gap:0;margin-bottom:-1px;position:relative;z-index:1'>"
+		"  <button class='ctab act' id='tab_cfg' onclick=\"switchTab('cfg')\">tcmg.cfg</button>"
+		"  <button class='ctab' id='tab_srv'     onclick=\"switchTab('srv')\">tcmg.srvid2</button>"
 		"</div>");
 
-	if(truncated)
-		pos=buf_printf(&buf,&bsz,pos,
+	/* ── tcmg.cfg panel ── */
+	if (cfg_trunc)
+		pos = buf_printf(&buf, &bsz, pos,
 			"<div class='ib2' style='color:var(--or2);border-color:var(--ors)'>"
-			"<svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>"
-			"<path d='M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z'/>"
-			"<line x1='12' y1='9' x2='12' y2='13'/><line x1='12' y1='17' x2='12.01' y2='17'/>"
-			"</svg>"
-			"Config exceeds 16 KB &mdash; content is truncated. Edit the file directly on disk."
-			"</div>");
+			ICO_WARN " Config exceeds 16 KB &mdash; truncated. Edit on disk.</div>");
 
-	pos=buf_printf(&buf,&bsz,pos,
+	pos = buf_printf(&buf, &bsz, pos,
+		"<div id='pnl_cfg'>"
 		"<form method='post' action='/config_save'>"
 		"<div class='card'>"
 		"<div class='et'>"
-		"  <span class='ef'>"
-		"    <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'>"
-		"      <path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/>"
-		"      <polyline points='14 2 14 8 20 8'/>"
-		"    </svg>%s"
-		"  </span>"
-		"  <button type='button' class='btn bg sm' onclick='reloadPage()'>Reload</button>"
-		"  <button type='submit' class='btn bp sm' id='saveBtn'>"
-		"    <svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>"
-		"      <path d='M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z'/>"
-		"      <polyline points='17 21 17 13 7 13 7 21'/><polyline points='7 3 7 8 15 8'/>"
-		"    </svg>Save &amp; Reload"
+		"  <span class='ef'>" ICO_FILE "&nbsp;%s</span>"
+		"  <button type='submit' class='btn bp sm' id='saveBtn'"
+		"    onclick=\"document.getElementById('cfgWarn').style.display='flex'\">"
+		"    " ICO_SAVE "&nbsp;Save &amp; Reload"
 		"  </button>"
 		"</div>"
-		"<div class='ew'>"
-		"  <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>"
-		"    <path d='M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z'/>"
-		"    <line x1='12' y1='9' x2='12' y2='13'/><line x1='12' y1='17' x2='12.01' y2='17'/>"
-		"  </svg>"
-		"  Server running &mdash; a restart may be required to apply some changes"
+		"<div class='ew' id='cfgWarn' style='display:none'>"
+		"  " ICO_WARN " Config saved &mdash; restart may be needed for some changes"
 		"</div>"
 		"<textarea class='ea' name='cfg' spellcheck='false' id='cfgArea' oninput='onEdit()'>%s</textarea>"
 		"<div class='ef2'>"
 		"  <span class='es'><span class='ok' id='edSt'>&#9679; Saved</span></span>"
 		"  <span style='font-family:var(--mono);font-size:11px;color:var(--t2)' id='edCur'>Ln 1, Col 1</span>"
-		"</div>"
-		"</div>"
-		"</form>"
-		"<script>"
-		"var _dirty=false;"
-		"function onEdit(){"
-		"  if(!_dirty){_dirty=true;"
-		"  document.getElementById('edSt').innerHTML='<span style=\"color:var(--or2)\">&#9679; Unsaved changes</span>';}"
-		"}"
-		"function reloadPage(){if(_dirty&&!confirm('Discard changes?'))return;location.reload();}"
-		"var ta=document.getElementById('cfgArea');"
-		"function updCursor(){"
-		"  var t=ta.value.substr(0,ta.selectionStart);"
-		"  var ln=t.split('\n').length;"
-		"  var col=t.split('\n').pop().length+1;"
-		"  document.getElementById('edCur').textContent='Ln '+ln+', Col '+col;"
-		"}"
-		"ta.addEventListener('keyup',updCursor);"
-		"ta.addEventListener('click',updCursor);"
-		"/* Ctrl+S shortcut */"
-		"document.addEventListener('keydown',function(e){"
-		"  if((e.ctrlKey||e.metaKey)&&e.key==='s'){"
-		"    e.preventDefault();"
-		"    document.querySelector('form').submit();"
-		"  }"
-		"});"
-		"</script>",
+		"</div></div></form></div>",
 		cfgpath, escaped);
 	free(escaped);
 
-	pos=emit_footer(&buf,&bsz,pos);
-	send_response(fd,200,"OK","text/html",buf,pos);
+	/* ── tcmg.srvid2 panel ── */
+	if (srv_trunc)
+		pos = buf_printf(&buf, &bsz, pos,
+			"<div class='ib2' style='color:var(--or2);border-color:var(--ors)'>"
+			ICO_WARN " srvid2 exceeds 32 KB &mdash; truncated. Edit on disk.</div>");
+
+	pos = buf_printf(&buf, &bsz, pos,
+		"<div id='pnl_srv' style='display:none'>"
+		"<form method='post' action='/srvid2_save'>"
+		"<div class='card'>"
+		"<div class='et'>"
+		"  <span class='ef'>" ICO_FILE "&nbsp;%s</span>"
+		"  <button type='submit' class='btn bp sm'>" ICO_SAVE "&nbsp;Save &amp; Reload</button>"
+		"</div>"
+		"<textarea class='ea' name='srvid2' spellcheck='false' style='height:520px'>%s</textarea>"
+		"<div class='ef2'>"
+		"  <span style='font-size:11px;color:var(--t2)'>"
+		"Format: SID:CAID[,CAID]|name|type||provider</span>"
+		"</div></div></form></div>",
+		srvpath, srvesc);
+	free(srvesc);
+
+	pos = buf_printf(&buf, &bsz, pos,
+		"<script>"
+		"function switchTab(t){"
+		"  document.getElementById('pnl_cfg').style.display=t==='cfg'?'':'none';"
+		"  document.getElementById('pnl_srv').style.display=t==='srv'?'':'none';"
+		"  document.getElementById('tab_cfg').className='ctab'+(t==='cfg'?' act':'');"
+		"  document.getElementById('tab_srv').className='ctab'+(t==='srv'?' act':'');"
+		"}"
+		"var _dirty=false;"
+		"function onEdit(){"
+		"  if(!_dirty){_dirty=true;"
+		"    document.getElementById('edSt').innerHTML="
+		"'<span style=\"color:var(--or2)\">&#9679; Unsaved</span>';}"
+		"}"
+		"function reloadPage(){if(_dirty&&!confirm('Discard changes?'))return;location.reload();}"
+		"var ta=document.getElementById('cfgArea');"
+		"if(ta){"
+		"  function updCursor(){"
+		"    var t=ta.value.substr(0,ta.selectionStart);"
+		"    var ln=t.split('\\n').length;"
+		"    var col=t.split('\\n').pop().length+1;"
+		"    document.getElementById('edCur').textContent='Ln '+ln+', Col '+col;"
+		"  }"
+		"  ta.addEventListener('keyup',updCursor);"
+		"  ta.addEventListener('click',updCursor);"
+		"}"
+		"document.addEventListener('keydown',function(e){"
+		"  if((e.ctrlKey||e.metaKey)&&e.key==='s'){"
+		"    e.preventDefault();"
+		"    if(!document.getElementById('pnl_cfg').style.display){"
+		"      document.getElementById('cfgWarn').style.display='flex';"
+		"      document.getElementById('cfgArea').closest('form').submit();"
+		"    }"
+		"  }"
+		"});"
+		"</script>");
+
+	pos = emit_footer(&buf, &bsz, pos);
+	send_response(fd, 200, "OK", "text/html", buf, pos);
 	free(buf);
 }
 
@@ -679,10 +910,12 @@ void handle_config_save(int fd, const char *post_body)
 		send_response(fd, 400, "Bad Request", "text/html", e, (int)strlen(e));
 		return;
 	}
-	char cfgpath[CFGPATH_LEN + 16];
-	snprintf(cfgpath, sizeof(cfgpath), "%s/" TCMG_CFG_FILE, g_cfgdir);
-	char tmppath[CFGPATH_LEN + 20];
-	snprintf(tmppath, sizeof(tmppath), "%s/" TCMG_CFG_FILE ".tmp", g_cfgdir);
+
+	char cfgpath[CFGPATH_LEN], tmppath[CFGPATH_LEN + 4], bakpath[CFGPATH_LEN + 4];
+	tcmg_build_path(cfgpath,  sizeof(cfgpath),  g_cfgdir, TCMG_CFG_FILE);
+	tcmg_build_path(tmppath,  sizeof(tmppath),  g_cfgdir, TCMG_CFG_FILE ".tmp");
+	tcmg_build_path(bakpath,  sizeof(bakpath),  g_cfgdir, TCMG_CFG_FILE ".bak");
+
 	FILE *fp = fopen(tmppath, "w");
 	if (!fp) {
 		const char *e = "<html><body><h1>Cannot write temp file</h1></body></html>";
@@ -690,21 +923,22 @@ void handle_config_save(int fd, const char *post_body)
 		return;
 	}
 	fputs(newcfg, fp); fclose(fp);
+
+	/* Validate before clobbering the live config */
 	S_CONFIG parsed;
 	memset(&parsed, 0, sizeof(parsed));
 	pthread_rwlock_init(&parsed.acc_lock, NULL);
 	pthread_mutex_init(&parsed.ban_lock, NULL);
 	if (!cfg_load(tmppath, &parsed)) {
-		remove(tmppath); cfg_accounts_free(&parsed);
-		const char *e = "<html><body><h1>Config parse error -- not saved</h1></body></html>";
+		remove(tmppath);
+		cfg_accounts_free(&parsed);
+		const char *e = "<html><body><h1>Config parse error &mdash; not saved</h1></body></html>";
 		send_response(fd, 400, "Bad Request", "text/html", e, (int)strlen(e));
 		return;
 	}
 	remove(tmppath);
-	tcmg_strlcpy(parsed.config_file, cfgpath, CFGPATH_LEN);
-	/* Backup */
-	char bakpath[CFGPATH_LEN + 20];
-	snprintf(bakpath, sizeof(bakpath), "%s/" TCMG_CFG_FILE ".bak", g_cfgdir);
+
+	/* Backup current config */
 	FILE *src = fopen(cfgpath, "r");
 	if (src) {
 		FILE *dst = fopen(bakpath, "w");
@@ -716,6 +950,8 @@ void handle_config_save(int fd, const char *post_body)
 		}
 		fclose(src);
 	}
+
+	tcmg_strlcpy(parsed.config_file, cfgpath, CFGPATH_LEN);
 	if (!cfg_save(&parsed)) {
 		cfg_accounts_free(&parsed);
 		const char *e = "<html><body><h1>Cannot write config</h1></body></html>";
@@ -723,69 +959,57 @@ void handle_config_save(int fd, const char *post_body)
 		return;
 	}
 	cfg_accounts_free(&parsed);
-	tcmg_log("config saved successfully, reloading...");
+	tcmg_log("config saved via webif, reloading...");
 	g_reload_cfg = 1;
 	send_redirect(fd, "/config");
 }
 
-/* =
- *  LIVE LOG PAGE
- * = */
+/* ════════════════════════════════════════════════════════════════════════════
+ * Live log page
+ * ════════════════════════════════════════════════════════════════════════════*/
 void send_page_livelog(int fd)
 {
-	int bsz=32768,pos=0;
-	char *buf=(char *)malloc(bsz);
-	if(!buf)return;
+	int   bsz = 32768, pos = 0;
+	char *buf = (char *)malloc(bsz);
+	if (!buf) return;
 
-	pos=emit_header(&buf,&bsz,pos,"Live Log","livelog");
-
-	pos=buf_printf(&buf,&bsz,pos,
+	pos = emit_header(&buf, &bsz, pos, "Live Log", "livelog");
+	pos = buf_printf(&buf, &bsz, pos,
 		"<div class='ph'>"
-		"  <div>"
-		"    <div class='pt'>Live Log</div>"
-		"    <div class='ps'>Real-time server output stream</div>"
-		"  </div>"
+		"  <div><div class='pt'>Live Log</div></div>"
 		"</div>");
 
-	/* Debug toggles */
-	pos=buf_printf(&buf,&bsz,pos,
+	/* Debug level toggles */
+	pos = buf_printf(&buf, &bsz, pos,
 		"<div class='db'>"
 		"<span style='font-size:10px;font-weight:700;color:var(--t2);"
 		"text-transform:uppercase;letter-spacing:.12em;margin-right:6px'>Debug</span>");
 
-	char masks_arr[256]; int ma=0;
-	for(int i=0;i<MAX_DEBUG_LEVELS;i++){
-		uint16_t m=g_dblevel_names[i].mask;
-		int on=!!(g_dblevel&m);
-		pos=buf_printf(&buf,&bsz,pos,
+	char masks_arr[256]; int ma = 0;
+	for (int i = 0; i < MAX_DEBUG_LEVELS; i++) {
+		uint16_t m  = g_dblevel_names[i].mask;
+		int      on = !!(g_dblevel & m);
+		pos = buf_printf(&buf, &bsz, pos,
 			"<a id='db%u' href='#' class='dt%s' onclick='toggleDbg(%u);return false;'"
 			" title='mask 0x%04X'>%s</a>",
-			m,on?" on":"",m,m,g_dblevel_names[i].name);
-		ma+=snprintf(masks_arr+ma,sizeof(masks_arr)-ma,"%s%u",i?",":"",m);
+			m, on ? " on" : "", m, m, g_dblevel_names[i].name);
+		ma += snprintf(masks_arr + ma, sizeof(masks_arr) - ma, "%s%u", i ? "," : "", m);
 	}
-	int all_on=(g_dblevel==D_ALL);
-	pos=buf_printf(&buf,&bsz,pos,
+	pos = buf_printf(&buf, &bsz, pos,
 		"<a id='dbALL' href='#' class='dt%s' onclick='toggleAll();return false;'>ALL</a>"
 		"<span class='dm'>mask: <span id='dbmask'>0x%04X</span></span>"
 		"</div>",
-		all_on?" on":"", g_dblevel);
+		(g_dblevel == D_ALL) ? " on" : "", g_dblevel);
 
-	/* Controls row */
-	pos=buf_printf(&buf,&bsz,pos,
+	/* Controls */
+	pos = buf_printf(&buf, &bsz, pos,
 		"<div class='lc'>"
-		"<button class='btn bg sm' onclick='clearLog()'>"
-		"<svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>"
-		"<polyline points='3 6 5 6 21 6'/>"
-		"<path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2'/>"
-		"</svg>Clear"
-		"</button>"
+		"<button class='btn bg sm' onclick='clearLog()'>" ICO_TRASH "&nbsp;Clear</button>"
 		"<input class='ls' id='filter' placeholder='Search log...' oninput='applyFilter()'>"
 		"<label class='flex gap8' style='font-size:12px;color:var(--t1)'>"
-		"<input type='checkbox' id='asc' checked>&nbsp;Auto-scroll"
-		"</label>"
+		"<input type='checkbox' id='asc' checked>&nbsp;Auto-scroll</label>"
 		"<label class='flex gap8' style='font-size:12px;color:var(--t1)'>"
-		"<input type='checkbox' id='paused'>&nbsp;Pause"
-		"</label>"
+		"<input type='checkbox' id='paused'>&nbsp;Pause</label>"
 		"<span style='margin-left:auto;font-size:11px;color:var(--t2);display:flex;align-items:center;gap:6px'>"
 		"Lines: <select class='lsel' id='maxlines'>"
 		"<option value='200' selected>200</option>"
@@ -794,20 +1018,16 @@ void send_page_livelog(int fd)
 		"</select></span>"
 		"</div>");
 
-	pos=buf_printf(&buf,&bsz,pos,
+	pos = buf_printf(&buf, &bsz, pos,
 		"<div id='lw' onmouseenter='hovered=1' onmouseleave='hovered=0'>"
 		"<pre id='lp'></pre>"
 		"</div>");
 
-	int ring_now=log_ring_total();
-
-	pos=buf_printf(&buf,&bsz,pos,
+	int ring_now = log_ring_total();
+	pos = buf_printf(&buf, &bsz, pos,
 		"<script>"
-		"var lastid=Math.max(0,%d-200);"
-		"var curmask=%u;"
-		"var hovered=0;"
-		"var masks=[%s];"
-		"var filterStr='';"
+		"var lastid=Math.max(0,%d-200),curmask=%u,hovered=0;"
+		"var masks=[%s],filterStr='';"
 
 		"function updateDbgUI(){"
 		"  document.getElementById('dbmask').textContent="
@@ -816,8 +1036,7 @@ void send_page_livelog(int fd)
 		"    var el=document.getElementById('db'+m);if(!el)return;"
 		"    el.className='dt'+(curmask&m?' on':'');"
 		"  });"
-		"  var a=document.getElementById('dbALL');"
-		"  a.className='dt'+(curmask===65535?' on':'');"
+		"  document.getElementById('dbALL').className='dt'+(curmask===65535?' on':'');"
 		"}"
 		"function toggleDbg(m){curmask^=m;updateDbgUI();poll();}"
 		"function toggleAll(){curmask=(curmask===65535)?0:65535;updateDbgUI();poll();}"
@@ -834,30 +1053,24 @@ void send_page_livelog(int fd)
 		"function clearLog(){"
 		"  document.getElementById('lp').innerHTML='';"
 		"  fetch('/logpoll?since=999999999&debug='+curmask)"
-		"    .then(r=>r.json())"
-		"    .then(d=>{if(d.next!==undefined)lastid=d.next;});"
+		"    .then(r=>r.json()).then(d=>{if(d.next!==undefined)lastid=d.next;});"
 		"}"
 
-		/* Colour mapping */
 		"var CM={"
-		"  hit:'#4ade80',miss:'#f87171',"
-		"  webif:'#60a5fa',ban:'#fb923c',"
-		"  net:'#c084fc',proto:'#22d3ee',"
-		"  emu:'#86efac',conf:'#fde68a',"
-		"  err:'#f87171',warn:'#fb923c'"
+		"  hit:'#4ade80',miss:'#f87171',webif:'#60a5fa',"
+		"  ban:'#fb923c',net:'#c084fc',proto:'#22d3ee',"
+		"  emu:'#86efac',conf:'#fde68a',err:'#f87171',warn:'#fb923c'"
 		"};"
 		"function colorLine(l){"
-		"  var ll=l.toLowerCase();"
-		"  if(ll.includes('[hit]'))  return CM.hit;"
-		"  if(ll.includes('[miss]')) return CM.miss;"
-		"  if(ll.includes('(webif'))return CM.webif;"
-		"  if(ll.includes('(ban'))  return CM.ban;"
-		"  if(ll.includes('(net'))  return CM.net;"
-		"  if(ll.includes('(proto'))return CM.proto;"
-		"  if(ll.includes('(emu')) return CM.emu;"
-		"  if(ll.includes('(conf'))return CM.conf;"
-		"  if(ll.includes('error'))return CM.err;"
-		"  if(ll.includes('warn')) return CM.warn;"
+		"  var s=l.toLowerCase();"
+		"  if(s.includes('[hit]'))  return CM.hit;"
+		"  if(s.includes('[miss]')) return CM.miss;"
+		"  if(s.includes('(webif'))return CM.webif;"
+		"  if(s.includes('(ban'))  return CM.ban;"
+		"  if(s.includes('(net'))  return CM.net;"
+		"  if(s.includes('(proto'))return CM.proto;"
+		"  if(s.includes('error')) return CM.err;"
+		"  if(s.includes('warn'))  return CM.warn;"
 		"  return null;"
 		"}"
 
@@ -868,7 +1081,7 @@ void send_page_livelog(int fd)
 		"    var span=document.createElement('span');"
 		"    var c=colorLine(line);"
 		"    if(c)span.style.color=c;"
-		"    span.textContent=line+'\n';"
+		"    span.textContent=line+'\\n';"
 		"    if(filterStr&&!line.toLowerCase().includes(filterStr))"
 		"      span.style.display='none';"
 		"    pre.appendChild(span);"
@@ -889,30 +1102,27 @@ void send_page_livelog(int fd)
 		"      if(d.lines&&d.lines.length)appendLines(d.lines);"
 		"    }).catch(()=>{});"
 		"}"
-		"updateDbgUI();"
-		"setInterval(poll,1000);poll();"
+		"updateDbgUI();setInterval(poll,1000);poll();"
 		"</script>",
 		ring_now, g_dblevel, masks_arr);
 
-	pos=emit_footer(&buf,&bsz,pos);
-	send_response(fd,200,"OK","text/html",buf,pos);
+	pos = emit_footer(&buf, &bsz, pos);
+	send_response(fd, 200, "OK", "text/html", buf, pos);
 	free(buf);
 }
 
-/* =
- *  LOG POLL API
- * = */
+/* ════════════════════════════════════════════════════════════════════════════
+ * Log poll API  GET /logpoll
+ * ════════════════════════════════════════════════════════════════════════════*/
 void send_logpoll(int fd, const char *qs)
 {
 	char dbg_s[16], since_s[32];
-	get_param(qs, "debug", dbg_s,  sizeof(dbg_s));
+	get_param(qs, "debug", dbg_s,   sizeof(dbg_s));
 	get_param(qs, "since", since_s, sizeof(since_s));
 
-	if (dbg_s[0])
-	{
+	if (dbg_s[0]) {
 		long v = strtol(dbg_s, NULL, 0);
-		if (v >= 0 && v <= 0xFFFF && (uint16_t)v != g_dblevel)
-		{
+		if (v >= 0 && v <= 0xFFFF && (uint16_t)v != g_dblevel) {
 			g_dblevel = (uint16_t)v;
 			tcmg_log_dbg(D_WEBIF, "livelog debug_level → %u", g_dblevel);
 		}
@@ -921,29 +1131,20 @@ void send_logpoll(int fd, const char *qs)
 	int32_t from_id = since_s[0] ? (int32_t)atoi(since_s) : 0;
 	if (from_id < 0) from_id = 0;
 
-	char *lines[WEB_MAX_LINES_POLL];
-	int32_t next_id;
-	int32_t count = log_ring_since(from_id, lines, WEB_MAX_LINES_POLL, &next_id);
+	char    *lines[WEB_MAX_LINES_POLL];
+	int32_t  next_id;
+	int32_t  count = log_ring_since(from_id, lines, WEB_MAX_LINES_POLL, &next_id);
 
-	int bsz = count * 256 + 256, pos = 0;
+	int   bsz = count * 256 + 256, pos = 0;
 	char *buf = (char *)malloc(bsz);
 	if (!buf) return;
 
 	pos = buf_printf(&buf, &bsz, pos,
-		"{\"debug\":%u,\"next\":%d,\"lines\":[",
-		g_dblevel, next_id);
+		"{\"debug\":%u,\"next\":%d,\"lines\":[", g_dblevel, next_id);
 
-	for (int i = 0; i < count; i++)
-	{
+	for (int i = 0; i < count; i++) {
 		char escaped[512];
-		int  ei = 0;
-		for (const char *p = lines[i]; *p && ei < (int)sizeof(escaped) - 4; p++)
-		{
-			if (*p == '"'  || *p == '\\') escaped[ei++] = '\\';
-			if (*p == '\n' || *p == '\r') continue;
-			escaped[ei++] = *p;
-		}
-		escaped[ei] = '\0';
+		json_escape(lines[i], escaped, sizeof(escaped));   /* single canonical call */
 		free(lines[i]);
 		pos = buf_printf(&buf, &bsz, pos, "%s\"%s\"", i ? "," : "", escaped);
 	}
@@ -952,29 +1153,19 @@ void send_logpoll(int fd, const char *qs)
 	free(buf);
 }
 
-/* =
- *  API /status  (JSON)
- * = */
+/* ════════════════════════════════════════════════════════════════════════════
+ * JSON API  GET /api/status
+ * ════════════════════════════════════════════════════════════════════════════*/
 void send_api_status(int fd)
 {
-	int bsz = 16384, pos = 0;
+	int   bsz = 16384, pos = 0;
 	char *buf = (char *)malloc(bsz);
 	if (!buf) return;
 
-	time_t now = time(NULL);
-	char upstr[32];
-	format_uptime(now - g_start_time, upstr, sizeof(upstr));
+	S_SERVER_STATS st  = collect_stats();
+	time_t         now = time(NULL);
 
-	S_STATS st = aggregate_stats();
-	int64_t cw_found = st.cw_found, cw_not = st.cw_not;
-	int nbans = st.nbans;
-	pthread_rwlock_rdlock(&g_cfg.acc_lock);
-	int naccounts = g_cfg.naccounts;
-	pthread_rwlock_unlock(&g_cfg.acc_lock);
-
-	int64_t ecm_total = cw_found + cw_not;
-	double  hitrate   = ecm_total > 0 ? (double)cw_found * 100.0 / (double)ecm_total : 0.0;
-
+	/* Correctly wrapped in { } */
 	pos = buf_printf(&buf, &bsz, pos,
 		"{"
 		"\"version\":\"%s\","
@@ -991,29 +1182,21 @@ void send_api_status(int fd)
 		"\"hit_rate_pct\":%.1f,"
 		"\"debug_mask\":%u,"
 		"\"clients\":[",
-		TCMG_VERSION,
-		TCMG_BUILD_TIME,
-		(long)(now - g_start_time),
-		upstr,
-		g_cfg.port,
-		g_active_conns,
-		naccounts,
-		nbans,
-		(long long)cw_found,
-		(long long)cw_not,
-		(long long)ecm_total,
-		hitrate,
-		g_dblevel);
+		TCMG_VERSION, TCMG_BUILD_TIME,
+		(long)st.uptime_s, st.uptime_str,
+		g_cfg.port, st.active_conns,
+		st.naccounts, st.nbans,
+		(long long)st.cw_found, (long long)st.cw_not, (long long)st.ecm_total,
+		st.hit_rate, g_dblevel);
 
 	pthread_mutex_lock(&g_clients_mtx);
 	bool first = true;
-	for (int i = 0; i < MAX_ACTIVE_CLIENTS; i++)
-	{
+	for (int i = 0; i < MAX_ACTIVE_CLIENTS; i++) {
 		S_CLIENT *cl = g_clients[i];
 		if (!cl || !cl->account) continue;
 		char conn_str[32], idle_str[32];
-		format_uptime(now - cl->connect_time, conn_str, sizeof(conn_str));
-		format_uptime(now - cl->account->last_seen, idle_str, sizeof(idle_str));
+		format_uptime(now - cl->connect_time,         conn_str, sizeof(conn_str));
+		format_uptime(now - cl->account->last_seen,   idle_str, sizeof(idle_str));
 		pos = buf_printf(&buf, &bsz, pos,
 			"%s{"
 			"\"user\":\"%s\","
@@ -1040,282 +1223,346 @@ void send_api_status(int fd)
 	free(buf);
 }
 
-/* =
- *  SHUTDOWN PAGE
- * = */
-void send_page_shutdown(int fd, const char *qs)
+/* ════════════════════════════════════════════════════════════════════════════
+ * User API
+ * ════════════════════════════════════════════════════════════════════════════*/
+
+/* GET /api/user/toggle?user=<name> */
+void handle_user_toggle(int fd, const char *qs)
 {
-	char confirm[8];
-	get_param(qs,"confirm",confirm,sizeof(confirm));
+	char uname[CFGKEY_LEN] = "";
+	get_param(qs, "user", uname, sizeof(uname));
 
-	int bsz=8192,pos=0;
-	char *buf=(char *)malloc(bsz);
-	if(!buf)return;
-
-	pos=emit_header(&buf,&bsz,pos,"Shutdown","shutdown");
-
-	if(strcmp(confirm,"yes")==0){
-		tcmg_log("shutdown requested via webif");
-		g_running=0;
-		pos=buf_printf(&buf,&bsz,pos,
-			"<div class='done-card'>"
-			"<div class='dico danger'>"
-			"<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'>"
-			"<path d='M18.36 6.64a9 9 0 1 1-12.73 0'/><line x1='12' y1='2' x2='12' y2='12'/>"
-			"</svg></div>"
-			"<h2>Server Stopped</h2>"
-			"<p>TCMG has been shut down.<br>All connections were dropped.</p>"
-			"</div>");
-	} else {
-		pos=buf_printf(&buf,&bsz,pos,
-			"<div class='dlg'>"
-			"<div class='dico danger'>"
-			"<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'>"
-			"<path d='M18.36 6.64a9 9 0 1 1-12.73 0'/><line x1='12' y1='2' x2='12' y2='12'/>"
-			"</svg></div>"
-			"<h2>Shutdown Server?</h2>"
-			"<p>All active connections will be dropped immediately.<br>"
-			"The process will exit and will <strong>not</strong> restart.</p>"
-			"<div class='da'>"
-			"<a href='/shutdown?confirm=yes' class='btn bd_'>"
-			"<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>"
-			"<path d='M18.36 6.64a9 9 0 1 1-12.73 0'/><line x1='12' y1='2' x2='12' y2='12'/>"
-			"</svg>Confirm Shutdown</a>"
-			"<a href='/status' class='btn bg'>Cancel</a>"
-			"</div>"
-			"</div>");
-	}
-
-	pos=emit_footer(&buf,&bsz,pos);
-	send_response(fd,200,"OK","text/html",buf,pos);
-	free(buf);
-}
-
-/* =
- *  RESTART PAGE
- * = */
-void send_page_restart(int fd, const char *qs)
-{
-	char confirm[8];
-	get_param(qs,"confirm",confirm,sizeof(confirm));
-
-	int bsz=8192,pos=0;
-	char *buf=(char *)malloc(bsz);
-	if(!buf)return;
-
-	pos=emit_header(&buf,&bsz,pos,"Restart","restart");
-
-	if(strcmp(confirm,"yes")==0){
-		tcmg_log("restart requested via webif");
-		g_restart=1;
-		g_running=0;
-		pos=buf_printf(&buf,&bsz,pos,
-			"<div class='done-card'>"
-			"<div class='dico info'>"
-			"<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'>"
-			"<polyline points='23 4 23 10 17 10'/>"
-			"<path d='M20.49 15a9 9 0 1 1-2.12-9.36L23 10'/>"
-			"</svg></div>"
-			"<h2>Restarting&hellip;</h2>"
-			"<p>Config will be reloaded.<br>Redirecting when back online&hellip;</p>"
-			"<div class='spill' style='display:inline-flex;margin-top:6px'>"
-			"<div class='pulse sm'></div>&nbsp;Waiting for server&hellip;</div>"
-			"<script>"
-			"setTimeout(function(){"
-			"  var t=setInterval(function(){"
-			"    fetch('/api/status',{cache:'no-store'})"
-			"      .then(function(){clearInterval(t);location.href='/status';})"
-			"      .catch(function(){});"
-			"  },1500);"
-			"},3500);"
-			"</script>"
-			"</div>");
-	} else {
-		pos=buf_printf(&buf,&bsz,pos,
-			"<div class='dlg'>"
-			"<div class='dico info'>"
-			"<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'>"
-			"<polyline points='23 4 23 10 17 10'/>"
-			"<path d='M20.49 15a9 9 0 1 1-2.12-9.36L23 10'/>"
-			"</svg></div>"
-			"<h2>Restart Server?</h2>"
-			"<p>Active connections will be dropped.<br>"
-			"Configuration will be reloaded on restart.</p>"
-			"<div class='da'>"
-			"<a href='/restart?confirm=yes' class='btn bp'>"
-			"<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>"
-			"<polyline points='23 4 23 10 17 10'/>"
-			"<path d='M20.49 15a9 9 0 1 1-2.12-9.36L23 10'/>"
-			"</svg>Confirm Restart</a>"
-			"<a href='/status' class='btn bg'>Cancel</a>"
-			"</div>"
-			"</div>");
-	}
-
-	pos=emit_footer(&buf,&bsz,pos);
-	send_response(fd,200,"OK","text/html",buf,pos);
-	free(buf);
-}
-
-void handle_request(int fd, const char *client_ip)
-{
-	char req[WEB_BUF_SIZE];
-	int  rlen = 0;
-
-#ifdef TCMG_OS_WINDOWS
-	DWORD tv = (DWORD)(WEB_READ_TIMEOUT_S * 1000);
-#else
-	struct timeval tv = { WEB_READ_TIMEOUT_S, 0 };
-#endif
-	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, SO_CAST(&tv), sizeof(tv));
-
-	while (rlen < (int)sizeof(req) - 1)
-	{
-		int n = (int)recv(fd, RECV_CAST(req + rlen), sizeof(req) - 1 - rlen, 0);
-		if (n <= 0) break;
-		rlen += n;
-		req[rlen] = '\0';
-		if (strstr(req, "\r\n\r\n")) break;
-	}
-	if (rlen < 10) return;
-
-	char method[8] = {0}, uri[512] = {0};
-	sscanf(req, "%7s %511s", method, uri);
-
-	char path[512];
-	char *qs = NULL;
-	tcmg_strlcpy(path, uri, sizeof(path));
-	char *qmark = strchr(path, '?');
-	if (qmark) { *qmark = '\0'; qs = qmark + 1; }
-
-	if (strcmp(path, "/logpoll") != 0)
-		tcmg_log_dbg(D_WEBIF, "%s %s", method, uri);
-
-	/* Auth */
-	int authed = 0;
-	if (!g_cfg.webif_user[0] && !g_cfg.webif_pass[0]) authed = 1;
-
-	if (!authed) {
-		char *cp = strstr(req, "\r\nCookie:");
-		if (!cp) cp = strstr(req, "\nCookie:");
-		if (cp) {
-			cp = strchr(cp, ':'); if (cp) cp++;
-			while (cp && *cp == ' ') cp++;
-			char tok[WEB_SESSION_LEN + 1];
-			const char *sess = cookie_get_session(cp, tok, sizeof(tok));
-			if (sess && session_check(sess)) authed = 1;
-		}
-	}
-	if (!authed) {
-		char *ap = strstr(req, "\r\nAuthorization:");
-		if (!ap) ap = strstr(req, "\nAuthorization:");
-		if (ap) {
-			ap = strchr(ap, ':'); if (ap) ap++;
-			while (ap && *ap == ' ') ap++;
-			if (check_auth(ap)) authed = 1;
-		}
-	}
-
-	/* POST /login */
-	if (strcmp(path, "/login") == 0 && strcmp(method, "POST") == 0)
-	{
-		char *body_start = strstr(req, "\r\n\r\n");
-		if (body_start) body_start += 4;
-		char u[128] = {0}, p2[128] = {0};
-		form_get(body_start, "u", u, sizeof(u));
-		form_get(body_start, "p", p2, sizeof(p2));
-		int ok = (g_cfg.webif_user[0] == '\0' && g_cfg.webif_pass[0] == '\0') ||
-		         (ct_streq(u, g_cfg.webif_user) && ct_streq(p2, g_cfg.webif_pass));
-		if (ok) {
-			char token[WEB_SESSION_LEN + 1];
-			session_create(token);
-			tcmg_log_dbg(D_WEBIF, "login OK for '%s' from %s", u, client_ip);
-			send_redirect_with_cookie(fd, "/status", token);
-		} else {
-			tcmg_log("login FAIL for '%s' from %s", u, client_ip);
-			send_login_page(fd, 1);
-		}
-		return;
-	}
-
-	if (!authed) {
-		if (strcmp(path, "/login") == 0) send_login_page(fd, 0);
-		else send_redirect(fd, "/login");
-		return;
-	}
-
-	/* Route */
-	if (strcmp(path, "/") == 0 || strcmp(path, "/login") == 0)
-		send_redirect(fd, "/status");
-	else if (strcmp(path, "/status") == 0) {
-		char killstr[16];
-		get_param(qs ? qs : "", "kill", killstr, sizeof(killstr));
-		if (killstr[0]) {
-			uint32_t tid = (uint32_t)strtoul(killstr, NULL, 10);
-			char killed_user[64] = "";
-			get_param(qs ? qs : "", "user", killed_user, sizeof(killed_user));
-			client_kill_by_tid(tid);
-			tcmg_log("disconnect user '%s' tid=%u (by webif)",
-			         killed_user[0] ? killed_user : "?", tid);
-		}
-		send_page_status(fd);
-	}
-	else if (strcmp(path, "/users")   == 0) send_page_users(fd);
-	else if (strcmp(path, "/failban") == 0) send_page_failban(fd, qs ? qs : "");
-	else if (strcmp(path, "/config")  == 0) send_page_config(fd);
-	else if (strcmp(path, "/config_save") == 0 && strcmp(method, "POST") == 0)
-	{
-		const char *body_start = strstr(req, "\r\n\r\n");
-		if (body_start) body_start += 4;
-		int body_len = body_start ? (int)(req + rlen - body_start) : 0;
-		char post_extra[16384] = "";
-		if (body_start && body_len < (int)sizeof(post_extra) - 1)
-		{
-			memcpy(post_extra, body_start, body_len);
-			char *clh = strstr(req, "Content-Length:");
-			if (!clh) clh = strstr(req, "content-length:");
-			if (clh) {
-				int clen = atoi(clh + 15);
-				while (body_len < clen && body_len < (int)sizeof(post_extra) - 1) {
-					int n = (int)recv(fd, RECV_CAST(post_extra + body_len),
-					                  sizeof(post_extra) - 1 - body_len, 0);
-					if (n <= 0) break;
-					body_len += n;
-					post_extra[body_len] = '\0';
-				}
+	int enabled = -1;
+	if (uname[0]) {
+		pthread_rwlock_wrlock(&g_cfg.acc_lock);
+		for (S_ACCOUNT *a = g_cfg.accounts; a; a = a->next) {
+			if (strcmp(a->user, uname) == 0) {
+				a->enabled = !a->enabled;
+				enabled = a->enabled;
+				break;
 			}
 		}
-		handle_config_save(fd, post_extra);
+		pthread_rwlock_unlock(&g_cfg.acc_lock);
 	}
-	else if (strcmp(path, "/livelog")  == 0) send_page_livelog(fd);
-	else if (strcmp(path, "/logpoll")  == 0) send_logpoll(fd, qs ? qs : "");
-	else if (strcmp(path, "/restart")  == 0) send_page_restart(fd, qs ? qs : "");
-	else if (strcmp(path, "/shutdown") == 0) send_page_shutdown(fd, qs ? qs : "");
-	else if (strcmp(path, "/tvcas")    == 0) send_page_tvcas(fd);
-	else if (strcmp(path, "/api/status") == 0) send_api_status(fd);
-	else if (strcmp(path, "/api/reload") == 0) {
-		g_reload_cfg = 1;
-		const char *j = "{\"ok\":true,\"msg\":\"reload scheduled\"}";
-		send_response(fd, 200, "OK", "application/json", j, (int)strlen(j));
+	if (enabled < 0) {
+		const char *e = "{\"ok\":false,\"msg\":\"user not found\"}";
+		send_response(fd, 404, "Not Found", "application/json", e, (int)strlen(e));
+		return;
 	}
-	else if (strcmp(path, "/api/restart") == 0) {
-		tcmg_log("restart requested via API");
-		g_restart = 1;
-		g_running = 0;
-		const char *j = "{\"ok\":true,\"msg\":\"restart initiated\"}";
-		send_response(fd, 200, "OK", "application/json", j, (int)strlen(j));
-	}
-	else if (strcmp(path, "/api/resetstats") == 0) {
-		handle_reset_stats();
-		const char *j = "{\"ok\":true,\"msg\":\"stats reset\"}";
-		send_response(fd, 200, "OK", "application/json", j, (int)strlen(j));
-	}
-	else {
-		const char *msg = "<html><body style='background:#090d14;color:#e8f0fe;font-family:monospace;"
-		                  "display:flex;align-items:center;justify-content:center;height:100vh'>"
-		                  "<div><h1 style='color:#3b82f6'>404</h1><p>Not Found</p>"
-		                  "<a href='/status' style='color:#60a5fa'>← Back to Status</a></div></body></html>";
-		send_response(fd, 404, "Not Found", "text/html", msg, (int)strlen(msg));
-	}
+	cfg_save(&g_cfg);
+	tcmg_log("user '%s' %s via webif", uname, enabled ? "enabled" : "disabled");
+	char j[64];
+	snprintf(j, sizeof(j), "{\"ok\":true,\"enabled\":%d}", enabled);
+	send_response(fd, 200, "OK", "application/json", j, (int)strlen(j));
 }
 
+/* GET /api/user/get?user=<name>
+ * SECURITY: password hash is NEVER returned. */
+void send_api_user_get(int fd, const char *qs)
+{
+	char uname[CFGKEY_LEN] = "";
+	get_param(qs, "user", uname, sizeof(uname));
+
+	int   bsz = 512, pos = 0;
+	char *buf = (char *)malloc(bsz);
+	if (!buf) return;
+
+	pthread_rwlock_rdlock(&g_cfg.acc_lock);
+	S_ACCOUNT *a = g_cfg.accounts;
+	while (a && strcmp(a->user, uname) != 0) a = a->next;
+
+	if (!a) {
+		pthread_rwlock_unlock(&g_cfg.acc_lock);
+		free(buf);
+		const char *e = "{\"ok\":false,\"msg\":\"not found\"}";
+		send_response(fd, 404, "Not Found", "application/json", e, (int)strlen(e));
+		return;
+	}
+	char expiry[24] = "0";
+	if (a->expirationdate > 0) {
+		struct tm tm_s;
+		localtime_r(&a->expirationdate, &tm_s);
+		strftime(expiry, sizeof(expiry), "%Y-%m-%d", &tm_s);
+	}
+	/* pass field omitted intentionally — client sets blank to keep existing */
+	pos = buf_printf(&buf, &bsz, pos,
+		"{\"ok\":true,\"user\":\"%s\","
+		"\"caid\":\"%04X\",\"max_connections\":%d,"
+		"\"enabled\":%d,\"expiry\":\"%s\"}",
+		a->user, a->caid, (int)a->max_connections,
+		(int)a->enabled, expiry);
+	pthread_rwlock_unlock(&g_cfg.acc_lock);
+	send_response(fd, 200, "OK", "application/json", buf, pos);
+	free(buf);
+}
+
+/* POST /api/user/save */
+void handle_user_save(int fd, const char *post_body)
+{
+	char uname[CFGKEY_LEN]="", pass[CFGKEY_LEN]="";
+	char caid_s[8]="", maxconn_s[16]="", enabled_s[4]="", expiry_s[16]="";
+	form_get(post_body, "user",    uname,     sizeof(uname));
+	form_get(post_body, "pass",    pass,      sizeof(pass));
+	form_get(post_body, "caid",    caid_s,    sizeof(caid_s));
+	form_get(post_body, "maxconn", maxconn_s, sizeof(maxconn_s));
+	form_get(post_body, "enabled", enabled_s, sizeof(enabled_s));
+	form_get(post_body, "expiry",  expiry_s,  sizeof(expiry_s));
+
+	if (!uname[0]) {
+		const char *e = "{\"ok\":false,\"msg\":\"missing user\"}";
+		send_response(fd, 400, "Bad Request", "application/json", e, (int)strlen(e));
+		return;
+	}
+
+	pthread_rwlock_wrlock(&g_cfg.acc_lock);
+	S_ACCOUNT *a = g_cfg.accounts;
+	while (a && strcmp(a->user, uname) != 0) a = a->next;
+	if (!a) {
+		pthread_rwlock_unlock(&g_cfg.acc_lock);
+		const char *e = "{\"ok\":false,\"msg\":\"user not found\"}";
+		send_response(fd, 404, "Not Found", "application/json", e, (int)strlen(e));
+		return;
+	}
+
+	if (pass[0])       tcmg_strlcpy(a->pass, pass, sizeof(a->pass));
+	if (caid_s[0])     a->caid            = (uint16_t)strtol(caid_s, NULL, 16);
+	if (maxconn_s[0])  a->max_connections = atoi(maxconn_s);
+	a->enabled = atoi(enabled_s);
+
+	if (expiry_s[0] && strcmp(expiry_s, "0") != 0) {
+		struct tm tm_s = {0};
+		if (sscanf(expiry_s, "%d-%d-%d",
+		           &tm_s.tm_year, &tm_s.tm_mon, &tm_s.tm_mday) == 3) {
+			tm_s.tm_year -= 1900;
+			tm_s.tm_mon  -= 1;
+			a->expirationdate = mktime(&tm_s);
+		}
+	} else {
+		a->expirationdate = 0;
+	}
+	pthread_rwlock_unlock(&g_cfg.acc_lock);
+
+	cfg_save(&g_cfg);
+	tcmg_log("user '%s' updated via webif", uname);
+	const char *j = "{\"ok\":true}";
+	send_response(fd, 200, "OK", "application/json", j, (int)strlen(j));
+}
+
+
+/* GET /api/user/delete?user=<name> */
+void handle_user_delete(int fd, const char *qs)
+{
+	char uname[CFGKEY_LEN] = "";
+	get_param(qs, "user", uname, sizeof(uname));
+
+	if (!uname[0]) {
+		const char *e = "{\"ok\":false,\"msg\":\"missing user\"}";
+		send_response(fd, 400, "Bad Request", "application/json", e, (int)strlen(e));
+		return;
+	}
+
+	int found = 0;
+	pthread_rwlock_wrlock(&g_cfg.acc_lock);
+	S_ACCOUNT **pp = &g_cfg.accounts;
+	while (*pp) {
+		if (strcmp((*pp)->user, uname) == 0) {
+			S_ACCOUNT *del = *pp;
+			*pp = del->next;
+			free(del);
+			g_cfg.naccounts--;
+			found = 1;
+			break;
+		}
+		pp = &(*pp)->next;
+	}
+	pthread_rwlock_unlock(&g_cfg.acc_lock);
+
+	if (!found) {
+		const char *e = "{\"ok\":false,\"msg\":\"user not found\"}";
+		send_response(fd, 404, "Not Found", "application/json", e, (int)strlen(e));
+		return;
+	}
+	cfg_save(&g_cfg);
+	tcmg_log("user '%s' deleted via webif", uname);
+	const char *j = "{\"ok\":true}";
+	send_response(fd, 200, "OK", "application/json", j, (int)strlen(j));
+}
+
+/* POST /api/user/add — create a new account */
+void handle_user_add(int fd, const char *post_body)
+{
+	char uname[CFGKEY_LEN]="", pass[CFGKEY_LEN]="";
+	char caid_s[8]="", maxconn_s[16]="", enabled_s[4]="", expiry_s[16]="";
+	form_get(post_body, "user",    uname,     sizeof(uname));
+	form_get(post_body, "pass",    pass,      sizeof(pass));
+	form_get(post_body, "caid",    caid_s,    sizeof(caid_s));
+	form_get(post_body, "maxconn", maxconn_s, sizeof(maxconn_s));
+	form_get(post_body, "enabled", enabled_s, sizeof(enabled_s));
+	form_get(post_body, "expiry",  expiry_s,  sizeof(expiry_s));
+
+	if (!uname[0]) {
+		const char *e = "{\"ok\":false,\"msg\":\"username required\"}";
+		send_response(fd, 400, "Bad Request", "application/json", e, (int)strlen(e));
+		return;
+	}
+
+	/* Reject if username already exists */
+	pthread_rwlock_rdlock(&g_cfg.acc_lock);
+	for (S_ACCOUNT *a = g_cfg.accounts; a; a = a->next) {
+		if (strcmp(a->user, uname) == 0) {
+			pthread_rwlock_unlock(&g_cfg.acc_lock);
+			const char *e = "{\"ok\":false,\"msg\":\"username already exists\"}";
+			send_response(fd, 409, "Conflict", "application/json", e, (int)strlen(e));
+			return;
+		}
+	}
+	pthread_rwlock_unlock(&g_cfg.acc_lock);
+
+	/* Create new account */
+	pthread_rwlock_wrlock(&g_cfg.acc_lock);
+	S_ACCOUNT *a = cfg_account_new(&g_cfg);
+	if (!a) {
+		pthread_rwlock_unlock(&g_cfg.acc_lock);
+		const char *e = "{\"ok\":false,\"msg\":\"out of memory\"}";
+		send_response(fd, 500, "Internal Error", "application/json", e, (int)strlen(e));
+		return;
+	}
+
+	tcmg_strlcpy(a->user, uname, sizeof(a->user));
+	if (pass[0])      tcmg_strlcpy(a->pass, pass, sizeof(a->pass));
+	if (caid_s[0])    a->caid            = (uint16_t)strtol(caid_s, NULL, 16);
+	if (maxconn_s[0]) a->max_connections = atoi(maxconn_s);
+	a->enabled = enabled_s[0] ? atoi(enabled_s) : 1;
+
+	if (expiry_s[0] && strcmp(expiry_s, "0") != 0) {
+		struct tm tm_s = {0};
+		if (sscanf(expiry_s, "%d-%d-%d",
+		           &tm_s.tm_year, &tm_s.tm_mon, &tm_s.tm_mday) == 3) {
+			tm_s.tm_year -= 1900;
+			tm_s.tm_mon  -= 1;
+			a->expirationdate = mktime(&tm_s);
+		}
+	}
+	pthread_rwlock_unlock(&g_cfg.acc_lock);
+
+	cfg_save(&g_cfg);
+	tcmg_log("user '%s' added via webif", uname);
+	const char *j = "{\"ok\":true}";
+	send_response(fd, 200, "OK", "application/json", j, (int)strlen(j));
+}
+void handle_srvid2_save(int fd, const char *post_body)
+{
+	char newcontent[32768] = "";
+	form_get(post_body, "srvid2", newcontent, sizeof(newcontent));
+	if (!newcontent[0]) {
+		const char *e = "<html><body><h1>Empty srvid2 rejected</h1></body></html>";
+		send_response(fd, 400, "Bad Request", "text/html", e, (int)strlen(e));
+		return;
+	}
+
+	char path[CFGPATH_LEN];
+	tcmg_build_path(path, sizeof(path), g_cfgdir, TCMG_SRVID_FILE);
+
+	FILE *fp = fopen(path, "w");
+	if (!fp) {
+		const char *e = "<html><body><h1>Cannot write srvid2</h1></body></html>";
+		send_response(fd, 500, "Internal Error", "text/html", e, (int)strlen(e));
+		return;
+	}
+	fputs(newcontent, fp);
+	fclose(fp);
+	int n = srvid_load(path);
+	tcmg_log("srvid2 saved (%d entries), reloaded", n);
+	send_redirect(fd, "/config");
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * Action pages: Shutdown & Restart  (single implementation)
+ *
+ * send_page_action(fd, qs, is_restart=0) → Shutdown
+ * send_page_action(fd, qs, is_restart=1) → Restart
+ * ════════════════════════════════════════════════════════════════════════════*/
+static void send_page_action(int fd, const char *qs, int is_restart)
+{
+	char confirm[8];
+	get_param(qs, "confirm", confirm, sizeof(confirm));
+
+	const char *title      = is_restart ? "Restart"  : "Shutdown";
+	const char *nav_id     = is_restart ? "restart"  : "shutdown";
+	const char *confirm_url= is_restart ? "/restart?confirm=yes" : "/shutdown?confirm=yes";
+	const char *dico_cls   = is_restart ? "dico info" : "dico danger";
+	const char *btn_cls    = is_restart ? "btn bp"    : "btn bd_";
+	const char *icon_svg   = is_restart
+		? "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'>"
+		  "<polyline points='23 4 23 10 17 10'/>"
+		  "<path d='M20.49 15a9 9 0 1 1-2.12-9.36L23 10'/>"
+		  "</svg>"
+		: "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'>"
+		  "<path d='M18.36 6.64a9 9 0 1 1-12.73 0'/><line x1='12' y1='2' x2='12' y2='12'/>"
+		  "</svg>";
+
+	int   bsz = 8192, pos = 0;
+	char *buf = (char *)malloc(bsz);
+	if (!buf) return;
+
+	pos = emit_header(&buf, &bsz, pos, title, nav_id);
+
+	if (strcmp(confirm, "yes") == 0) {
+		/* ── Execute ── */
+		tcmg_log("%s requested via webif", title);
+		if (is_restart) { g_restart = 1; }
+		g_running = 0;
+
+		pos = buf_printf(&buf, &bsz, pos,
+			"<div class='done-card'>"
+			"<div class='%s'>%s</div>"
+			"<h2>%s</h2>"
+			"<p>%s</p>"
+			"%s"
+			"</div>",
+			dico_cls, icon_svg,
+			is_restart ? "Restarting&hellip;" : "Server Stopped",
+			is_restart
+				? "Config will be reloaded.<br>Redirecting when back online&hellip;"
+				: "TCMG has been shut down.<br>All connections were dropped.",
+			is_restart
+				? "<div class='spill' style='display:inline-flex;margin-top:6px'>"
+				  "<div class='pulse sm'></div>&nbsp;Waiting for server&hellip;</div>"
+				  "<script>setTimeout(function(){"
+				  "  var t=setInterval(function(){"
+				  "    fetch('/api/status',{cache:'no-store'})"
+				  "      .then(function(){clearInterval(t);location.href='/status';})"
+				  "      .catch(function(){});"
+				  "  },1500);"
+				  "},3500);</script>"
+				: "");
+	} else {
+		/* ── Confirmation prompt ── */
+		pos = buf_printf(&buf, &bsz, pos,
+			"<div class='dlg'>"
+			"<div class='%s'>%s</div>"
+			"<h2>%s Server?</h2>"
+			"<p>%s</p>"
+			"<div class='da'>"
+			"  <a href='%s' class='%s'>%s Confirm %s</a>"
+			"  <a href='/status' class='btn bg'>Cancel</a>"
+			"</div>"
+			"</div>",
+			dico_cls, icon_svg,
+			title,
+			is_restart
+				? "Active connections will be dropped.<br>"
+				  "Configuration will be reloaded on restart."
+				: "All active connections will be dropped immediately.<br>"
+				  "The process will exit and will <strong>not</strong> restart.",
+			confirm_url, btn_cls, icon_svg, title);
+	}
+
+	pos = emit_footer(&buf, &bsz, pos);
+	send_response(fd, 200, "OK", "text/html", buf, pos);
+	free(buf);
+}
+
+void send_page_shutdown(int fd, const char *qs) { send_page_action(fd, qs, 0); }
+void send_page_restart (int fd, const char *qs) { send_page_action(fd, qs, 1); }

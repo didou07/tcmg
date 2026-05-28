@@ -84,16 +84,7 @@ static inline uint8_t nc_xor(const uint8_t *d, int32_t n)
 	return cs;
 }
 
-/* CSPRNG — wraps getrandom(2) / /dev/urandom */
-bool    csprng(uint8_t *buf, size_t len);
-
-/* Constant-time memory compare (timing-safe) */
-bool    ct_memeq(const uint8_t *a, const uint8_t *b, size_t n);
-
-/* Timing-safe string compare for fixed-length MD5-crypt hashes */
-bool    ct_streq(const char *a, const char *b);
-
-/* Wipe memory — not optimised away by compiler */
-void    secure_zero(void *ptr, size_t len);
+/* csprng / ct_memeq / ct_streq / secure_zero live in tcmg-crypto.h
+ * (included via tcmg-globals.h).  Do not redeclare here.            */
 
 #endif /* TCMG_NET_H_ */

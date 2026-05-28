@@ -113,8 +113,15 @@ public final class ControlFragment extends Fragment {
         int     webifPort = running ? TcmgNative.getWebifPort() : -1;
         updateStatus(running);
         refreshNetwork();
-        binding.btnWebifWifi.setEnabled(webifPort > 0 && wifiIp != null);
-        binding.btnWebifHotspot.setEnabled(webifPort > 0 && hotspotIp != null);
+
+        // WebIF buttons: visible only when server is running; enabled when IP available
+        int webifVisibility = running ? View.VISIBLE : View.GONE;
+        binding.btnWebifWifi.setVisibility(webifVisibility);
+        binding.btnWebifHotspot.setVisibility(webifVisibility);
+        if (running) {
+            binding.btnWebifWifi.setEnabled(webifPort > 0 && wifiIp != null);
+            binding.btnWebifHotspot.setEnabled(webifPort > 0 && hotspotIp != null);
+        }
     }
 
     // ── Server ───────────────────────────────────────────────────────────────
@@ -140,30 +147,75 @@ public final class ControlFragment extends Fragment {
     private void updateStatus(boolean running) {
         if (binding == null) return;
 
-        // Card background: running = green accent, stopped = blue accent (both VOID palette)
         binding.statusCard.setBackground(ContextCompat.getDrawable(requireContext(),
                 running ? R.drawable.bg_card_running : R.drawable.bg_card_stopped));
-
         binding.statusDot.setImageResource(
                 running ? R.drawable.status_dot_running : R.drawable.status_dot_stopped);
         binding.tvStatusText.setText(
                 running ? R.string.status_running : R.string.status_stopped);
-
-        // Text color: running = primary blue, stopped = on-surface dim
         binding.tvStatusText.setTextColor(running ? 0xFF3b82f6 : 0xFF94a3b8);
-
         binding.btnStart.setEnabled(!running);
         binding.btnStop.setEnabled(running);
 
+        // Uptime lives only in the stat grid (tvStatUptime) — no duplicate in status card
         if (running && serverStartMs > 0L) {
             long s = (System.currentTimeMillis() - serverStartMs) / 1000L;
-            binding.tvUptime.setText(String.format(Locale.ROOT, "%02d:%02d:%02d",
-                    s / 3600, (s % 3600) / 60, s % 60));
-            binding.tvUptime.setVisibility(View.VISIBLE);
-            binding.tvUptimeLabel.setVisibility(View.VISIBLE);
+            String uptime = String.format(Locale.ROOT, "%02d:%02d:%02d",
+                    s / 3600, (s % 3600) / 60, s % 60);
+            binding.tvStatUptime.setText(uptime);
         } else {
-            binding.tvUptime.setVisibility(View.GONE);
-            binding.tvUptimeLabel.setVisibility(View.GONE);
+            binding.tvStatUptime.setText("—");
+        }
+
+        // Update stat card colours for CW Miss
+        updateCwMissCard(running);
+        updateBansCard(running);
+    }
+
+    /** Update CW Miss icon badge: blue at 0, red when misses > 0. */
+    private void updateCwMissCard(boolean running) {
+        if (binding == null) return;
+        // Parse current value displayed
+        String raw = binding.tvStatCwMiss.getText().toString().replace(",", "").trim();
+        long miss = 0;
+        try { miss = Long.parseLong(raw); } catch (NumberFormatException ignored) {}
+
+        if (running && miss > 0) {
+            binding.iconBgCwMiss.setBackgroundResource(R.drawable.bg_badge_red);
+            binding.iconCwMiss.setColorFilter(
+                    ContextCompat.getColor(requireContext(), R.color.color_stopped));
+            binding.cardCwMiss.setStrokeColor(0x47ef4444);
+            binding.cardCwMiss.setCardBackgroundColor(0x0aef4444);
+        } else {
+            binding.iconBgCwMiss.setBackgroundResource(R.drawable.bg_badge_blue);
+            binding.iconCwMiss.setColorFilter(
+                    ContextCompat.getColor(requireContext(), R.color.void_on_surface_var));
+            binding.cardCwMiss.setStrokeColor(0x471e2d47);
+            binding.cardCwMiss.setCardBackgroundColor(
+                    ContextCompat.getColor(requireContext(), R.color.void_surface));
+        }
+    }
+
+    /** Update Banned IPs icon badge: blue at 0, orange when bans > 0. */
+    private void updateBansCard(boolean running) {
+        if (binding == null) return;
+        String raw = binding.tvStatBans.getText().toString().replace(",", "").trim();
+        long bans = 0;
+        try { bans = Long.parseLong(raw); } catch (NumberFormatException ignored) {}
+
+        if (running && bans > 0) {
+            binding.iconBgBans.setBackgroundResource(R.drawable.bg_badge_orange);
+            binding.iconBans.setColorFilter(
+                    ContextCompat.getColor(requireContext(), R.color.color_warning));
+            binding.cardBans.setStrokeColor(0x47f97316);
+            binding.cardBans.setCardBackgroundColor(0x0af97316);
+        } else {
+            binding.iconBgBans.setBackgroundResource(R.drawable.bg_badge_blue);
+            binding.iconBans.setColorFilter(
+                    ContextCompat.getColor(requireContext(), R.color.void_on_surface_var));
+            binding.cardBans.setStrokeColor(0x471e2d47);
+            binding.cardBans.setCardBackgroundColor(
+                    ContextCompat.getColor(requireContext(), R.color.void_surface));
         }
     }
 

@@ -2,35 +2,7 @@
 #define MODULE_LOG_PREFIX "emu"
 #include "tcmg-globals.h"
 
-#ifdef TCMG_OS_WINDOWS
-/* Windows: use QueryPerformanceCounter for monotonic time */
-static struct timespec now_mono(void)
-{
-	struct timespec t;
-	LARGE_INTEGER freq, cnt;
-	QueryPerformanceFrequency(&freq);
-	QueryPerformanceCounter(&cnt);
-	t.tv_sec  = (time_t)(cnt.QuadPart / freq.QuadPart);
-	t.tv_nsec = (long)((cnt.QuadPart % freq.QuadPart) * 1000000000LL / freq.QuadPart);
-	return t;
-}
-#else
-static struct timespec now_mono(void)
-{
-	struct timespec t;
-	clock_gettime(CLOCK_MONOTONIC, &t);
-	return t;
-}
-#endif
-
-
-
-static int32_t elapsed_ms(struct timespec t0)
-{
-	struct timespec now = now_mono();
-	return (int32_t)((now.tv_sec  - t0.tv_sec)  * 1000 +
-	                 (now.tv_nsec - t0.tv_nsec) / 1000000);
-}
+/* Monotonic time — provided by tcmg-platform.h (tcmg_mono_ms / tcmg_elapsed_ms) */
 
 void emu_init(void)
 {
@@ -115,7 +87,7 @@ int32_t emu_process(uint16_t caid, uint16_t sid,
                     const uint8_t *ecm, int32_t ecm_len,
                     uint8_t *cw, const S_ECM_CTX *ctx)
 {
-	struct timespec t0 = now_mono();
+	int64_t t0 = tcmg_mono_ms();
 	int32_t res = EMU_NOT_SUPPORTED;
 	bool    hit = false;
 
@@ -151,7 +123,7 @@ int32_t emu_process(uint16_t caid, uint16_t sid,
 
 done:
 	{
-		int32_t ms = elapsed_ms(t0);
+		int32_t ms = tcmg_elapsed_ms(t0);
 		log_cw_result(caid, sid, ecm_len, cw, hit, ms, ctx->user);
 		if (ctx->account)
 		{
