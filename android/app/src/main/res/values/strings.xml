@@ -9,7 +9,7 @@
 
     <string name="btn_start">LAUNCH</string>
     <string name="btn_stop">STOP</string>
-    <string name="btn_webif">WEBIF</string>
+    <string name="btn_webif">WEBIF ›</string>
 
     <string name="label_network">Network</string>
     <string name="label_wifi">WI-FI</string>
@@ -45,10 +45,11 @@
     <string name="toast_webif_unavailable">WebIF not available</string>
     <string name="toast_autostart_on">Auto-start enabled</string>
     <string name="toast_autostart_off">Auto-start disabled</string>
+    <string name="toast_back_exit">Press back again to exit</string>
 
     <string name="hint_not_available">—</string>
     <string name="about_title">TCMG v2.0</string>
-    <string name="about_text">TCMG Card-Server for Android\n\n• Android 7+ (API 24)\n• Native core: tcmg 4.2\n• Neon Matrix UI\n• AGP 8.7.3 / Gradle 8.11.1</string>
+    <string name="about_text">TCMG Card-Server for Android\n\n• Android 7+ (API 24)\n• Native core: tcmg 4.2\n• AGP 8.7.3 / Gradle 8.11.1</string>
 
     <string name="theme_matrix">VOID</string>
     <string name="theme_amber">EMBER</string>

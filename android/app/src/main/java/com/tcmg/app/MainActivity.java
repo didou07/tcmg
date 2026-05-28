@@ -7,8 +7,11 @@ import android.content.pm.ActivityInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.provider.Settings;
+import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
@@ -42,6 +45,12 @@ public final class MainActivity extends AppCompatActivity {
     private SharedPreferences   prefs;
     private String              activeTag = TAG_CONTROL;
 
+    // ── Double-back-press to exit ─────────────────────────────────────────────
+    private static final long   BACK_PRESS_INTERVAL_MS = 2000L;
+    private boolean             backPressedOnce         = false;
+    private final Handler       backHandler             = new Handler(Looper.getMainLooper());
+    private final Runnable      resetBackFlag           = () -> backPressedOnce = false;
+
     // ── Lifecycle ────────────────────────────────────────────────────────────
 
     @Override
@@ -66,6 +75,24 @@ public final class MainActivity extends AppCompatActivity {
     protected void onSaveInstanceState(@NonNull Bundle out) {
         super.onSaveInstanceState(out);
         out.putString(KEY_TAB, activeTag);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (backPressedOnce) {
+            backHandler.removeCallbacks(resetBackFlag);
+            super.onBackPressed(); // exit
+        } else {
+            backPressedOnce = true;
+            Toast.makeText(this, R.string.toast_back_exit, Toast.LENGTH_SHORT).show();
+            backHandler.postDelayed(resetBackFlag, BACK_PRESS_INTERVAL_MS);
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        backHandler.removeCallbacks(resetBackFlag);
     }
 
     // ── Battery Optimization ─────────────────────────────────────────────────

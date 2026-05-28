@@ -43,6 +43,7 @@ extern volatile int32_t g_restart;
 
 /* Log ring-buffer API from tcmg-log.c */
 extern int32_t log_ring_since(int32_t from_id, char **out_lines,
+                               char **out_users,
                                int32_t max_lines, int32_t *out_next);
 
 /* g_cfg defined in tcmg.c — we only need the webif_port field */
@@ -207,7 +208,7 @@ Java_com_tcmg_app_TcmgNative_getLogLines(
         return (*env)->NewStringUTF(env, "");
     }
 
-    int32_t count = log_ring_since((int32_t)from_id, lines, (int32_t)max_lines, &next_id);
+    int32_t count = log_ring_since((int32_t)from_id, lines, NULL, (int32_t)max_lines, &next_id);
 
     /* Always update the caller's next-id, even if count == 0 */
     if (out_next_j) {
