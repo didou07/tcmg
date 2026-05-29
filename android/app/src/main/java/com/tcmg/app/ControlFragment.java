@@ -63,7 +63,6 @@ public final class ControlFragment extends Fragment {
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
-        setupThemePill();
         setupListeners();
         restorePreferences();
     }
@@ -82,46 +81,6 @@ public final class ControlFragment extends Fragment {
         super.onDestroyView();
         handler.removeCallbacks(pollRunnable);
         binding = null;
-    }
-
-    // ── Theme Pill ───────────────────────────────────────────────────────────
-
-    private void setupThemePill() {
-        if (binding == null) return;
-        MainActivity host = (MainActivity) requireActivity();
-        boolean isAmber = host.isEmber();
-
-        // Update visual state
-        refreshPillState(isAmber);
-
-        binding.tvThemeMatrix.setOnClickListener(v -> {
-            if (host.isEmber()) host.switchTheme(false);
-        });
-        binding.tvThemeAmber.setOnClickListener(v -> {
-            if (!host.isEmber()) host.switchTheme(true);
-        });
-    }
-
-    private void refreshPillState(boolean isEmber) {
-        if (binding == null) return;
-        // Pill container background
-        binding.themePill.setBackgroundResource(
-                isEmber ? R.drawable.bg_theme_pill_ember : R.drawable.bg_theme_pill);
-        // Active chip — blue (Void) or amber (Ember)
-        int activeChipRes = isEmber ? R.drawable.bg_theme_active_ember : R.drawable.bg_theme_active;
-        // Inactive text color
-        int inactiveColor = isEmber ? 0xFFa87c3a : 0xFF94a3b8;
-        if (isEmber) {
-            binding.tvThemeAmber.setBackgroundResource(activeChipRes);
-            binding.tvThemeAmber.setTextColor(0xFF1a0f00);   // dark on amber
-            binding.tvThemeMatrix.setBackgroundResource(android.R.color.transparent);
-            binding.tvThemeMatrix.setTextColor(inactiveColor);
-        } else {
-            binding.tvThemeMatrix.setBackgroundResource(activeChipRes);
-            binding.tvThemeMatrix.setTextColor(0xFFffffff);
-            binding.tvThemeAmber.setBackgroundResource(android.R.color.transparent);
-            binding.tvThemeAmber.setTextColor(inactiveColor);
-        }
     }
 
     // ── Setup ────────────────────────────────────────────────────────────────
@@ -180,18 +139,13 @@ public final class ControlFragment extends Fragment {
 
     private void updateStatus(boolean running) {
         if (binding == null) return;
-        MainActivity host = (MainActivity) requireActivity();
-        int stoppedBg = host.isEmber() ? R.drawable.bg_card_stopped_ember : R.drawable.bg_card_stopped;
         binding.statusCard.setBackground(ContextCompat.getDrawable(requireContext(),
-                running ? R.drawable.bg_card_running : stoppedBg));
+                running ? R.drawable.bg_card_running : R.drawable.bg_card_stopped));
         binding.statusDot.setImageResource(
                 running ? R.drawable.status_dot_running : R.drawable.status_dot_stopped);
         binding.tvStatusText.setText(running ? R.string.status_running : R.string.status_stopped);
 
-        // Running: primary color text; stopped: dim
-        int textColor = running
-                ? (host.isEmber() ? 0xFFf59e0b : 0xFF3b82f6)
-                : (host.isEmber() ? 0xFFfef3c7 : 0xFFe8f0fe);
+        int textColor = running ? 0xFF3b82f6 : 0xFFe8f0fe;
         binding.tvStatusText.setTextColor(textColor);
 
         binding.btnStart.setEnabled(!running);

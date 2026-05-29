@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">TCMG</string>
-    <string name="app_subtitle">card.server // v2.0</string>
+    <string name="app_subtitle">newcamd server</string>
 
     <string name="status_running">RUNNING</string>
     <string name="status_stopped">OFFLINE</string>

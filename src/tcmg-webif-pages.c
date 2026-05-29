@@ -563,7 +563,7 @@ void send_page_users(int fd)
 	pos = buf_printf(&buf, &bsz, pos,
 		/* ── Shared modal overlay ── */
 		"<div id='uModal' style='display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);"
-		"z-index:1000;align-items:center;justify-content:center'>"
+		"z-index:2000;align-items:center;justify-content:center'>"
 		"<div class='card' style='width:380px;max-width:95vw;padding:24px'>"
 		"  <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:16px'>"
 		"    <span id='umTitle' style='font-weight:700;font-size:15px'>Edit User</span>"

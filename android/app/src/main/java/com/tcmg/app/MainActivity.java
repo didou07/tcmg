@@ -24,17 +24,15 @@ import com.tcmg.app.databinding.ActivityMainBinding;
  * MainActivity — adaptive navigation
  *   Portrait  → BottomNavigationView  (binding.bottomNav)
  *   Landscape → NavigationRailView    (binding.navRail)
+ *
+ * Theme: VOID only (Deep Navy + Electric Blue). Ember theme removed.
+ * Back: press twice within 2 s to exit.
  */
 public final class MainActivity extends AppCompatActivity {
 
     public static final String PREF_FILE  = "tcmg_prefs";
     public static final String KEY_THEME  = "ui_theme";
-    public static final String VAL_VOID   = "void";    // Indigo
-    public static final String VAL_EMBER  = "ember";   // Pink/Crimson
-
-    /** Legacy compat — old "matrix" value maps to void */
-    public static final String VAL_MATRIX = "matrix";
-    public static final String VAL_AMBER  = "amber";
+    public static final String VAL_VOID   = "void";
 
     private static final String TAG_CONTROL = "frag_control";
     private static final String TAG_LOG     = "frag_log";
@@ -46,17 +44,23 @@ public final class MainActivity extends AppCompatActivity {
     private String              activeTag = TAG_CONTROL;
 
     // ── Double-back-press to exit ─────────────────────────────────────────────
-    private static final long   BACK_PRESS_INTERVAL_MS = 2000L;
-    private boolean             backPressedOnce         = false;
-    private final Handler       backHandler             = new Handler(Looper.getMainLooper());
-    private final Runnable      resetBackFlag           = () -> backPressedOnce = false;
+    private static final long BACK_PRESS_INTERVAL_MS = 2000L;
+    private boolean           backPressedOnce         = false;
+    private final Handler     backHandler             = new Handler(Looper.getMainLooper());
+    private final Runnable    resetBackFlag           = () -> backPressedOnce = false;
 
     // ── Lifecycle ────────────────────────────────────────────────────────────
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
+        // Always apply VOID theme
+        setTheme(R.style.Theme_TCMG);
+        // Clear any leftover ember preference so old installs default to void
         prefs = getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE);
-        applyTheme();
+        if (!VAL_VOID.equals(prefs.getString(KEY_THEME, VAL_VOID))) {
+            prefs.edit().putString(KEY_THEME, VAL_VOID).apply();
+        }
+
         super.onCreate(savedInstanceState);
 
         binding = ActivityMainBinding.inflate(getLayoutInflater());
@@ -81,7 +85,7 @@ public final class MainActivity extends AppCompatActivity {
     public void onBackPressed() {
         if (backPressedOnce) {
             backHandler.removeCallbacks(resetBackFlag);
-            super.onBackPressed(); // exit
+            finishAffinity(); // exit the app completely
         } else {
             backPressedOnce = true;
             Toast.makeText(this, R.string.toast_back_exit, Toast.LENGTH_SHORT).show();
@@ -97,10 +101,6 @@ public final class MainActivity extends AppCompatActivity {
 
     // ── Battery Optimization ─────────────────────────────────────────────────
 
-    /**
-     * On Android 6+, ask the user to exempt this app from Doze/battery optimization.
-     * Without this, the OS may kill the foreground service when the screen is off.
-     */
     private void requestIgnoreBatteryOptimizations() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return;
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
@@ -111,24 +111,6 @@ public final class MainActivity extends AppCompatActivity {
             intent.setData(Uri.parse("package:" + pkg));
             startActivity(intent);
         }
-    }
-
-    // ── Theme ─────────────────────────────────────────────────────────────────
-
-    private void applyTheme() {
-        String t = prefs.getString(KEY_THEME, VAL_VOID);
-        boolean ember = VAL_EMBER.equals(t) || VAL_AMBER.equals(t);
-        setTheme(ember ? R.style.Theme_TCMG_Alt : R.style.Theme_TCMG);
-    }
-
-    public boolean isEmber() {
-        String t = prefs.getString(KEY_THEME, VAL_VOID);
-        return VAL_EMBER.equals(t) || VAL_AMBER.equals(t);
-    }
-
-    public void switchTheme(boolean ember) {
-        prefs.edit().putString(KEY_THEME, ember ? VAL_EMBER : VAL_VOID).apply();
-        recreate();
     }
 
     // ── Fragments ─────────────────────────────────────────────────────────────

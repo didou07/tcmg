@@ -199,7 +199,7 @@ const char CSS[] =
 ".stl::before{content:'';display:inline-block;width:3px;height:14px;background:var(--p);border-radius:2px}"
 
 /* ══ TABLES ══ */
-".tw{border:1px solid var(--bd);border-radius:var(--r);overflow:hidden;margin-bottom:16px}"
+".tw{border:1px solid var(--bd);border-radius:var(--r);overflow:auto;margin-bottom:16px}"
 "table{width:100%;border-collapse:collapse;font-size:13px}"
 "thead tr{background:var(--s2)}"
 "th{padding:9px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.10em;color:var(--t2);border-bottom:1px solid var(--bd);white-space:nowrap}"
@@ -253,7 +253,7 @@ const char CSS[] =
 ".ls:focus{border-color:var(--pg)}"
 "select.lsel{background:var(--s2);color:var(--t1);border:1px solid var(--bd2);border-radius:var(--rsm);padding:5px 8px;font-size:12px}"
 /* Live log window — increased height, subtle scanline feel */
-"#lw{background:#030b14;border:1px solid var(--bd);border-radius:var(--r);height:520px;overflow:auto;padding:14px 4px 14px 14px;position:relative;scroll-behavior:smooth}"
+"#lw{background:#030b14;border:1px solid var(--bd);border-radius:var(--r);height:calc(100vh - 280px);min-height:320px;overflow:auto;padding:14px 4px 14px 14px;position:relative;scroll-behavior:smooth}"
 "#lw::before{content:'LIVE';position:absolute;top:10px;right:12px;font-size:9px;font-family:var(--mono);font-weight:700;letter-spacing:.12em;color:var(--gr);opacity:.4;pointer-events:none}"
 /* Log pre — each <span> is now display:block with usr badge column */
 "#lp{margin:0;font-family:var(--mono);font-size:12.5px;line-height:1.85;color:var(--t1)}"
