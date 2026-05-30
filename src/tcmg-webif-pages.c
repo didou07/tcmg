@@ -577,7 +577,7 @@ void send_page_users(int fd)
 		"  <div id='em_unew_wrap' class='fg' style='display:none'><label class='fld'>USERNAME</label>"
 		"    <input class='fi mono' id='em_unew' placeholder='new_user' autocomplete='off'></div>"
 		"  <div class='fg'><label class='fld'>PASSWORD</label>"
-		"    <input class='fi mono' id='em_pass' type='password' placeholder='leave blank to keep'></div>"
+		"    <input class='fi mono' id='em_pass' type='password' placeholder='leave blank to keep' autocomplete='new-password'></div>"
 		"  <div style='display:grid;grid-template-columns:1fr 1fr;gap:10px'>"
 		"    <div class='fg'><label class='fld'>CAID (hex)</label>"
 		"      <input class='fi mono' id='em_caid' maxlength='4' placeholder='09B5'></div>"
@@ -1046,7 +1046,10 @@ void send_page_livelog(int fd)
 	pos = buf_printf(&buf, &bsz, pos,
 		"<div class='db'>"
 		"<span style='font-size:10px;font-weight:700;color:var(--t2);"
-		"text-transform:uppercase;letter-spacing:.12em;margin-right:6px'>Debug</span>");
+		"text-transform:uppercase;letter-spacing:.12em;margin-right:6px'>Debug</span>"
+		"<span style='font-size:10px;color:var(--t2);margin-right:6px;"
+		"font-family:var(--mono)' title='Enable debug categories to see verbose output in the log'>"
+		"&#9432;&nbsp;click to enable verbose output</span>");
 
 	char masks_arr[256]; int ma = 0;
 	for (int i = 0; i < MAX_DEBUG_LEVELS; i++) {
@@ -1111,48 +1114,47 @@ void send_page_livelog(int fd)
 		"var lastid=Math.max(0,%d-200),curmask=%u,hovered=0;"
 		"var masks=[%s],filterRe=null,filterStr='';"
 
+		/* ---- debug UI ---- */
 		"function updateDbgUI(){"
-		"  document.getElementById('dbmask').textContent="
-		"    '0x'+curmask.toString(16).toUpperCase().padStart(4,'0');"
+		"  var el=document.getElementById('dbmask');"
+		"  if(el)el.textContent='0x'+curmask.toString(16).toUpperCase().padStart(4,'0');"
 		"  masks.forEach(function(m){"
-		"    var el=document.getElementById('db'+m);if(!el)return;"
-		"    el.className='dt'+(curmask&m?' on':'');"
+		"    var b=document.getElementById('db'+m);"
+		"    if(b)b.className='dt'+(curmask&m?' on':'')+'';"
 		"  });"
-		"  document.getElementById('dbALL').className='dt'+(curmask===65535?' on':'');"
+		"  var a=document.getElementById('dbALL');"
+		"  if(a)a.className='dt'+(curmask===65535?' on':'')+'';"
 		"}"
-		"function toggleDbg(m){curmask^=m;updateDbgUI();poll();}"
-		"function toggleAll(){curmask=(curmask===65535)?0:65535;updateDbgUI();poll();}"
+		"function toggleDbg(m){curmask^=m;updateDbgUI();poll();return false;}"
+		"function toggleAll(){curmask=(curmask===65535)?0:65535;updateDbgUI();poll();return false;}"
 
-		/* Regex-based filter (like OSCam's multi-pattern search) */
+		/* ---- filter ---- */
 		"function applyFilter(){"
 		"  filterStr=document.getElementById('filter').value;"
 		"  try{filterRe=filterStr?new RegExp(filterStr,'i'):null;}catch(e){filterRe=null;}"
 		"  var spans=document.getElementById('lp').children;"
 		"  var vis=0;"
 		"  for(var i=0;i<spans.length;i++){"
-		"    var txt=spans[i].getAttribute('data-raw')||'';"
-		"    var show=!filterRe||filterRe.test(txt);"
-		"    spans[i].style.display=show?'':'none';"
+		"    var show=!filterRe||filterRe.test(spans[i].getAttribute('data-raw')||'')||(spans[i].getAttribute('data-usr')&&filterRe.test(spans[i].getAttribute('data-usr')));"
+		"    spans[i].style.display=show?'block':'none';"
 		"    if(show)vis++;"
 		"  }"
-		"  document.getElementById('linecnt').textContent=vis;"
+		"  var lc=document.getElementById('linecnt');if(lc)lc.textContent=vis;"
 		"}"
 
+		/* ---- clear / save ---- */
 		"function clearLog(){"
 		"  document.getElementById('lp').innerHTML='';"
-		"  document.getElementById('linecnt').textContent='0';"
+		"  var lc=document.getElementById('linecnt');if(lc)lc.textContent='0';"
 		"  fetch('/logpoll?since=999999999&debug='+curmask)"
-		"    .then(r=>r.json()).then(d=>{if(d.next!==undefined)lastid=d.next;});"
+		"    .then(function(r){return r.json();}).then(function(d){if(d.next!==undefined)lastid=d.next;}).catch(function(){});"
 		"}"
-
-		/* Save log — collect visible lines with usr context (like OSCam Save Log) */
 		"function prepSave(){"
-		"  var spans=document.getElementById('lp').children;"
-		"  var txt='';"
+		"  var spans=document.getElementById('lp').children,txt='';"
 		"  for(var i=0;i<spans.length;i++){"
 		"    if(spans[i].style.display==='none')continue;"
-		"    var usr=spans[i].getAttribute('data-usr')||'';"
-		"    var raw=spans[i].getAttribute('data-raw')||'';"
+		"    var usr=spans[i].getAttribute('data-usr')||'';" 
+		"    var raw=spans[i].getAttribute('data-raw')||'';" 
 		"    txt+=(usr?'['+usr+'] ':'')+raw+'\n';"
 		"  }"
 		"  var blob=new Blob([txt],{type:'text/plain'});"
@@ -1160,84 +1162,83 @@ void send_page_livelog(int fd)
 		"  a.href=URL.createObjectURL(blob);"
 		"}"
 
+		/* ---- coloring ---- */
 		"var CM={"
 		"  hit:'#4ade80',miss:'#f87171',webif:'#60a5fa',"
 		"  ban:'#fb923c',net:'#c084fc',proto:'#22d3ee',"
-		"  emu:'#86efac',conf:'#fde68a',err:'#f87171',warn:'#fb923c'"
+		"  conf:'#fde68a',err:'#f87171',warn:'#fb923c'"
 		"};"
 		"function colorLine(l){"
 		"  var s=l.toLowerCase();"
-		"  if(s.includes('[hit]'))  return CM.hit;"
-		"  if(s.includes('[miss]')) return CM.miss;"
-		"  if(s.includes('(webif'))return CM.webif;"
-		"  if(s.includes('(ban'))  return CM.ban;"
-		"  if(s.includes('(net'))  return CM.net;"
-		"  if(s.includes('(proto'))return CM.proto;"
-		"  if(s.includes('(conf')) return CM.conf;"
-		"  if(s.includes('error')) return CM.err;"
-		"  if(s.includes('warn'))  return CM.warn;"
+		"  if(s.indexOf('[hit]')>=0)  return CM.hit;"
+		"  if(s.indexOf('[miss]')>=0) return CM.miss;"
+		"  if(s.indexOf('(webif')>=0) return CM.webif;"
+		"  if(s.indexOf('(ban')>=0)   return CM.ban;"
+		"  if(s.indexOf('(net')>=0)   return CM.net;"
+		"  if(s.indexOf('(proto')>=0) return CM.proto;"
+		"  if(s.indexOf('(conf')>=0)  return CM.conf;"
+		"  if(s.indexOf('error')>=0)  return CM.err;"
+		"  if(s.indexOf('warn')>=0)   return CM.warn;"
 		"  return null;"
 		"}"
 
+		/* ---- append lines ---- */
 		"function updateLineCnt(){"
-		"  var spans=document.getElementById('lp').children;"
-		"  var vis=0;"
-		"  for(var i=0;i<spans.length;i++)"
-		"    if(spans[i].style.display!=='none')vis++;"
-		"  document.getElementById('linecnt').textContent=vis;"
+		"  var spans=document.getElementById('lp').children,v=0;"
+		"  for(var i=0;i<spans.length;i++)if(spans[i].style.display!=='none')v++;"
+		"  var lc=document.getElementById('linecnt');if(lc)lc.textContent=v;"
 		"}"
-
 		"function appendLines(entries){"
 		"  var pre=document.getElementById('lp');"
-		"  var maxl=parseInt(document.getElementById('maxlines').value)||200;"
-		"  entries.forEach(function(e){"
-		"    var line=e.line||e;"
-		"    var usr=e.usr||'';"
+		"  if(!pre)return;"
+		"  var maxl=parseInt((document.getElementById('maxlines')||{}).value)||200;"
+		"  for(var i=0;i<entries.length;i++){"
+		"    var e=entries[i];"
+		"    var line=typeof e==='string'?e:(e.line||'')+'';"
+		"    var usr=typeof e==='string'?'':(e.usr||'')+'';"
 		"    var span=document.createElement('span');"
-		"    span.style.display='block';"
-		"    span.style.whiteSpace='pre';"
-		"    var c=colorLine(line);"
-		"    if(c)span.style.color=c;"
+		"    span.style.cssText='display:block;white-space:pre;';"
+		"    var col=colorLine(line);"
+		"    if(col)span.style.color=col;"
 		"    span.setAttribute('data-raw',line);"
 		"    if(usr)span.setAttribute('data-usr',usr);"
-		/* User badge — inspired by OSCam's <li class="username"> per log entry */
-		"    if(usr){"
-		"      var badge=document.createElement('span');"
-		"      badge.textContent=usr+' ';"
-		"      badge.style.cssText='display:inline-block;min-width:9ch;font-size:10px;"
-		"        color:#60a5fa;opacity:0.75;margin-right:4px;font-family:var(--mono);';"
-		"      badge.title='User: '+usr;"
-		"      span.appendChild(badge);"
-		"    } else {"
-		"      var ph=document.createElement('span');"
-		"      ph.style.cssText='display:inline-block;min-width:9ch;margin-right:4px;';"
-		"      span.appendChild(ph);"
-		"    }"
-		"    var txt=document.createTextNode(line+'\n');"
-		"    span.appendChild(txt);"
 		"    var show=!filterRe||filterRe.test(line)||(usr&&filterRe.test(usr));"
-		"    if(!show)span.style.display='none';"
+		"    span.style.display=show?'block':'none';"
+		"    if(usr){"
+		"      var b=document.createElement('span');"
+		"      b.textContent='['+usr+'] ';"
+		"      b.style.cssText='font-size:10px;color:#60a5fa;opacity:.85;font-family:var(--mono);';"
+		"      b.title='User: '+usr;"
+		"      span.appendChild(b);"
+		"    }"
+		"    span.appendChild(document.createTextNode(line));"
 		"    pre.appendChild(span);"
-		"  });"
+		"  }"
 		"  while(pre.children.length>maxl)pre.removeChild(pre.firstChild);"
 		"  updateLineCnt();"
 		"  var w=document.getElementById('lw');"
-		"  if(!hovered&&document.getElementById('asc').checked)"
+		"  if(w&&!hovered&&document.getElementById('asc')&&document.getElementById('asc').checked)"
 		"    w.scrollTop=w.scrollHeight;"
 		"}"
 
+		/* ---- poll loop ---- */
 		"function poll(){"
-		"  if(document.getElementById('paused').checked)return;"
-		"  fetch('/logpoll?since='+lastid+'&debug='+curmask)"
-		"    .then(r=>r.json())"
-		"    .then(d=>{"
+		"  if(document.getElementById('paused')&&document.getElementById('paused').checked)return;"
+		"  fetch('/logpoll?since='+lastid+'&debug='+curmask,{credentials:'same-origin'})"
+		"    .then(function(r){"
+		"      if(r.status===401||r.status===302){window.location.href='/login';return null;}"
+		"      return r.json();"
+		"    })"
+		"    .then(function(d){"
+		"      if(!d)return;"
 		"      if(d.debug!==undefined&&d.debug!==curmask){curmask=d.debug;updateDbgUI();}"
 		"      if(d.next!==undefined)lastid=d.next;"
-		/* Handle both OSCam-style [{id,usr,line}] and flat [string] */
 		"      if(d.lines&&d.lines.length)appendLines(d.lines);"
-		"    }).catch(()=>{});"
+		"    }).catch(function(){});"
 		"}"
-		"updateDbgUI();setInterval(poll,1000);poll();"
+		"updateDbgUI();"
+		"setInterval(poll,1000);"
+		"poll();"
 		"</script>",
 		ring_now, g_dblevel, masks_arr);
 
@@ -1257,9 +1258,12 @@ void send_logpoll(int fd, const char *qs)
 
 	if (dbg_s[0]) {
 		long v = strtol(dbg_s, NULL, 0);
-		if (v >= 0 && v <= 0xFFFF && (uint16_t)v != g_dblevel) {
-			g_dblevel = (uint16_t)v;
-			tcmg_log_dbg(D_WEBIF, "livelog debug_level → %u", g_dblevel);
+		if (v >= 0 && v <= 0xFFFF) {
+			if ((uint16_t)v != g_dblevel) {
+				g_dblevel = (uint16_t)v;
+				tcmg_log_dbg(D_WEBIF, "livelog debug_level -> %u", g_dblevel);
+			}
+			/* Always echo back so JS stays in sync */
 		}
 	}
 
@@ -1274,8 +1278,8 @@ void send_logpoll(int fd, const char *qs)
 	                                WEB_MAX_LINES_POLL, &next_id);
 
 	/* Each entry: {"id":N,"usr":"...","line":"..."} */
-	int   bsz = count * 512 + 256, pos = 0;
-	char *buf = (char *)malloc(bsz);
+	int   bsz = count * 2800 + 512, pos = 0;
+	char *buf = (char *)malloc(bsz < 512 ? 512 : bsz);
 	if (!buf) {
 		for (int i = 0; i < count; i++) { free(lines[i]); free(users[i]); }
 		return;
@@ -1285,7 +1289,7 @@ void send_logpoll(int fd, const char *qs)
 		"{\"debug\":%u,\"next\":%d,\"lines\":[", g_dblevel, next_id);
 
 	for (int i = 0; i < count; i++) {
-		char esc_line[512], esc_usr[64];
+		char esc_line[2048], esc_usr[128];
 		json_escape(lines[i], esc_line, sizeof(esc_line));
 		json_escape(users[i][0] ? users[i] : "", esc_usr, sizeof(esc_usr));
 		free(lines[i]);
@@ -1768,7 +1772,7 @@ void send_page_power(int fd, const char *qs)
 			"  <p style='font-size:12px;color:var(--t1);margin-bottom:18px;line-height:1.6'>"
 			"    Drops connections and reloads configuration."
 			"  </p>"
-			"  <a href='/power?action=restart' class='btn bp' style='width:100%;justify-content:center'>"
+			"  <a href='/power?action=restart' class='btn bp' style='width:100%%;justify-content:center'>"
 			"    <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' width='14' height='14'>"
 			"      <polyline points='23 4 23 10 17 10'/>"
 			"      <path d='M20.49 15a9 9 0 1 1-2.12-9.36L23 10'/>"
@@ -1788,7 +1792,7 @@ void send_page_power(int fd, const char *qs)
 			"  <p style='font-size:12px;color:var(--t1);margin-bottom:18px;line-height:1.6'>"
 			"    Stops all connections. Process will not restart."
 			"  </p>"
-			"  <a href='/power?action=shutdown' class='btn bd_' style='width:100%;justify-content:center'>"
+			"  <a href='/power?action=shutdown' class='btn bd_' style='width:100%%;justify-content:center'>"
 			"    <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' width='14' height='14'>"
 			"      <path d='M18.36 6.64a9 9 0 1 1-12.73 0'/><line x1='12' y1='2' x2='12' y2='12'/>"
 			"    </svg>"

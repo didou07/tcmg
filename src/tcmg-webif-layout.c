@@ -474,18 +474,25 @@ int emit_header(char **buf, int *bsz, int pos,
 	         g_cfg.webif_bindaddr[0]?g_cfg.webif_bindaddr:"0.0.0.0",
 	         g_cfg.webif_port);
 
-	static const struct { const char *id; const char *href; const char *icon; const char *label; } nav_items[] = {
-		{"status",  "/status",  N_STATUS, "Dashboard"},
-		{"livelog", "/livelog", N_LOG,    "Live Log"},
-		{NULL,NULL,NULL,NULL}, /* separator */
-		{"users",   "/users",   N_USERS,  "Users"},
-		{"failban", "/failban", N_BAN,    "Fail-Ban"},
-		{NULL,NULL,NULL,NULL}, /* separator */
-		{"config",  "/config",  N_CFG,    "Config"},
-		{"power",   "/power",   N_POWER,  "Power"},
-		{NULL,NULL,NULL,NULL}, /* separator */
-		{"tvcas",   "/tvcas",   N_TVCAS,  "TVCAS"},
-		{NULL,NULL,NULL,NULL}  /* end */
+	/* type: 0=nav link, 1=separator, 2=end */
+	static const struct {
+		int         type;
+		const char *id;
+		const char *href;
+		const char *icon;
+		const char *label;
+	} nav_items[] = {
+		{0, "status",  "/status",  N_STATUS, "Dashboard"},
+		{0, "livelog", "/livelog", N_LOG,    "Live Log"},
+		{1, NULL, NULL, NULL, NULL}, /* separator */
+		{0, "users",   "/users",   N_USERS,  "Users"},
+		{0, "failban", "/failban", N_BAN,    "Fail-Ban"},
+		{1, NULL, NULL, NULL, NULL}, /* separator */
+		{0, "config",  "/config",  N_CFG,    "Config"},
+		{0, "tvcas",   "/tvcas",   N_TVCAS,  "TVCAS"},
+		{1, NULL, NULL, NULL, NULL}, /* separator */
+		{0, "power",   "/power",   N_POWER,  "Power"},
+		{2, NULL, NULL, NULL, NULL}  /* end */
 	};
 
 	pos = buf_printf(buf,bsz,pos,
@@ -500,10 +507,10 @@ int emit_header(char **buf, int *bsz, int pos,
 		"</button>"
 		"<div class='tnav'>");
 
-	for (int i = 0; nav_items[i].label || nav_items[i].id == NULL; i++) {
-		if (!nav_items[i].id) {
-			/* sentinel for separator — but skip if both neighbors are end or sep */
-			if (nav_items[i+1].id || nav_items[i+1].label)
+	for (int i = 0; nav_items[i].type != 2; i++) {
+		if (nav_items[i].type == 1) {
+			/* separator — only emit if next entry is a nav item */
+			if (nav_items[i+1].type == 0)
 				pos = buf_printf(buf,bsz,pos,"<div class='sep'></div>");
 			continue;
 		}
