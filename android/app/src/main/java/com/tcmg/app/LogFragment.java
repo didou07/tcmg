@@ -94,8 +94,9 @@ public final class LogFragment extends Fragment {
         if (binding == null) return;
         int[]  nextId = {logNextId};
         String lines  = TcmgNative.getLogLines(logNextId, MAX_LINES, nextId);
-        if (lines == null || lines.isEmpty()) return;
+        // Always advance logNextId so we never re-fetch the same lines
         logNextId = nextId[0];
+        if (lines == null || lines.isEmpty()) return;
         appendLine(lines);
     }
 

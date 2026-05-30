@@ -31,6 +31,7 @@ public final class EditorFragment extends Fragment {
     @Nullable private FragmentEditorBinding binding;
     private int     activeFileIndex = 0;
     private boolean unsavedChanges  = false;
+    private boolean loadingFile      = false;  // suppress TextWatcher during programmatic setText
 
     @Override @Nullable
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
@@ -97,7 +98,7 @@ public final class EditorFragment extends Fragment {
         binding.etEditor.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int st, int c, int a) {}
             @Override public void onTextChanged(CharSequence s, int st, int b, int c) {}
-            @Override public void afterTextChanged(Editable e) { unsavedChanges = true; }
+            @Override public void afterTextChanged(Editable e) { if (!loadingFile) unsavedChanges = true; }
         });
     }
 
@@ -111,7 +112,9 @@ public final class EditorFragment extends Fragment {
         if (binding == null) return;
         File file = getConfigFile(index);
         if (!file.exists()) {
+            loadingFile = true;
             binding.etEditor.setText("");
+            loadingFile = false;
             binding.etEditor.setHint(getString(R.string.editor_empty));
             unsavedChanges = false;
             return;
@@ -119,12 +122,16 @@ public final class EditorFragment extends Fragment {
         try (FileReader reader = new FileReader(file)) {
             char[] buf = new char[(int) file.length()];
             int len = reader.read(buf);
+            loadingFile = true;
             binding.etEditor.setText(len > 0 ? new String(buf, 0, len) : "");
+            loadingFile = false;
             binding.etEditor.setHint("");
             binding.etEditor.setSelection(0);
             unsavedChanges = false;
         } catch (IOException e) {
+            loadingFile = true;
             binding.etEditor.setText("");
+            loadingFile = false;
             binding.etEditor.setHint("Error reading file: " + e.getMessage());
         }
     }

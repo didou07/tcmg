@@ -81,7 +81,7 @@
             android:fontFamily="monospace"
             android:textSize="12sp"
             android:textColor="@color/log_text"
-            android:textIsSelectable="true"
+            android:textIsSelectable="false"
             android:lineSpacingMultiplier="1.6"
             android:paddingStart="14dp"
             android:paddingEnd="14dp"

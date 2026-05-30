@@ -309,6 +309,20 @@ void send_page_users(int fd)
 
 	pos = emit_header(&buf, &bsz, pos, "Users", "users");
 
+	pos = buf_printf(&buf, &bsz, pos,
+		"<div class='ph'>"
+		"  <div><div class='pt'>Users</div>"
+		"  <div class='ps'>Manage accounts and view statistics</div></div>"
+		"  <div class='ha'>"
+		"    <button class='btn bg sm' onclick='location.reload()'>"
+		ICO_RELOAD "&nbsp;Refresh</button>"
+		"    <button class='btn bp sm' onclick=\"openAddUser()\">"
+		"<svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>"
+		"<line x1='12' y1='5' x2='12' y2='19'/><line x1='5' y1='12' x2='19' y2='12'/>"
+		"</svg>&nbsp;Add User</button>"
+		"  </div>"
+		"</div>");
+
 	/* Count totals for summary bar */
 	int total_u = 0, active_u = 0, disabled_u = 0, expired_u = 0, online_u = 0;
 	time_t now_u = time(NULL);
@@ -346,14 +360,6 @@ void send_page_users(int fd)
 		"<div class='ttb'>"
 		"<input class='tsrch' id='usrSearch' placeholder='&#128269; Search users...' "
 		"oninput='filterUsers()' autocomplete='off'>"
-		"<div class='ttb-r'>"
-		"  <button class='btn bg sm' onclick='location.reload()'>"
-		ICO_RELOAD "&nbsp;Refresh</button>"
-		"  <button class='btn bp sm' onclick=\"openAddUser()\">"
-		"<svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>"
-		"<line x1='12' y1='5' x2='12' y2='19'/><line x1='5' y1='12' x2='19' y2='12'/>"
-		"</svg>&nbsp;Add User</button>"
-		"</div>"
 		"</div>");
 
 	S_SERVER_STATS st = collect_stats();
@@ -755,6 +761,21 @@ void send_page_failban(int fd, const char *qs)
 
 	/* ── Summary bar ── */
 	pos = buf_printf(&buf, &bsz, pos,
+		"<div class='ph'>"
+		"  <div><div class='pt'>Fail-Ban</div>"
+		"  <div class='ps'>IP addresses blocked due to authentication failures</div></div>"
+		"  <div class='ha'>");
+	if (total_bans > 0)
+		pos = buf_printf(&buf, &bsz, pos,
+			"    <a href='/failban?action=clearall' class='btn bd_ sm'>"
+			ICO_TRASH "&nbsp;Clear All</a>");
+	pos = buf_printf(&buf, &bsz, pos,
+		"    <button class='btn bg sm' onclick='location.reload()'>"
+		ICO_RELOAD "&nbsp;Refresh</button>"
+		"  </div>"
+		"</div>");
+
+	pos = buf_printf(&buf, &bsz, pos,
 		"<div class='sbar'>"
 		"<div class='sbar-item'><div class='sbl'>Active Bans</div>"
 		"  <div class='sbv%s'>%d</div></div>"
@@ -769,19 +790,6 @@ void send_page_failban(int fd, const char *qs)
 		total_fails > 0 ? " to" : "", total_fails,
 		BAN_MAX_FAILS,
 		BAN_SECS);
-
-	/* ── Toolbar ── */
-	pos = buf_printf(&buf, &bsz, pos,
-		"<div class='ttb'>"
-		"<div class='ttb-r'>");
-	if (total_bans > 0)
-		pos = buf_printf(&buf, &bsz, pos,
-			"  <a href='/failban?action=clearall' class='btn bd_ sm'>"
-			ICO_TRASH "&nbsp;Clear All</a>");
-	pos = buf_printf(&buf, &bsz, pos,
-		"  <button class='btn bg sm' onclick='location.reload()'>"
-		ICO_RELOAD "&nbsp;Refresh</button>"
-		"</div></div>");
 
 	pos = buf_printf(&buf, &bsz, pos,
 		"<div class='tw'><table>"
