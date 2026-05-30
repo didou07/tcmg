@@ -12,7 +12,7 @@ extern const char CSS[];
 /* ── Server constants ───────────────────────────────────────────────────── */
 #define WEB_SERVER_NAME     "tcmg/" TCMG_VERSION
 #define WEB_READ_TIMEOUT_S  10
-#define WEB_BUF_SIZE        8192
+#define WEB_BUF_SIZE        16384   /* recv buffer for HTTP headers + partial body */
 #define WEB_MAX_LINES_POLL  200
 #define WEB_SESSION_TIMEOUT 3600
 #define WEB_SESSION_LEN     32

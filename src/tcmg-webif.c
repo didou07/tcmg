@@ -73,24 +73,25 @@ static void send_json(int fd, const char *json)
 /* ── Main request dispatcher ────────────────────────────────────────────── */
 void handle_request(int fd, const char *client_ip)
 {
-	/* ── Read raw HTTP bytes ─────────────────────────────────────────────── */
-	char raw[WEB_BUF_SIZE];
+	/* ── Read raw HTTP bytes (heap — 16 KB header buffer) ────────────────── */
+	char *raw = (char *)malloc(WEB_BUF_SIZE);
+	if (!raw) return;
 	int  rlen = 0;
 	net_set_timeout(fd, WEB_READ_TIMEOUT_S);
 
-	while (rlen < (int)sizeof(raw) - 1) {
-		int n = (int)recv(fd, RECV_CAST(raw + rlen), sizeof(raw) - 1 - rlen, 0);
+	while (rlen < WEB_BUF_SIZE - 1) {
+		int n = (int)recv(fd, RECV_CAST(raw + rlen), WEB_BUF_SIZE - 1 - rlen, 0);
 		if (n <= 0) break;
 		rlen += n;
 		raw[rlen] = '\0';
 		if (strstr(raw, "\r\n\r\n")) break;
 	}
-	if (rlen < 10) return;
+	if (rlen < 10) { free(raw); return; }
 	raw[rlen] = '\0';
 
 	/* ── Parse into structured request; POST body assembled here ─────────  */
 	s_http_req req;
-	if (!req_parse(&req, fd, raw, rlen)) return;
+	if (!req_parse(&req, fd, raw, rlen)) { free(raw); return; }
 
 	if (strcmp(req.path, "/logpoll") != 0)
 		tcmg_log_dbg(D_WEBIF, "%s %s%s%s", req.method, req.path,
@@ -98,6 +99,7 @@ void handle_request(int fd, const char *client_ip)
 
 	/* ── Auth ─────────────────────────────────────────────────────────────  */
 	int authed = request_is_authed(raw);
+	free(raw); raw = NULL;  /* no longer needed after auth check */
 
 	/* ── POST /login  (unauthenticated) ──────────────────────────────────── */
 	if (strcmp(req.path, "/login") == 0 && strcmp(req.method, "POST") == 0)

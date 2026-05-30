@@ -299,21 +299,28 @@ void get_param(const char *qs, const char *key, char *out, int outsz)
 }
 
 /* form_get — like get_param but operates on POST body (same URL encoding).
- * Now calls url_decode() instead of re-implementing it. */
+ * Matches only at start of body or after '&' to avoid partial key matches
+ * (e.g. "u=" must not match inside "username="). */
 void form_get(const char *body, const char *key, char *out, int outsz)
 {
 	out[0] = '\0';
 	if (!body) return;
-	char needle[64];
-	snprintf(needle, sizeof(needle), "%s=", key);
-	const char *p = strstr(body, needle);
-	if (!p) return;
-	p += strlen(needle);
-	int i = 0;
-	while (*p && *p != '&' && i < outsz - 1)
-		out[i++] = *p++;
-	out[i] = '\0';
-	url_decode(out);   /* single implementation — no duplication */
+	int klen = (int)strlen(key);
+	const char *p = body;
+	while (*p) {
+		/* Accept match only at start of body or right after '&' */
+		if (strncmp(p, key, klen) == 0 && p[klen] == '=') {
+			p += klen + 1;
+			int i = 0;
+			while (*p && *p != '&' && i < outsz - 1)
+				out[i++] = *p++;
+			out[i] = '\0';
+			url_decode(out);
+			return;
+		}
+		while (*p && *p != '&') p++;
+		if (*p == '&') p++;
+	}
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -332,7 +339,7 @@ void send_headers_ex(int fd, int code, const char *reason,
 	char cookie_line[256] = "";
 	if (set_cookie && set_cookie[0])
 		snprintf(cookie_line, sizeof(cookie_line),
-		         "Set-Cookie: tcmg_session=%s; Path=/; HttpOnly; SameSite=Strict\r\n",
+		         "Set-Cookie: tcmg_session=%s; Path=/; HttpOnly; SameSite=Lax\r\n",
 		         set_cookie);
 
 	snprintf(hdr, sizeof(hdr),
@@ -379,7 +386,8 @@ void send_redirect_with_cookie(int fd, const char *location, const char *token)
 	char hdr[512];
 	snprintf(hdr, sizeof(hdr),
 	         "HTTP/1.1 302 Found\r\nLocation: %s\r\n"
-	         "Set-Cookie: tcmg_session=%s; Path=/; HttpOnly; SameSite=Strict\r\n"
+	         "Set-Cookie: tcmg_session=%s; Path=/; HttpOnly; SameSite=Lax\r\n"
+	         "Cache-Control: no-store\r\n"
 	         "Content-Length: 0\r\nConnection: close\r\n\r\n",
 	         location, token);
 	send(fd, SO_CAST(hdr), (int)strlen(hdr), MSG_NOSIGNAL);
