@@ -5,8 +5,8 @@
 # Version is bumped manually in src/tcmg-globals.h — no auto-bump here.
 #
 # Jobs:
-#   linux    — GCC on ubuntu-latest   → tcmg (ELF x86-64)
-#   windows  — MinGW-w64              → tcmg_x64.exe
+#   linux    — GCC on ubuntu-latest   → build/tcmg  (ELF x86-64)
+#   windows  — MinGW-w64              → build/tcmg_x64.exe
 #   android  — NDK 27 + Gradle        → signed release APK
 #   release  — tags & publishes GitHub Release using current version in code
 #
@@ -60,9 +60,9 @@ jobs:
 
       - name: Smoke-test binary
         run: |
-          file tcmg
-          ./tcmg --version 2>/dev/null || ./tcmg -V 2>/dev/null || true
-          ls -lh tcmg
+          file build/tcmg
+          ./build/tcmg --version 2>/dev/null || ./build/tcmg -V 2>/dev/null || true
+          ls -lh build/tcmg
 
       - name: Read version
         id: ver
@@ -73,7 +73,7 @@ jobs:
       - name: Package
         run: |
           ARCHIVE="tcmg-${{ steps.ver.outputs.version }}-linux-x86_64.tar.gz"
-          tar -czf "${ARCHIVE}" tcmg
+          tar -czf "${ARCHIVE}" -C build tcmg
           sha256sum "${ARCHIVE}" > "${ARCHIVE}.sha256"
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
 
@@ -124,8 +124,8 @@ jobs:
       - name: Smoke-test
         shell: msys2 {0}
         run: |
-          file tcmg.exe
-          ls -lh tcmg.exe
+          file build/tcmg.exe
+          ls -lh build/tcmg.exe
 
       - name: Read version
         id: ver
@@ -138,7 +138,7 @@ jobs:
         shell: msys2 {0}
         run: |
           ARCHIVE="tcmg-${{ steps.ver.outputs.version }}-windows-x64.zip"
-          zip "${ARCHIVE}" tcmg.exe
+          zip "${ARCHIVE}" build/tcmg.exe
           sha256sum "${ARCHIVE}" > "${ARCHIVE}.sha256"
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
 

@@ -311,8 +311,6 @@ void send_page_users(int fd)
 
 	pos = buf_printf(&buf, &bsz, pos,
 		"<div class='ph'>"
-		"  <div><div class='pt'>Users</div>"
-		"  <div class='ps'>Manage accounts and view statistics</div></div>"
 		"  <div class='ha'>"
 		"    <button class='btn bg sm' onclick='location.reload()'>"
 		ICO_RELOAD "&nbsp;Refresh</button>"
@@ -469,7 +467,6 @@ void send_page_users(int fd)
 			"<path d='M18.36 6.64a9 9 0 1 1-12.73 0'/><line x1='12' y1='2' x2='12' y2='12'/>"
 			"</svg></button></td>"
 			"<td><div class='flex gap8'>"
-			"  <span class='av'>%.2s</span>"
 			"  <span class='u-link bold' onclick=\"editUser('%s')\">%s</span>"
 			"</div></td>"
 			"<td class='mono'><span class='badge bbl'>%04X</span></td>"
@@ -505,7 +502,6 @@ void send_page_users(int fd)
 			"</tr>",
 			a->user,
 			btn_cls, a->user, a->user,
-			a->user, /* avatar initials (%.2s takes first 2 chars) */
 			a->user, a->user,
 			a->caid,
 			a->active > 0 ? " tg bold" : "", (int)a->active,
@@ -694,7 +690,7 @@ void send_page_users(int fd)
 		"  var rows=document.getElementById('usrBody').rows;"
 		"  for(var i=0;i<rows.length;i++){"
 		"    var u=(rows[i].getAttribute('data-user')||'').toLowerCase();"
-		"    rows[i].style.display=(!q||u.includes(q))?'':' none';"
+		"    rows[i].style.display=(!q||u.includes(q))?'':'none';"
 		"  }"
 		"}"
 		/* ── Column sort ── */
@@ -762,8 +758,6 @@ void send_page_failban(int fd, const char *qs)
 	/* ── Summary bar ── */
 	pos = buf_printf(&buf, &bsz, pos,
 		"<div class='ph'>"
-		"  <div><div class='pt'>Fail-Ban</div>"
-		"  <div class='ps'>IP addresses blocked due to authentication failures</div></div>"
 		"  <div class='ha'>");
 	if (total_bans > 0)
 		pos = buf_printf(&buf, &bsz, pos,
@@ -876,9 +870,6 @@ void send_page_config(int fd)
 	}
 
 	pos = buf_printf(&buf, &bsz, pos,
-		"<div class='ph'>"
-		"  <div><div class='pt'>Config Editor</div></div>"
-		"</div>"
 		/* Tab bar */
 		"<div style='display:flex;gap:0;margin-bottom:-1px;position:relative;z-index:1'>"
 		"  <button class='ctab act' id='tab_cfg' onclick=\"switchTab('cfg')\">tcmg.cfg</button>"
@@ -1050,10 +1041,6 @@ void send_page_livelog(int fd)
 	if (!buf) return;
 
 	pos = emit_header(&buf, &bsz, pos, "Live Log", "livelog");
-	pos = buf_printf(&buf, &bsz, pos,
-		"<div class='ph'>"
-		"  <div><div class='pt'>Live Log</div></div>"
-		"</div>");
 
 	/* Debug level toggles */
 	pos = buf_printf(&buf, &bsz, pos,
@@ -1680,55 +1667,51 @@ void handle_srvid2_save(int fd, const char *post_body)
 /* ════════════════════════════════════════════════════════════════════════════
  * Action pages: Shutdown & Restart  (single implementation)
  *
- * send_page_action(fd, qs, is_restart=0) → Shutdown
- * send_page_action(fd, qs, is_restart=1) → Restart
+ * Combined Power page: Restart + Shutdown in one place
  * ════════════════════════════════════════════════════════════════════════════*/
-static void send_page_action(int fd, const char *qs, int is_restart)
+void send_page_power(int fd, const char *qs)
 {
-	char confirm[8];
+	char action[16], confirm[8];
+	get_param(qs, "action",  action,  sizeof(action));
 	get_param(qs, "confirm", confirm, sizeof(confirm));
 
-	const char *title      = is_restart ? "Restart"  : "Shutdown";
-	const char *nav_id     = is_restart ? "restart"  : "shutdown";
-	const char *confirm_url= is_restart ? "/restart?confirm=yes" : "/shutdown?confirm=yes";
-	const char *dico_cls   = is_restart ? "dico info" : "dico danger";
-	const char *btn_cls    = is_restart ? "btn bp"    : "btn bd_";
-	const char *icon_svg   = is_restart
-		? "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'>"
-		  "<polyline points='23 4 23 10 17 10'/>"
-		  "<path d='M20.49 15a9 9 0 1 1-2.12-9.36L23 10'/>"
-		  "</svg>"
-		: "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'>"
-		  "<path d='M18.36 6.64a9 9 0 1 1-12.73 0'/><line x1='12' y1='2' x2='12' y2='12'/>"
-		  "</svg>";
-
-	int   bsz = 8192, pos = 0;
+	int   bsz = 12288, pos = 0;
 	char *buf = (char *)malloc(bsz);
 	if (!buf) return;
 
-	pos = emit_header(&buf, &bsz, pos, title, nav_id);
+	pos = emit_header(&buf, &bsz, pos, "Power", "power");
 
-	if (strcmp(confirm, "yes") == 0) {
-		/* ── Execute ── */
-		tcmg_log("%s requested via webif", title);
-		if (is_restart) { g_restart = 1; }
+	/* ── Confirmed action ── */
+	if (strcmp(confirm, "yes") == 0 && action[0]) {
+		int is_restart = (strcmp(action, "restart") == 0);
+		tcmg_log("%s requested via webif", is_restart ? "restart" : "shutdown");
+		if (is_restart) g_restart = 1;
 		g_running = 0;
 
 		pos = buf_printf(&buf, &bsz, pos,
+			"<div class='pg-center'>"
 			"<div class='done-card'>"
-			"<div class='%s'>%s</div>"
+			"<div class='%s' style='margin:0 auto 16px'>"
+			"  <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'>"
+			"    %s"
+			"  </svg>"
+			"</div>"
 			"<h2>%s</h2>"
-			"<p>%s</p>"
+			"<p style='margin-top:8px'>%s</p>"
 			"%s"
-			"</div>",
-			dico_cls, icon_svg,
+			"</div></div>",
+			is_restart ? "dico info" : "dico danger",
+			is_restart
+				? "<polyline points='23 4 23 10 17 10'/><path d='M20.49 15a9 9 0 1 1-2.12-9.36L23 10'/>"
+				: "<path d='M18.36 6.64a9 9 0 1 1-12.73 0'/><line x1='12' y1='2' x2='12' y2='12'/>",
 			is_restart ? "Restarting&hellip;" : "Server Stopped",
 			is_restart
-				? "Config will be reloaded.<br>Redirecting when back online&hellip;"
-				: "TCMG has been shut down.<br>All connections were dropped.",
+				? "Config will be reloaded. Redirecting when back online&hellip;"
+				: "TCMG has been shut down. All connections were dropped.",
 			is_restart
-				? "<div class='spill' style='display:inline-flex;margin-top:6px'>"
-				  "<div class='pulse sm'></div>&nbsp;Waiting for server&hellip;</div>"
+				? "<div style='display:flex;justify-content:center;margin-top:14px'>"
+				  "<div class='spill'><div class='pulse sm'></div>&nbsp;Waiting for server&hellip;</div>"
+				  "</div>"
 				  "<script>setTimeout(function(){"
 				  "  var t=setInterval(function(){"
 				  "    fetch('/api/status',{cache:'no-store'})"
@@ -1737,26 +1720,83 @@ static void send_page_action(int fd, const char *qs, int is_restart)
 				  "  },1500);"
 				  "},3500);</script>"
 				: "");
-	} else {
-		/* ── Confirmation prompt ── */
+	}
+	/* ── Pending confirmation ── */
+	else if (action[0]) {
+		int is_restart = (strcmp(action, "restart") == 0);
 		pos = buf_printf(&buf, &bsz, pos,
+			"<div class='pg-center'>"
 			"<div class='dlg'>"
-			"<div class='%s'>%s</div>"
+			"<div class='%s' style='margin:0 auto 18px'>"
+			"  <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'>"
+			"    %s"
+			"  </svg>"
+			"</div>"
 			"<h2>%s Server?</h2>"
 			"<p>%s</p>"
 			"<div class='da'>"
-			"  <a href='%s' class='%s'>%s Confirm %s</a>"
-			"  <a href='/status' class='btn bg'>Cancel</a>"
+			"  <a href='/power?action=%s&confirm=yes' class='%s'>Confirm %s</a>"
+			"  <a href='/power' class='btn bg'>Cancel</a>"
 			"</div>"
-			"</div>",
-			dico_cls, icon_svg,
-			title,
+			"</div></div>",
+			is_restart ? "dico info" : "dico danger",
 			is_restart
-				? "Active connections will be dropped.<br>"
-				  "Configuration will be reloaded on restart."
-				: "All active connections will be dropped immediately.<br>"
-				  "The process will exit and will <strong>not</strong> restart.",
-			confirm_url, btn_cls, icon_svg, title);
+				? "<polyline points='23 4 23 10 17 10'/><path d='M20.49 15a9 9 0 1 1-2.12-9.36L23 10'/>"
+				: "<path d='M18.36 6.64a9 9 0 1 1-12.73 0'/><line x1='12' y1='2' x2='12' y2='12'/>",
+			is_restart ? "Restart" : "Shutdown",
+			is_restart
+				? "Active connections will be dropped and configuration reloaded on restart."
+				: "All active connections will be dropped immediately. The process will <strong>not</strong> restart.",
+			is_restart ? "restart" : "shutdown",
+			is_restart ? "btn bp" : "btn bd_",
+			is_restart ? "Restart" : "Shutdown");
+	}
+	/* ── Main power panel ── */
+	else {
+		pos = buf_printf(&buf, &bsz, pos,
+			"<div style='display:flex;gap:16px;flex-wrap:wrap;justify-content:center;max-width:600px;margin:0 auto'>"
+
+			/* Restart card */
+			"<div class='card' style='flex:1;min-width:220px;text-align:center;padding:28px 20px'>"
+			"  <div class='dico info' style='margin:0 auto 16px'>"
+			"    <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'>"
+			"      <polyline points='23 4 23 10 17 10'/>"
+			"      <path d='M20.49 15a9 9 0 1 1-2.12-9.36L23 10'/>"
+			"    </svg>"
+			"  </div>"
+			"  <h3 style='font-size:16px;font-weight:700;margin-bottom:8px'>Restart</h3>"
+			"  <p style='font-size:12px;color:var(--t1);margin-bottom:18px;line-height:1.6'>"
+			"    Drops connections and reloads configuration."
+			"  </p>"
+			"  <a href='/power?action=restart' class='btn bp' style='width:100%;justify-content:center'>"
+			"    <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' width='14' height='14'>"
+			"      <polyline points='23 4 23 10 17 10'/>"
+			"      <path d='M20.49 15a9 9 0 1 1-2.12-9.36L23 10'/>"
+			"    </svg>"
+			"    Restart Server"
+			"  </a>"
+			"</div>"
+
+			/* Shutdown card */
+			"<div class='card' style='flex:1;min-width:220px;text-align:center;padding:28px 20px'>"
+			"  <div class='dico danger' style='margin:0 auto 16px'>"
+			"    <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'>"
+			"      <path d='M18.36 6.64a9 9 0 1 1-12.73 0'/><line x1='12' y1='2' x2='12' y2='12'/>"
+			"    </svg>"
+			"  </div>"
+			"  <h3 style='font-size:16px;font-weight:700;margin-bottom:8px'>Shutdown</h3>"
+			"  <p style='font-size:12px;color:var(--t1);margin-bottom:18px;line-height:1.6'>"
+			"    Stops all connections. Process will not restart."
+			"  </p>"
+			"  <a href='/power?action=shutdown' class='btn bd_' style='width:100%;justify-content:center'>"
+			"    <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' width='14' height='14'>"
+			"      <path d='M18.36 6.64a9 9 0 1 1-12.73 0'/><line x1='12' y1='2' x2='12' y2='12'/>"
+			"    </svg>"
+			"    Shutdown Server"
+			"  </a>"
+			"</div>"
+
+			"</div>");
 	}
 
 	pos = emit_footer(&buf, &bsz, pos);
@@ -1764,5 +1804,6 @@ static void send_page_action(int fd, const char *qs, int is_restart)
 	free(buf);
 }
 
-void send_page_shutdown(int fd, const char *qs) { send_page_action(fd, qs, 0); }
-void send_page_restart (int fd, const char *qs) { send_page_action(fd, qs, 1); }
+/* Keep old endpoints as redirects for backward compat */
+void send_page_shutdown(int fd, const char *qs) { (void)qs; send_redirect(fd, "/power?action=shutdown"); }
+void send_page_restart (int fd, const char *qs) { (void)qs; send_redirect(fd, "/power?action=restart"); }

@@ -5,22 +5,24 @@ setlocal enabledelayedexpansion
 :: ==========================================================================
 :: build.bat — tcmg Windows build script (pure C11, MinGW-w64)
 :: Source tree: all C files live in src\
+:: Build output: build\  (obj in build\obj\, binary in build\)
 ::
 :: Usage:
 ::   build.bat             x64 release build (default)
 ::   build.bat x86         32-bit build
 ::   build.bat debug       x64 debug build (no optimisation, with symbols)
-::   build.bat clean       remove obj\ and bin\
+::   build.bat clean       remove build\
 ::   build.bat help        show this help
 ::
 :: Requirements: MinGW-w64 in PATH
 ::   https://winlibs.com  or  https://www.msys2.org
 :: ==========================================================================
 
-set BINARY_NAME=tcmg.exe
 set ARCH=x64
 set DEBUG=0
 set SRCDIR=src
+set BUILDDIR=build
+set OBJDIR=build\obj
 
 :: -- Parse arguments -------------------------------------------------------
 for %%A in (%*) do (
@@ -120,8 +122,8 @@ set LDFLAGS=-lws2_32 -ladvapi32 -lbcrypt ^
   %LD_EXTRA%
 
 :: -- Create directories ----------------------------------------------------
-if not exist bin mkdir bin
-if not exist "obj\%ARCH%" mkdir "obj\%ARCH%"
+if not exist "%BUILDDIR%" mkdir "%BUILDDIR%"
+if not exist "%OBJDIR%\%ARCH%" mkdir "%OBJDIR%\%ARCH%"
 
 :: -- Compile -----------------------------------------------------------------
 echo --- Compiling (%SRCDIR%\*.c) ---------------------------------
@@ -129,7 +131,7 @@ echo.
 set OBJS=
 
 for %%F in (%SRCS%) do (
-    set OBJ=obj\%ARCH%\%%~nF.o
+    set OBJ=%OBJDIR%\%ARCH%\%%~nF.o
     echo  CC   %SRCDIR%\%%F
     %CC% %CFLAGS% -c "%SRCDIR%\%%F" -o "!OBJ!"
     if !errorlevel! neq 0 (
@@ -144,7 +146,7 @@ for %%F in (%SRCS%) do (
 echo.
 echo --- Linking --------------------------------------------------
 echo.
-set OUT=bin\tcmg_%ARCH%.exe
+set OUT=%BUILDDIR%\tcmg_%ARCH%.exe
 
 %CC% %CFLAGS% %OBJS% -o "%OUT%" %LDFLAGS%
 if !errorlevel! neq 0 (
@@ -179,9 +181,8 @@ exit /b 0
 
 :: -- Clean -------------------------------------------------------------------
 :clean
-echo  Cleaning...
-if exist obj rmdir /s /q obj
-if exist bin rmdir /s /q bin
+echo  Cleaning build\...
+if exist "%BUILDDIR%" rmdir /s /q "%BUILDDIR%"
 echo  Done.
 goto :eof
 
@@ -193,9 +194,10 @@ echo.
 echo    x64    64-bit Windows build (default)
 echo    x86    32-bit Windows build
 echo    debug  No optimisation, include debug symbols
-echo    clean  Remove obj\ and bin\ directories
+echo    clean  Remove build\ directory
 echo    help   Show this help
 echo.
+echo  Output: build\tcmg_x64.exe  or  build\tcmg_x86.exe
 echo  Source files are read from: src\
 echo.
 echo  Requirements:

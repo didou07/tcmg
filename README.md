@@ -27,6 +27,11 @@ tcmg/
 │   ├── tcmg-webif-tvcas.c             ← TVCAS tool page
 │   └── tcmg-webif-internal.h          ← WebIF shared types
 │
+├── build/                             ← Build output (git-ignored)
+│   ├── obj/                           ← Compiled object files
+│   ├── tcmg                           ← Linux binary
+│   └── tcmg.exe                       ← Windows binary
+│
 ├── android/                           ← Android Studio project
 │   ├── app/
 │   │   ├── build.gradle               ← Signing config (env vars or keystore.properties)
@@ -47,7 +52,7 @@ tcmg/
         └── build.yml                  ← CI: Linux · Windows · Android · Release
 ```
 
-> **Never committed:** `android/tcmg-key.jks` and `android/keystore.properties`
+> **Never committed:** `android/tcmg-key.jks`, `android/keystore.properties`, and `build/`
 > are in `.gitignore`. Signing credentials live only in GitHub Secrets and on your
 > local machine.
 
@@ -65,21 +70,23 @@ make
 make RELEASE=1 -j$(nproc)
 ```
 
+Output is placed in `build/tcmg`.
+
 Or use the helper:
 
 ```bash
-./build.sh              # Linux x64 release
-./build.sh windows      # Windows x64 release (requires mingw-w64)
+./build.sh              # Linux x64 release → build/tcmg
+./build.sh windows      # Windows x64 release → build/tcmg.exe (requires mingw-w64)
 ./build.sh all          # both platforms
-./build.sh clean
+./build.sh clean        # remove build/
 ```
 
 ### Windows (MinGW-w64)
 
 ```bat
-build.bat          :: x64 release
+build.bat          :: x64 release → build\tcmg_x64.exe
 build.bat debug    :: x64 debug
-build.bat clean
+build.bat clean    :: remove build\
 ```
 
 Requires MinGW-w64 in `PATH` — download from <https://winlibs.com>

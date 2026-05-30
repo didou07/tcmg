@@ -7,21 +7,23 @@
 #   ./build.sh linux            Build Linux x64
 #   ./build.sh windows          Build Windows x64 (requires mingw-w64)
 #   ./build.sh all              Build both Linux x64 and Windows x64
-#   ./build.sh clean            Remove build output
+#   ./build.sh clean            Remove build/ directory
 #   ./build.sh --help
 #
+# Output is placed in build/ (binary + obj/).
 # GitHub Actions handles Android. Run this script only for local dev builds.
 # =============================================================================
 
 set -euo pipefail
 
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
+RED='\\033[0;31m'; GREEN='\\033[0;32m'; YELLOW='\\033[1;33m'; CYAN='\\033[0;36m'; NC='\\033[0m'
 ok()   { echo -e "  ${GREEN}OK${NC}  $*"; }
 err()  { echo -e "  ${RED}ERR${NC} $*" >&2; }
 info() { echo -e "  ${CYAN}-->${NC} $*"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_DIR="$SCRIPT_DIR/src"
+BUILD_DIR="$SCRIPT_DIR/build"
 
 # ---------------------------------------------------------------------------
 # Read version
@@ -42,7 +44,7 @@ build_linux() {
     info "Building Linux x64  (tcmg v${VERSION})"
     check_src
     make -C "$SCRIPT_DIR" RELEASE=1 -j"$(nproc)"
-    ok "Output: $SCRIPT_DIR/tcmg"
+    ok "Output: $BUILD_DIR/tcmg"
 }
 
 build_windows() {
@@ -56,7 +58,7 @@ build_windows() {
         CC=x86_64-w64-mingw32-gcc \
         STRIP=x86_64-w64-mingw32-strip \
         -j"$(nproc)"
-    ok "Output: $SCRIPT_DIR/tcmg.exe"
+    ok "Output: $BUILD_DIR/tcmg.exe"
 }
 
 do_clean() {
@@ -75,8 +77,9 @@ show_help() {
     echo "    linux     Build Linux x64 (default)"
     echo "    windows   Build Windows x64 (requires mingw-w64)"
     echo "    all       Build both"
-    echo "    clean     Remove build output"
+    echo "    clean     Remove build/ directory"
     echo ""
+    echo "  Output: build/tcmg  or  build/tcmg.exe"
     echo "  Android is built exclusively via GitHub Actions."
     echo ""
 }

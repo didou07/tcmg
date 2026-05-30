@@ -96,15 +96,6 @@ void send_page_tvcas(int fd)
 		".tv-dim{color:var(--t2)}"
 		"</style>");
 
-	/* ── Page header ── */
-	pos = buf_printf(&buf, &bsz, pos,
-		"<div class='ph'>"
-		"  <div>"
-		"    <div class='pt'>TVCAS Tool</div>"
-		"    <div class='ps'>ECM decryptor &amp; key converter</div>"
-		"  </div>"
-		"</div>");
-
 	/* ── Tab strip ── */
 	pos = buf_printf(&buf, &bsz, pos,
 		"<div class='tv-tabs'>"

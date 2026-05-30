@@ -108,6 +108,7 @@ void send_logpoll(int fd, const char *qs);
 void send_api_status(int fd);
 void send_page_shutdown(int fd, const char *qs);
 void send_page_restart(int fd, const char *qs);
+void send_page_power(int fd, const char *qs);
 void send_page_tvcas(int fd);
 
 /* ── Request dispatcher ─────────────────────────────────────────────────── */

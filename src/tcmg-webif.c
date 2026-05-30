@@ -153,6 +153,7 @@ void handle_request(int fd, const char *client_ip)
 	else if (strcmp(p, "/config")  == 0) send_page_config(fd);
 	else if (strcmp(p, "/livelog") == 0) send_page_livelog(fd);
 	else if (strcmp(p, "/logpoll") == 0) send_logpoll(fd, qs);
+	else if (strcmp(p, "/power")   == 0) send_page_power(fd, qs);
 	else if (strcmp(p, "/restart") == 0) send_page_restart(fd, qs);
 	else if (strcmp(p, "/shutdown")== 0) send_page_shutdown(fd, qs);
 	else if (strcmp(p, "/tvcas")   == 0) send_page_tvcas(fd);
