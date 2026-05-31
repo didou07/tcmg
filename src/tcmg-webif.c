@@ -4,28 +4,13 @@
 #include "tcmg-log.h"
 #include "tcmg-webif-internal.h"
 
-/* ────────────────────────────────────────────────────────────────────────────
- * tcmg-webif.c  —  HTTP server thread + request dispatcher
- *
- * Design notes (oscam-style):
- *   · One accept loop in http_server_thread; each connection gets a detached
- *     pthread (conn_thread).  logpoll connections do not block normal requests.
- *   · handle_request() does ONE raw recv loop, then calls req_parse() which
- *     owns all POST-body assembly.  No handler ever calls recv() itself.
- *   · Auth is checked once; the result is passed implicitly through the
- *     "authed" flag before any routing happens.
- * ────────────────────────────────────────────────────────────────────────────*/
-
-/* ── Server-state (extern in tcmg-webif-internal.h) ────────────────────── */
 volatile int8_t s_webif_running = 0;
 int             s_webif_sock    = -1;
 
-/* ── Private ────────────────────────────────────────────────────────────── */
 static pthread_t s_webif_tid;
 
 typedef struct { int fd; char ip[MAXIPLEN]; } s_conn_arg;
 
-/* ── Per-connection thread ──────────────────────────────────────────────── */
 static void *conn_thread(void *arg)
 {
 	s_conn_arg *c = (s_conn_arg *)arg;
@@ -35,52 +20,75 @@ static void *conn_thread(void *arg)
 	return NULL;
 }
 
-/* ── Auth check from raw request bytes ─────────────────────────────────── */
-static int request_is_authed(const char *raw)
+static const char *extract_header_value(const char *raw, const char *name,
+                                         char *buf, int bufsz)
 {
-	/* No credentials configured → always authed */
+	buf[0] = '\0';
+	char search[64];
+	snprintf(search, sizeof(search), "\r\n%s:", name);
+	const char *p = strstr(raw, search);
+	if (!p) {
+		snprintf(search, sizeof(search), "\n%s:", name);
+		p = strstr(raw, search);
+		if (!p) return NULL;
+	}
+	p = strchr(p, ':');
+	if (!p) return NULL;
+	p++;
+	while (*p == ' ' || *p == '\t') p++;
+	int i = 0;
+	while (i < bufsz - 1 && *p && *p != '\r' && *p != '\n')
+		buf[i++] = *p++;
+	buf[i] = '\0';
+	return buf;
+}
+
+static int request_is_authed(const char *raw, char *sess_tok_out)
+{
+	sess_tok_out[0] = '\0';
+
 	if (!g_cfg.webif_user[0] && !g_cfg.webif_pass[0]) return 1;
 
-	/* Cookie-based session */
-	const char *cp = strstr(raw, "\r\nCookie:");
-	if (!cp) cp = strstr(raw, "\nCookie:");
-	if (cp) {
-		cp = strchr(cp, ':');
-		if (cp) { cp++; while (*cp == ' ') cp++; }
+	char cookie_hdr[512] = "";
+	if (extract_header_value(raw, "Cookie", cookie_hdr, sizeof(cookie_hdr))) {
 		char tok[WEB_SESSION_LEN + 1];
-		const char *sess = cookie_get_session(cp, tok, sizeof(tok));
-		if (sess && session_check(sess)) return 1;
+		const char *sess = cookie_get_session(cookie_hdr, tok, sizeof(tok));
+		if (sess && session_check(sess)) {
+			tcmg_strlcpy(sess_tok_out, sess, WEB_SESSION_LEN + 1);
+			return 1;
+		}
 	}
 
-	/* HTTP Basic auth */
-	const char *ap = strstr(raw, "\r\nAuthorization:");
-	if (!ap) ap = strstr(raw, "\nAuthorization:");
-	if (ap) {
-		ap = strchr(ap, ':');
-		if (ap) { ap++; while (*ap == ' ') ap++; }
-		if (check_auth(ap)) return 1;
+	char auth_hdr[256] = "";
+	if (extract_header_value(raw, "Authorization", auth_hdr, sizeof(auth_hdr))) {
+		if (check_auth(auth_hdr)) return 1;
 	}
 
 	return 0;
 }
 
-/* ── Helper: send a short JSON response ────────────────────────────────── */
 static void send_json(int fd, const char *json)
 {
 	send_response(fd, 200, "OK", "application/json", json, (int)strlen(json));
 }
 
-/* ── Main request dispatcher ────────────────────────────────────────────── */
+static void send_json_401(int fd)
+{
+	static const char body[] = "{\"ok\":false,\"msg\":\"unauthorized\"}";
+	send_response(fd, 401, "Unauthorized", "application/json",
+	              body, (int)sizeof(body) - 1);
+}
+
 void handle_request(int fd, const char *client_ip)
 {
-	/* ── Read raw HTTP bytes (heap — 16 KB header buffer) ────────────────── */
 	char *raw = (char *)malloc(WEB_BUF_SIZE);
 	if (!raw) return;
 	int  rlen = 0;
 	net_set_timeout(fd, WEB_READ_TIMEOUT_S);
 
 	while (rlen < WEB_BUF_SIZE - 1) {
-		int n = (int)recv(fd, RECV_CAST(raw + rlen), WEB_BUF_SIZE - 1 - rlen, 0);
+		int n = (int)recv(fd, RECV_CAST(raw + rlen),
+		                  (size_t)(WEB_BUF_SIZE - 1 - rlen), 0);
 		if (n <= 0) break;
 		rlen += n;
 		raw[rlen] = '\0';
@@ -89,7 +97,6 @@ void handle_request(int fd, const char *client_ip)
 	if (rlen < 10) { free(raw); return; }
 	raw[rlen] = '\0';
 
-	/* ── Parse into structured request; POST body assembled here ─────────  */
 	s_http_req req;
 	if (!req_parse(&req, fd, raw, rlen)) { free(raw); return; }
 
@@ -97,19 +104,19 @@ void handle_request(int fd, const char *client_ip)
 		tcmg_log_dbg(D_WEBIF, "%s %s%s%s", req.method, req.path,
 		             req.qs[0] ? "?" : "", req.qs);
 
-	/* ── Auth ─────────────────────────────────────────────────────────────  */
-	int authed = request_is_authed(raw);
-	free(raw); raw = NULL;  /* no longer needed after auth check */
+	char sess_tok[WEB_SESSION_LEN + 1];
+	int  authed = request_is_authed(raw, sess_tok);
+	free(raw); raw = NULL;
 
-	/* ── POST /login  (unauthenticated) ──────────────────────────────────── */
-	if (strcmp(req.path, "/login") == 0 && strcmp(req.method, "POST") == 0)
-	{
-		char u[128] = {0}, pw[128] = {0};
+	const char *p  = req.path;
+	const char *qs = req.qs;
+
+	/* ── POST /login  (always reachable) ── */
+	if (strcmp(p, "/login") == 0 && strcmp(req.method, "POST") == 0) {
+		char u[CFGKEY_LEN] = {0}, pw[CFGKEY_LEN] = {0};
 		form_get(req.body, "u",  u,  sizeof(u));
 		form_get(req.body, "p", pw, sizeof(pw));
-		int ok = (!g_cfg.webif_user[0] && !g_cfg.webif_pass[0])
-		      || (ct_streq(u, g_cfg.webif_user) && ct_streq(pw, g_cfg.webif_pass));
-		if (ok) {
+		if (check_credentials(u, pw)) {
 			char token[WEB_SESSION_LEN + 1];
 			session_create(token);
 			tcmg_log_dbg(D_WEBIF, "login OK for '%s' from %s", u, client_ip);
@@ -122,23 +129,40 @@ void handle_request(int fd, const char *client_ip)
 		return;
 	}
 
-	/* ── Redirect unauthenticated requests ───────────────────────────────── */
-	if (!authed) {
-		if (strcmp(req.path, "/login") == 0) send_login_page(fd, 0);
-		else                                  send_redirect(fd, "/login");
+	/* ── GET /logout  (always reachable) ── */
+	if (strcmp(p, "/logout") == 0) {
+		if (sess_tok[0]) {
+			tcmg_log_dbg(D_WEBIF, "logout from %s", client_ip);
+			session_invalidate(sess_tok);
+		}
+		send_redirect_clear_cookie(fd, "/login");
 		req_free(&req);
 		return;
 	}
 
-	/* ── Route (authenticated) ───────────────────────────────────────────── */
-	const char *p  = req.path;
-	const char *qs = req.qs;
+	/* ── Unauthenticated: redirect or 401 ── */
+	if (!authed) {
+		if (strcmp(p, "/login") == 0) {
+			send_login_page(fd, 0);
+		} else if (strncmp(p, "/api/", 5) == 0 || strcmp(p, "/logpoll") == 0) {
+			send_json_401(fd);
+		} else {
+			send_redirect(fd, "/login");
+		}
+		req_free(&req);
+		return;
+	}
 
-	if (strcmp(p, "/") == 0 || strcmp(p, "/login") == 0)
+	/* ── GET /login while already authed → redirect ── */
+	if (strcmp(p, "/login") == 0)
+		{ send_redirect(fd, "/status"); req_free(&req); return; }
+
+	/* ── Authenticated routing ── */
+	if (strcmp(p, "/") == 0)
 		send_redirect(fd, "/status");
 
 	else if (strcmp(p, "/status") == 0) {
-		char killstr[16], kill_user[64] = "";
+		char killstr[16] = "", kill_user[CFGKEY_LEN] = "";
 		get_param(qs, "kill", killstr, sizeof(killstr));
 		if (killstr[0]) {
 			uint32_t tid = (uint32_t)strtoul(killstr, NULL, 10);
@@ -167,14 +191,14 @@ void handle_request(int fd, const char *client_ip)
 		handle_srvid2_save(fd, req.body ? req.body : "");
 
 	/* JSON API */
-	else if (strcmp(p, "/api/status")       == 0) send_api_status(fd);
-	else if (strcmp(p, "/api/user/toggle")  == 0) handle_user_toggle(fd, qs);
-	else if (strcmp(p, "/api/user/get")     == 0) send_api_user_get(fd, qs);
-	else if (strcmp(p, "/api/user/resetstats") == 0) handle_user_resetstats(fd, qs);
-	else if (strcmp(p, "/api/user/delete")     == 0) handle_user_delete(fd, qs);
-	else if (strcmp(p, "/api/user/save")    == 0 && strcmp(req.method, "POST") == 0)
+	else if (strcmp(p, "/api/status")            == 0) send_api_status(fd);
+	else if (strcmp(p, "/api/user/toggle")       == 0) handle_user_toggle(fd, qs);
+	else if (strcmp(p, "/api/user/get")          == 0) send_api_user_get(fd, qs);
+	else if (strcmp(p, "/api/user/resetstats")   == 0) handle_user_resetstats(fd, qs);
+	else if (strcmp(p, "/api/user/delete")       == 0) handle_user_delete(fd, qs);
+	else if (strcmp(p, "/api/user/save") == 0 && strcmp(req.method, "POST") == 0)
 		handle_user_save(fd, req.body ? req.body : "");
-	else if (strcmp(p, "/api/user/add")     == 0 && strcmp(req.method, "POST") == 0)
+	else if (strcmp(p, "/api/user/add")  == 0 && strcmp(req.method, "POST") == 0)
 		handle_user_add(fd, req.body ? req.body : "");
 
 	else if (strcmp(p, "/api/reload") == 0) {
@@ -196,7 +220,7 @@ void handle_request(int fd, const char *client_ip)
 			"font-family:monospace;display:flex;align-items:center;"
 			"justify-content:center;height:100vh'>"
 			"<div><h1 style='color:#3b82f6'>404</h1><p>Not Found</p>"
-			"<a href='/status' style='color:#60a5fa'>\u2190 Back to Status</a>"
+			"<a href='/status' style='color:#60a5fa'>&#8592; Back to Status</a>"
 			"</div></body></html>";
 		send_response(fd, 404, "Not Found", "text/html",
 		              not_found, (int)strlen(not_found));
@@ -205,7 +229,6 @@ void handle_request(int fd, const char *client_ip)
 	req_free(&req);
 }
 
-/* ── HTTP server thread ─────────────────────────────────────────────────── */
 static void *http_server_thread(void *arg)
 {
 	(void)arg;
@@ -233,25 +256,24 @@ static void *http_server_thread(void *arg)
 		char client_ip[MAXIPLEN];
 		inet_ntop(AF_INET, &ca.sin_addr, client_ip, sizeof(client_ip));
 
-		/* Peek to suppress log noise from log-poll connections */
-		char peek[128] = "";
-		recv(cfd, RECV_CAST(peek), sizeof(peek) - 1, MSG_PEEK);
-		if (strstr(peek, "GET /logpoll") == NULL)
-			tcmg_log_dbg(D_WEBIF, "HTTP connection from %s", client_ip);
+		/* Disable Nagle so small JSON responses flush immediately */
+		int nodelay = 1;
+		setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, SO_CAST(&nodelay), sizeof(nodelay));
 
-		/* Spawn detached thread; fallback to synchronous on failure */
+		tcmg_log_dbg(D_WEBIF, "HTTP connection from %s", client_ip);
+
 		s_conn_arg *ca2 = (s_conn_arg *)malloc(sizeof(s_conn_arg));
 		if (ca2) {
 			ca2->fd = cfd;
 			tcmg_strlcpy(ca2->ip, client_ip, MAXIPLEN);
-			pthread_t        t;
-			pthread_attr_t   a;
+			pthread_t       t;
+			pthread_attr_t  a;
 			pthread_attr_init(&a);
 			pthread_attr_setdetachstate(&a, PTHREAD_CREATE_DETACHED);
 			pthread_attr_setstacksize(&a, 128 * 1024);
 			if (pthread_create(&t, &a, conn_thread, ca2) == 0) {
 				pthread_attr_destroy(&a);
-				continue;  /* thread owns cfd */
+				continue;
 			}
 			pthread_attr_destroy(&a);
 			free(ca2);
@@ -264,7 +286,6 @@ static void *http_server_thread(void *arg)
 	return NULL;
 }
 
-/* ── Public API ─────────────────────────────────────────────────────────── */
 int32_t webif_start(void)
 {
 	if (!g_cfg.webif_enabled) { tcmg_log("disabled in config"); return -1; }
@@ -277,6 +298,9 @@ int32_t webif_start(void)
 
 	int opt = 1;
 	setsockopt(s_webif_sock, SOL_SOCKET, SO_REUSEADDR, SO_CAST(&opt), sizeof(opt));
+#ifdef SO_REUSEPORT
+	setsockopt(s_webif_sock, SOL_SOCKET, SO_REUSEPORT, SO_CAST(&opt), sizeof(opt));
+#endif
 
 	struct sockaddr_in sa;
 	memset(&sa, 0, sizeof(sa));
@@ -291,7 +315,7 @@ int32_t webif_start(void)
 		tcmg_log("bind() port %d failed: %s", g_cfg.webif_port, strerror(errno));
 		close(s_webif_sock); s_webif_sock = -1; return -1;
 	}
-	if (listen(s_webif_sock, 16) < 0) {
+	if (listen(s_webif_sock, 128) < 0) {
 		tcmg_log("listen() failed: %s", strerror(errno));
 		close(s_webif_sock); s_webif_sock = -1; return -1;
 	}

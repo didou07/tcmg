@@ -383,6 +383,24 @@ void send_page_users(int fd)
 		"<th>Expiry</th><th></th>"
 		"</tr></thead><tbody id='usrBody'>");
 
+	/* snapshot clients once to avoid N mutex locks inside acc_lock */
+	typedef struct { char user[64]; char ip[MAXIPLEN]; char proto[12]; time_t last_ecm; } cl_snap;
+	cl_snap *snaps = (cl_snap *)calloc(MAX_ACTIVE_CLIENTS, sizeof(cl_snap));
+	int nsnaps = 0;
+	if (snaps) {
+		pthread_mutex_lock(&g_clients_mtx);
+		for (int ci = 0; ci < MAX_ACTIVE_CLIENTS; ci++) {
+			S_CLIENT *cl = g_clients[ci];
+			if (!cl || !cl->account) continue;
+			tcmg_strlcpy(snaps[nsnaps].user,  cl->account->user, 64);
+			tcmg_strlcpy(snaps[nsnaps].ip,    cl->ip, MAXIPLEN);
+			tcmg_strlcpy(snaps[nsnaps].proto, cl->is_mgcamd ? "mgcamd" : "newcamd", 12);
+			snaps[nsnaps].last_ecm = cl->last_ecm_time;
+			nsnaps++;
+		}
+		pthread_mutex_unlock(&g_clients_mtx);
+	}
+
 	pthread_rwlock_rdlock(&g_cfg.acc_lock);
 	int row = 0;
 	int64_t tot_cw_ok = 0, tot_cw_nok = 0;
@@ -423,18 +441,15 @@ void send_page_users(int fd)
 		char first_login_str[32];
 		format_time((time_t)a->first_login, first_login_str, sizeof(first_login_str));
 
-		/* Scan active clients for this account */
-		pthread_mutex_lock(&g_clients_mtx);
-		for (int ci = 0; ci < MAX_ACTIVE_CLIENTS; ci++) {
-			S_CLIENT *cl = g_clients[ci];
-			if (!cl || !cl->account) continue;
-			if (strcmp(cl->account->user, a->user) != 0) continue;
-			proto_str = cl->is_mgcamd ? "mgcamd" : "newcamd";
-			tcmg_strlcpy(ip_str, cl->ip, sizeof(ip_str));
-			if (cl->last_ecm_time > last_ecm_t)
-				last_ecm_t = cl->last_ecm_time;
+		/* Look up account in pre-built snapshot (no extra lock) */
+		if (snaps) {
+			for (int si = 0; si < nsnaps; si++) {
+				if (strcmp(snaps[si].user, a->user) != 0) continue;
+				proto_str = snaps[si].proto;
+				if (!ip_str[0]) tcmg_strlcpy(ip_str, snaps[si].ip, sizeof(ip_str));
+				if (snaps[si].last_ecm > last_ecm_t) last_ecm_t = snaps[si].last_ecm;
+			}
 		}
-		pthread_mutex_unlock(&g_clients_mtx);
 
 		/* Idle time */
 		char idle_str[32];
@@ -525,6 +540,7 @@ void send_page_users(int fd)
 			last, expiry, a->user, a->user);
 	}
 	pthread_rwlock_unlock(&g_cfg.acc_lock);
+	free(snaps);
 
 	if (!row)
 		pos = buf_printf(&buf, &bsz, pos,
@@ -1032,7 +1048,7 @@ void handle_config_save(int fd, const char *post_body)
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
- * Live log page
+ * Live log page  GET /livelog
  * ════════════════════════════════════════════════════════════════════════════*/
 void send_page_livelog(int fd)
 {
@@ -1048,10 +1064,11 @@ void send_page_livelog(int fd)
 		"<span style='font-size:10px;font-weight:700;color:var(--t2);"
 		"text-transform:uppercase;letter-spacing:.12em;margin-right:6px'>Debug</span>"
 		"<span style='font-size:10px;color:var(--t2);margin-right:6px;"
-		"font-family:var(--mono)' title='Enable debug categories to see verbose output in the log'>"
-		"&#9432;&nbsp;click to enable verbose output</span>");
+		"font-family:var(--mono)' title='Enable debug categories to see verbose output'>"
+		"&#9432;&nbsp;click to toggle verbose output</span>");
 
-	char masks_arr[256]; int ma = 0;
+	char masks_js[256];
+	int  ma = 0;
 	for (int i = 0; i < MAX_DEBUG_LEVELS; i++) {
 		uint16_t m  = g_dblevel_names[i].mask;
 		int      on = !!(g_dblevel & m);
@@ -1059,29 +1076,30 @@ void send_page_livelog(int fd)
 			"<a id='db%u' href='#' class='dt%s' onclick='toggleDbg(%u);return false;'"
 			" title='mask 0x%04X'>%s</a>",
 			m, on ? " on" : "", m, m, g_dblevel_names[i].name);
-		ma += snprintf(masks_arr + ma, sizeof(masks_arr) - ma, "%s%u", i ? "," : "", m);
+		ma += snprintf(masks_js + ma, (int)sizeof(masks_js) - ma, "%s%u", i ? "," : "", m);
 	}
+
 	pos = buf_printf(&buf, &bsz, pos,
 		"<a id='dbALL' href='#' class='dt%s' onclick='toggleAll();return false;'>ALL</a>"
 		"<span class='dm'>mask: <span id='dbmask'>0x%04X</span></span>"
 		"</div>",
 		(g_dblevel == D_ALL) ? " on" : "", g_dblevel);
 
-	/* Controls */
-	/* Controls - inspired by OSCam's logpage controls */
+	/* Toolbar */
 	pos = buf_printf(&buf, &bsz, pos,
 		"<div class='lc'>"
 		"<button class='btn bg sm' onclick='clearLog()'>" ICO_TRASH "&nbsp;Clear</button>"
-		/* Save log — like OSCam's 'Save Log' button */
 		"<a id='savelog' download='tcmg.log'>"
 		"  <button class='btn bg sm' onclick='prepSave()'>&#128190;&nbsp;Save</button>"
 		"</a>"
-		"<input class='ls' id='filter' placeholder='Filter (regex)...' oninput='applyFilter()' title='Supports regex, e.g.: hit|miss'>"
+		"<input class='ls' id='filter' placeholder='Filter (regex)...' oninput='applyFilter()'"
+		" title='Supports regex, e.g.: hit|miss'>"
 		"<label class='flex gap8' style='font-size:12px;color:var(--t1)'>"
 		"<input type='checkbox' id='asc' checked>&nbsp;Auto-scroll</label>"
 		"<label class='flex gap8' style='font-size:12px;color:var(--t1)'>"
 		"<input type='checkbox' id='paused'>&nbsp;Pause</label>"
-		"<span style='margin-left:auto;font-size:11px;color:var(--t2);display:flex;align-items:center;gap:6px'>"
+		"<span style='margin-left:auto;font-size:11px;color:var(--t2);"
+		"display:flex;align-items:center;gap:6px'>"
 		"Lines: <select class='lsel' id='maxlines'>"
 		"<option value='200' selected>200</option>"
 		"<option value='500'>500</option>"
@@ -1089,10 +1107,10 @@ void send_page_livelog(int fd)
 		"<option value='2000'>2000</option>"
 		"</select>"
 		"&nbsp;<span id='linecnt' style='font-family:var(--mono);color:var(--t2)'>0</span>&nbsp;shown"
-		"</span>"
-		"</div>"
+		"</span></div>"
 		/* Color legend */
-		"<div style='display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-size:11px;font-family:var(--mono)'>"
+		"<div style='display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;"
+		"font-size:11px;font-family:var(--mono)'>"
 		"<span style='color:#4ade80'>&#9632; hit</span>"
 		"<span style='color:#f87171'>&#9632; miss</span>"
 		"<span style='color:#60a5fa'>&#9632; webif</span>"
@@ -1101,68 +1119,80 @@ void send_page_livelog(int fd)
 		"<span style='color:#22d3ee'>&#9632; proto</span>"
 		"<span style='color:#fde68a'>&#9632; conf</span>"
 		"<span style='color:#f87171'>&#9632; error/warn</span>"
-		"</div>");
-
-	pos = buf_printf(&buf, &bsz, pos,
+		"</div>"
 		"<div id='lw' onmouseenter='hovered=1' onmouseleave='hovered=0'>"
 		"<pre id='lp'></pre>"
 		"</div>");
 
-	int ring_now = log_ring_total();
+	int32_t ring_now = log_ring_total();
+
 	pos = buf_printf(&buf, &bsz, pos,
 		"<script>"
-		"var lastid=Math.max(0,%d-200),curmask=%u,hovered=0;"
-		"var masks=[%s],filterRe=null,filterStr='';"
+		"var lastid=%d,curmask=%u,hovered=0;"
+		"var masks=[%s],filterRe=null;",
+		(ring_now > 200) ? ring_now - 200 : 0,
+		(unsigned)g_dblevel,
+		masks_js);
 
-		/* ---- debug UI ---- */
+	pos = buf_printf(&buf, &bsz, pos,
+		/* debug UI */
 		"function updateDbgUI(){"
 		"  var el=document.getElementById('dbmask');"
 		"  if(el)el.textContent='0x'+curmask.toString(16).toUpperCase().padStart(4,'0');"
 		"  masks.forEach(function(m){"
 		"    var b=document.getElementById('db'+m);"
-		"    if(b)b.className='dt'+(curmask&m?' on':'')+'';"
+		"    if(b)b.className='dt'+(curmask&m?' on':'');"
 		"  });"
 		"  var a=document.getElementById('dbALL');"
-		"  if(a)a.className='dt'+(curmask===65535?' on':'')+'';"
+		"  if(a)a.className='dt'+(curmask===65535?' on':'');"
 		"}"
-		"function toggleDbg(m){curmask^=m;updateDbgUI();poll();return false;}"
-		"function toggleAll(){curmask=(curmask===65535)?0:65535;updateDbgUI();poll();return false;}"
+		"function toggleDbg(m){curmask^=m;updateDbgUI();sendDebug();return false;}"
+		"function toggleAll(){curmask=(curmask===65535)?0:65535;updateDbgUI();sendDebug();return false;}"
+		"function sendDebug(){"
+		"  fetch('/logpoll?since='+lastid+'&debug='+curmask,{credentials:'same-origin'})"
+		"    .then(function(r){if(!r.ok)return null;return r.json();})"
+		"    .then(function(d){if(d&&d.next!==undefined)lastid=d.next;if(d&&d.lines&&d.lines.length)appendLines(d.lines);})"
+		"    .catch(function(){});"
+		"}"
 
-		/* ---- filter ---- */
+		/* filter */
 		"function applyFilter(){"
-		"  filterStr=document.getElementById('filter').value;"
-		"  try{filterRe=filterStr?new RegExp(filterStr,'i'):null;}catch(e){filterRe=null;}"
-		"  var spans=document.getElementById('lp').children;"
-		"  var vis=0;"
+		"  var s=document.getElementById('filter').value;"
+		"  try{filterRe=s?new RegExp(s,'i'):null;}catch(e){filterRe=null;}"
+		"  var spans=document.getElementById('lp').children,vis=0;"
 		"  for(var i=0;i<spans.length;i++){"
-		"    var show=!filterRe||filterRe.test(spans[i].getAttribute('data-raw')||'')||(spans[i].getAttribute('data-usr')&&filterRe.test(spans[i].getAttribute('data-usr')));"
+		"    var raw=spans[i].getAttribute('data-raw')||'';"
+		"    var usr=spans[i].getAttribute('data-usr')||'';"
+		"    var show=!filterRe||filterRe.test(raw)||filterRe.test(usr);"
 		"    spans[i].style.display=show?'block':'none';"
 		"    if(show)vis++;"
 		"  }"
 		"  var lc=document.getElementById('linecnt');if(lc)lc.textContent=vis;"
 		"}"
 
-		/* ---- clear / save ---- */
+		/* clear and save */
 		"function clearLog(){"
 		"  document.getElementById('lp').innerHTML='';"
 		"  var lc=document.getElementById('linecnt');if(lc)lc.textContent='0';"
-		"  fetch('/logpoll?since=999999999&debug='+curmask)"
-		"    .then(function(r){return r.json();}).then(function(d){if(d.next!==undefined)lastid=d.next;}).catch(function(){});"
+		"  fetch('/logpoll?since=999999999&debug='+curmask,{credentials:'same-origin'})"
+		"    .then(function(r){if(!r.ok)return null;return r.json();})"
+		"    .then(function(d){if(d&&d.next!==undefined)lastid=d.next;})"
+		"    .catch(function(){});"
 		"}"
 		"function prepSave(){"
 		"  var spans=document.getElementById('lp').children,txt='';"
 		"  for(var i=0;i<spans.length;i++){"
 		"    if(spans[i].style.display==='none')continue;"
-		"    var usr=spans[i].getAttribute('data-usr')||'';" 
-		"    var raw=spans[i].getAttribute('data-raw')||'';" 
-		"    txt+=(usr?'['+usr+'] ':'')+raw+'\n';"
+		"    var usr=spans[i].getAttribute('data-usr')||'';"
+		"    var raw=spans[i].getAttribute('data-raw')||'';"
+		"    txt+=(usr?'['+usr+'] ':'')+raw+'\\n';"
 		"  }"
 		"  var blob=new Blob([txt],{type:'text/plain'});"
 		"  var a=document.getElementById('savelog');"
-		"  a.href=URL.createObjectURL(blob);"
+		"  if(a)a.href=URL.createObjectURL(blob);"
 		"}"
 
-		/* ---- coloring ---- */
+		/* color map */
 		"var CM={"
 		"  hit:'#4ade80',miss:'#f87171',webif:'#60a5fa',"
 		"  ban:'#fb923c',net:'#c084fc',proto:'#22d3ee',"
@@ -1182,20 +1212,22 @@ void send_page_livelog(int fd)
 		"  return null;"
 		"}"
 
-		/* ---- append lines ---- */
+		/* line count */
 		"function updateLineCnt(){"
 		"  var spans=document.getElementById('lp').children,v=0;"
 		"  for(var i=0;i<spans.length;i++)if(spans[i].style.display!=='none')v++;"
 		"  var lc=document.getElementById('linecnt');if(lc)lc.textContent=v;"
 		"}"
+
+		/* append */
 		"function appendLines(entries){"
 		"  var pre=document.getElementById('lp');"
 		"  if(!pre)return;"
 		"  var maxl=parseInt((document.getElementById('maxlines')||{}).value)||200;"
 		"  for(var i=0;i<entries.length;i++){"
 		"    var e=entries[i];"
-		"    var line=typeof e==='string'?e:(e.line||'')+'';"
-		"    var usr=typeof e==='string'?'':(e.usr||'')+'';"
+		"    var line=(typeof e==='string')?e:(e.line||'')+'';"
+		"    var usr=(typeof e==='string')?'':(e.usr||'')+'';"
 		"    var span=document.createElement('span');"
 		"    span.style.cssText='display:block;white-space:pre;';"
 		"    var col=colorLine(line);"
@@ -1221,26 +1253,26 @@ void send_page_livelog(int fd)
 		"    w.scrollTop=w.scrollHeight;"
 		"}"
 
-		/* ---- poll loop ---- */
+		/* poll loop */
 		"function poll(){"
 		"  if(document.getElementById('paused')&&document.getElementById('paused').checked)return;"
 		"  fetch('/logpoll?since='+lastid+'&debug='+curmask,{credentials:'same-origin'})"
 		"    .then(function(r){"
 		"      if(r.status===401||r.status===302){window.location.href='/login';return null;}"
+		"      if(!r.ok)return null;"
 		"      return r.json();"
 		"    })"
 		"    .then(function(d){"
 		"      if(!d)return;"
-		"      if(d.debug!==undefined&&d.debug!==curmask){curmask=d.debug;updateDbgUI();}"
-		"      if(d.next!==undefined)lastid=d.next;"
+		"      if(typeof d.debug==='number'&&d.debug!==curmask){curmask=d.debug;updateDbgUI();}"
+		"      if(typeof d.next==='number')lastid=d.next;"
 		"      if(d.lines&&d.lines.length)appendLines(d.lines);"
 		"    }).catch(function(){});"
 		"}"
 		"updateDbgUI();"
 		"setInterval(poll,1000);"
 		"poll();"
-		"</script>",
-		ring_now, g_dblevel, masks_arr);
+		"</script>");
 
 	pos = emit_footer(&buf, &bsz, pos);
 	send_response(fd, 200, "OK", "text/html", buf, pos);
@@ -1252,49 +1284,54 @@ void send_page_livelog(int fd)
  * ════════════════════════════════════════════════════════════════════════════*/
 void send_logpoll(int fd, const char *qs)
 {
-	char dbg_s[16], since_s[32];
+	char dbg_s[16]   = "";
+	char since_s[32] = "";
 	get_param(qs, "debug", dbg_s,   sizeof(dbg_s));
 	get_param(qs, "since", since_s, sizeof(since_s));
 
 	if (dbg_s[0]) {
-		long v = strtol(dbg_s, NULL, 0);
-		if (v >= 0 && v <= 0xFFFF) {
-			if ((uint16_t)v != g_dblevel) {
-				g_dblevel = (uint16_t)v;
-				tcmg_log_dbg(D_WEBIF, "livelog debug_level -> %u", g_dblevel);
+		char    *end;
+		long     v = strtol(dbg_s, &end, 0);
+		if (*end == '\0' && v >= 0 && v <= 0xFFFF) {
+			uint16_t nv = (uint16_t)v;
+			if (nv != g_dblevel) {
+				g_dblevel = nv;
+				tcmg_log_dbg(D_WEBIF, "livelog debug_level -> %u", (unsigned)g_dblevel);
 			}
-			/* Always echo back so JS stays in sync */
 		}
 	}
 
-	int32_t from_id = since_s[0] ? (int32_t)atoi(since_s) : 0;
-	if (from_id < 0) from_id = 0;
+	int32_t from_id = 0;
+	if (since_s[0]) {
+		long v = strtol(since_s, NULL, 10);
+		if (v > 0) from_id = (int32_t)v;
+	}
 
 	char    *lines[WEB_MAX_LINES_POLL];
 	char    *users[WEB_MAX_LINES_POLL];
-	int32_t  next_id;
-	/* Pass users array to get per-entry user context (like OSCam {usr, line}) */
-	int32_t  count = log_ring_since(from_id, lines, users,
-	                                WEB_MAX_LINES_POLL, &next_id);
+	int32_t  next_id = 0;
+	int32_t  count   = log_ring_since(from_id, lines, users,
+	                                   WEB_MAX_LINES_POLL, &next_id);
 
-	/* Each entry: {"id":N,"usr":"...","line":"..."} */
-	int   bsz = count * 2800 + 512, pos = 0;
-	char *buf = (char *)malloc(bsz < 512 ? 512 : bsz);
+	int   bsz = (count * 2800) + 512;
+	char *buf = (char *)malloc((size_t)(bsz < 512 ? 512 : bsz));
 	if (!buf) {
 		for (int i = 0; i < count; i++) { free(lines[i]); free(users[i]); }
 		return;
 	}
 
+	int pos = 0;
 	pos = buf_printf(&buf, &bsz, pos,
-		"{\"debug\":%u,\"next\":%d,\"lines\":[", g_dblevel, next_id);
+		"{\"debug\":%u,\"next\":%d,\"lines\":[",
+		(unsigned)g_dblevel, next_id);
 
 	for (int i = 0; i < count; i++) {
-		char esc_line[2048], esc_usr[128];
-		json_escape(lines[i], esc_line, sizeof(esc_line));
-		json_escape(users[i][0] ? users[i] : "", esc_usr, sizeof(esc_usr));
+		char esc_line[2048];
+		char esc_usr[128];
+		json_escape(lines[i],              esc_line, sizeof(esc_line));
+		json_escape(users[i][0] ? users[i] : "", esc_usr,  sizeof(esc_usr));
 		free(lines[i]);
 		free(users[i]);
-		/* OSCam-compatible: {id, usr, line} per entry */
 		pos = buf_printf(&buf, &bsz, pos,
 			"%s{\"id\":%d,\"usr\":\"%s\",\"line\":\"%s\"}",
 			i ? "," : "",

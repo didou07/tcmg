@@ -1,17 +1,16 @@
-
 #ifndef TCMG_LOG_H_
 #define TCMG_LOG_H_
 
-#define D_NET      1u      /* raw socket recv/send bytes          */
-#define D_CLIENT   2u      /* client connect / auth / disconnect  */
-#define D_ECM      4u      /* ECM request + CW result + emulator  */
-#define D_PROTO    8u      /* Newcamd frame encode/decode         */
-#define D_CONF     16u     /* config load / save / reload         */
-#define D_WEBIF    32u     /* HTTP request/response               */
-#define D_BAN      64u     /* fail-ban events                     */
-#define D_ALL      65535u  /* enable all categories               */
+#define D_NET      1u
+#define D_CLIENT   2u
+#define D_ECM      4u
+#define D_PROTO    8u
+#define D_CONF     16u
+#define D_WEBIF    32u
+#define D_BAN      64u
+#define D_ALL      65535u
 
-#define MAX_DEBUG_LEVELS  7  /* number of named levels              */
+#define MAX_DEBUG_LEVELS  7
 
 typedef struct { uint16_t mask; const char *name; } S_DBLEVEL_NAME;
 extern const S_DBLEVEL_NAME g_dblevel_names[MAX_DEBUG_LEVELS];
@@ -28,7 +27,6 @@ void tcmg_log_txt(const char *mod, const char *fmt, ...)
 void tcmg_log_hex(const char *mod, const uint8_t *buf, int32_t n,
                   const char *fmt, ...)
 	__attribute__((format(printf, 4, 5)));
-
 
 #define tcmg_log(fmt, ...) \
 	tcmg_log_txt(MODULE_LOG_PREFIX, fmt, ##__VA_ARGS__)
@@ -54,25 +52,8 @@ void log_cw_result(uint16_t caid, uint16_t sid, int32_t len,
 void   log_ecm_set(int8_t on);
 int8_t log_ecm_get(void);
 
-/*
- * log_set_file — open a log file for writing (in addition to stdout).
- * Pass NULL or "" to disable file logging.
- * File is rotated (renamed to .1) when it exceeds 10 MB.
- */
 void log_set_file(const char *path);
-
-/*
- * log_set_usrfile — open user statistics file (inspired by OSCam usrfile).
- * Each CW result is written here in tab-separated format.
- * Pass NULL or "" to disable. File is rotated at 5 MB.
- */
 void log_set_usrfile(const char *path);
-
-/*
- * log_set_user — set per-thread user context for log ring entries.
- * Call from the client thread after authentication.
- * Pass NULL or "" to clear (system/server messages).
- */
 void log_set_user(const char *user);
 
 int32_t log_ring_since(int32_t from_id, char **out_lines, char **out_users,

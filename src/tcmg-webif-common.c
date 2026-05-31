@@ -45,7 +45,8 @@ void session_create(char *token_out)
 		if (s_sessions[i].expires < oldest) { oldest = s_sessions[i].expires; slot = i; }
 	}
 	tcmg_strlcpy(s_sessions[slot].token, token_out, WEB_SESSION_LEN + 1);
-	s_sessions[slot].expires = now + WEB_SESSION_TIMEOUT;
+	s_sessions[slot].expires   = now + WEB_SESSION_TIMEOUT;
+	s_sessions[slot].issued_at = now;
 	pthread_mutex_unlock(&s_sess_lock);
 }
 
@@ -56,13 +57,12 @@ int session_check(const char *token)
 	int    ok  = 0;
 	pthread_mutex_lock(&s_sess_lock);
 	for (int i = 0; i < WEB_MAX_SESSIONS; i++) {
-		if (s_sessions[i].expires > now &&
-		    strncmp(s_sessions[i].token, token, WEB_SESSION_LEN) == 0)
-		{
-			s_sessions[i].expires = now + WEB_SESSION_TIMEOUT; /* sliding */
-			ok = 1;
-			break;
-		}
+		if (s_sessions[i].expires <= now) continue;
+		if (!ct_streq(s_sessions[i].token, token)) continue;
+		if (now - s_sessions[i].issued_at > WEB_SESSION_MAX_AGE) break;
+		s_sessions[i].expires = now + WEB_SESSION_TIMEOUT; /* sliding */
+		ok = 1;
+		break;
 	}
 	pthread_mutex_unlock(&s_sess_lock);
 	return ok;
@@ -82,6 +82,21 @@ const char *cookie_get_session(const char *cookie_hdr, char *buf, int bufsz)
 	}
 	buf[i] = '\0';
 	return i == WEB_SESSION_LEN ? buf : NULL;
+}
+
+void session_invalidate(const char *token)
+{
+	if (!token || !*token) return;
+	pthread_mutex_lock(&s_sess_lock);
+	for (int i = 0; i < WEB_MAX_SESSIONS; i++) {
+		if (ct_streq(s_sessions[i].token, token)) {
+			memset(s_sessions[i].token, 0, WEB_SESSION_LEN + 1);
+			s_sessions[i].expires   = 0;
+			s_sessions[i].issued_at = 0;
+			break;
+		}
+	}
+	pthread_mutex_unlock(&s_sess_lock);
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -386,10 +401,23 @@ void send_redirect_with_cookie(int fd, const char *location, const char *token)
 	char hdr[512];
 	snprintf(hdr, sizeof(hdr),
 	         "HTTP/1.1 302 Found\r\nLocation: %s\r\n"
-	         "Set-Cookie: tcmg_session=%s; Path=/; HttpOnly; SameSite=Lax\r\n"
+	         "Set-Cookie: tcmg_session=%s; Path=/; HttpOnly; SameSite=Lax; Max-Age=%d\r\n"
 	         "Cache-Control: no-store\r\n"
 	         "Content-Length: 0\r\nConnection: close\r\n\r\n",
-	         location, token);
+	         location, token, WEB_SESSION_TIMEOUT);
+	send(fd, SO_CAST(hdr), (int)strlen(hdr), MSG_NOSIGNAL);
+}
+
+void send_redirect_clear_cookie(int fd, const char *location)
+{
+	char hdr[512];
+	snprintf(hdr, sizeof(hdr),
+	         "HTTP/1.1 302 Found\r\nLocation: %s\r\n"
+	         "Set-Cookie: tcmg_session=; Path=/; HttpOnly; SameSite=Lax;"
+	         " Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT\r\n"
+	         "Cache-Control: no-store\r\n"
+	         "Content-Length: 0\r\nConnection: close\r\n\r\n",
+	         location);
 	send(fd, SO_CAST(hdr), (int)strlen(hdr), MSG_NOSIGNAL);
 }
 
@@ -433,6 +461,14 @@ int check_auth(const char *auth_header)
 	char expected[512];
 	b64_encode(creds, (int)strlen(creds), expected, sizeof(expected));
 	return ct_streq(got, expected) ? 1 : 0;
+}
+
+int check_credentials(const char *user, const char *pass)
+{
+	if (!g_cfg.webif_user[0] && !g_cfg.webif_pass[0]) return 1;
+	if (!user || !pass) return 0;
+	return (ct_streq(user, g_cfg.webif_user) &&
+	        ct_streq(pass, g_cfg.webif_pass)) ? 1 : 0;
 }
 
 /* ════════════════════════════════════════════════════════════════════════════

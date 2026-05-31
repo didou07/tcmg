@@ -11,18 +11,20 @@ extern const char CSS[];
 
 /* ── Server constants ───────────────────────────────────────────────────── */
 #define WEB_SERVER_NAME     "tcmg/" TCMG_VERSION
-#define WEB_READ_TIMEOUT_S  10
+#define WEB_READ_TIMEOUT_S  4
 #define WEB_BUF_SIZE        16384   /* recv buffer for HTTP headers + partial body */
 #define WEB_MAX_LINES_POLL  200
-#define WEB_SESSION_TIMEOUT 3600
-#define WEB_SESSION_LEN     32
-#define WEB_MAX_SESSIONS    16
-#define WEB_POST_MAX        65536   /* largest accepted POST body */
+#define WEB_SESSION_TIMEOUT  3600
+#define WEB_SESSION_MAX_AGE  86400   /* absolute max session lifetime (24 h) */
+#define WEB_SESSION_LEN      32
+#define WEB_MAX_SESSIONS     16
+#define WEB_POST_MAX         65536   /* largest accepted POST body */
 
 /* ── Session ────────────────────────────────────────────────────────────── */
 typedef struct {
 	char   token[WEB_SESSION_LEN + 1];
 	time_t expires;
+	time_t issued_at;   /* absolute creation time for max-age enforcement */
 } s_session;
 
 extern s_session       s_sessions[WEB_MAX_SESSIONS];
@@ -31,6 +33,7 @@ extern pthread_mutex_t s_sess_lock;
 void        session_gen_token(char *out);
 void        session_create(char *token_out);
 int         session_check(const char *token);
+void        session_invalidate(const char *token);
 const char *cookie_get_session(const char *cookie_hdr, char *buf, int bufsz);
 
 /* ── Parsed HTTP request ────────────────────────────────────────────────── */
@@ -68,12 +71,19 @@ void send_response(int fd, int code, const char *reason,
                    const char *ctype, const char *body, int blen);
 void send_redirect(int fd, const char *location);
 void send_redirect_with_cookie(int fd, const char *location, const char *token);
+void send_redirect_clear_cookie(int fd, const char *location);
+void send_headers_ex(int fd, int code, const char *reason,
+                     const char *ctype, int length, const char *set_cookie);
+void send_response_ex(int fd, int code, const char *reason,
+                      const char *ctype, const char *body, int blen,
+                      const char *set_cookie);
 
 /* ── Base64 ─────────────────────────────────────────────────────────────── */
 void b64_encode(const char *in, int ilen, char *out, int outsz);
 
 /* ── Auth ───────────────────────────────────────────────────────────────── */
 int  check_auth(const char *auth_header);
+int  check_credentials(const char *user, const char *pass);
 
 /* ── Layout ─────────────────────────────────────────────────────────────── */
 typedef struct { const char *id; const char *href; const char *icon; const char *label; } NavItem;
