@@ -1,4 +1,4 @@
-# tcmg v4.7 — Makefile
+# tcmg v4.8 — Makefile
 # Targets: Linux, macOS, Windows (MinGW)
 #
 # Usage:

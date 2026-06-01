@@ -19,11 +19,11 @@ get_filename_component(REPO_ROOT
 set(TCMG_SRC "${REPO_ROOT}/src")
 
 # Sanity check — fail early with a clear message if the path is wrong
-if(NOT EXISTS "${TCMG_SRC}/tcmg.c")
+if(NOT EXISTS "${TCMG_SRC}/main.c")
     message(FATAL_ERROR
-        "Cannot find tcmg.c in '${TCMG_SRC}'.\n"
+        "Cannot find main.c in '${TCMG_SRC}'.\n"
         "Expected repo layout:\n"
-        "  <repo>/src/tcmg.c\n"
+        "  <repo>/src/main.c\n"
         "  <repo>/android/app/src/main/jni/CMakeLists.txt\n"
     )
 endif()
@@ -60,23 +60,35 @@ add_definitions(
 # TCMG core — static library built from the unified src/ tree
 # =============================================================================
 add_library(tcmg_core STATIC
-    ${TCMG_SRC}/tcmg.c
-    ${TCMG_SRC}/tcmg-log.c
-    ${TCMG_SRC}/tcmg-crypto.c
-    ${TCMG_SRC}/tcmg-net.c
-    ${TCMG_SRC}/tcmg-ban.c
-    ${TCMG_SRC}/tcmg-conf.c
-    ${TCMG_SRC}/tcmg-emu.c
-    ${TCMG_SRC}/tcmg-srvid2.c
-    ${TCMG_SRC}/tcmg-webif.c
-    ${TCMG_SRC}/tcmg-webif-common.c
-    ${TCMG_SRC}/tcmg-webif-layout.c
-    ${TCMG_SRC}/tcmg-webif-pages.c
-    ${TCMG_SRC}/tcmg-webif-tvcas.c
+    ${TCMG_SRC}/main.c
+    ${TCMG_SRC}/globals.c
+    ${TCMG_SRC}/client.c
+    ${TCMG_SRC}/core/log.c
+    ${TCMG_SRC}/core/conf.c
+    ${TCMG_SRC}/core/ban.c
+    ${TCMG_SRC}/core/emu.c
+    ${TCMG_SRC}/core/srvid.c
+    ${TCMG_SRC}/crypto/crypto.c
+    ${TCMG_SRC}/net/net.c
+    ${TCMG_SRC}/platform/platform.c
+    ${TCMG_SRC}/webif/webif.c
+    ${TCMG_SRC}/webif/webif_api.c
+    ${TCMG_SRC}/webif/webif_common.c
+    ${TCMG_SRC}/webif/webif_layout.c
+    ${TCMG_SRC}/webif/webif_page_login.c
+    ${TCMG_SRC}/webif/webif_page_status.c
+    ${TCMG_SRC}/webif/webif_page_system.c
+    ${TCMG_SRC}/webif/webif_page_users.c
+    ${TCMG_SRC}/webif/webif_tvcas.c
 )
 
 target_include_directories(tcmg_core PUBLIC
-    ${TCMG_SRC}                    # tcmg-globals.h, tcmg-*.h
+    ${TCMG_SRC}                    # tcmg_globals.h, tcmg_types.h, tcmg.h, etc.
+    ${TCMG_SRC}/core               # log.h, conf.h, ban.h, emu.h, srvid.h
+    ${TCMG_SRC}/crypto             # crypto.h
+    ${TCMG_SRC}/net                # net.h
+    ${TCMG_SRC}/platform           # platform.h
+    ${TCMG_SRC}/webif              # webif.h, webif_internal.h
     ${CMAKE_CURRENT_SOURCE_DIR}    # tcmg_android_compat.h
 )
 
@@ -89,6 +101,7 @@ add_library(tcmg_jni SHARED
 
 target_include_directories(tcmg_jni PRIVATE
     ${TCMG_SRC}
+    ${TCMG_SRC}/core
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 

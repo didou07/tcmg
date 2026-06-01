@@ -4,7 +4,7 @@ A lightweight C11 card-sharing server daemon with a built-in web dashboard, Andr
 
 ![Build & Release](https://github.com/didou07/tcmg/actions/workflows/build.yml/badge.svg)
 
-**Version:** 4.7 &nbsp;|&nbsp; **Platforms:** Linux x86-64, Windows x64, Android (arm64-v8a / armeabi-v7a / x86-64)
+**Version:** 4.8 &nbsp;|&nbsp; **Platforms:** Linux x86-64, Windows x64, Android (arm64-v8a / armeabi-v7a / x86-64)
 
 ---
 

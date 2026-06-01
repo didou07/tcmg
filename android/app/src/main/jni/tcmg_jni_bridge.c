@@ -47,7 +47,7 @@ extern int32_t log_ring_since(int32_t from_id, char **out_lines,
                                int32_t max_lines, int32_t *out_next);
 
 /* g_cfg defined in tcmg.c — we only need the webif_port field */
-#include "tcmg-globals.h"
+#include "tcmg_globals.h"
 extern S_CONFIG g_cfg;
 
 /* ── Server state (protected by g_state_mutex) ───────────────────────────── */

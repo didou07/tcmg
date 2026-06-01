@@ -190,6 +190,9 @@ jobs:
           test -f android/app/src/main/jni/tcmg_jni_bridge.c || { echo "ERROR: JNI bridge missing";    exit 1; }
           echo "Source tree OK"
 
+      - name: Generate webif assets
+        run: python3 tools/gen_assets.py
+
       - name: Decode keystore
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/tcmg-key.jks
 
