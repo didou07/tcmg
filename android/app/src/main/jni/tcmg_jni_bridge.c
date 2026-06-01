@@ -19,6 +19,7 @@
  * from stopServer() are visible to the server loop via the volatile qualifier.
  */
 
+#include "tcmg_android_compat.h"
 #include <jni.h>
 #include <android/log.h>
 #include <pthread.h>
