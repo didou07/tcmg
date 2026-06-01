@@ -1,127 +1,126 @@
-# =============================================================================
-# Makefile — tcmg
-# Source tree: all C files live in src/
-# Object files:  build/obj/
-# Output binary: build/tcmg  (or build/tcmg.exe on Windows)
+# tcmg v4.7 — Makefile
+# Targets: Linux, macOS, Windows (MinGW)
 #
-# Targets:
-#   make                    native debug build
-#   make RELEASE=1          optimised + stripped
-#   make CC=arm-linux-gnueabihf-gcc   cross-compile
-#   make clean
-#
-# Override variables:
-#   SRC      source directory  (default: src)
-#   BDIR     build directory   (default: build)
-# =============================================================================
+# Usage:
+#   make                    → debug build          → build/tcmg
+#   make RELEASE=1          → release build        → build/tcmg
+#   make assets             → regenerate webif_assets.h from CSS+JS
+#   make clean              → remove build/
 
-PROG   = tcmg
-CC    ?= gcc
-STRIP ?= strip
-SRC   ?= src
-BDIR  ?= build
-ODIR  := $(BDIR)/obj
+CC      ?= gcc
+STRIP   ?= strip
+PYTHON  ?= python3
+RELEASE ?= 0
 
-# ── Source & object lists ─────────────────────────────────────────────────────
+BUILD_DIR := build
+OBJ_DIR   := $(BUILD_DIR)/obj
+
+# ── Source list (grouped by layer) ──────────────────────────────────────────
 SRCS := \
-    $(SRC)/tcmg.c        \
-    $(SRC)/tcmg-log.c    \
-    $(SRC)/tcmg-crypto.c \
-    $(SRC)/tcmg-net.c    \
-    $(SRC)/tcmg-ban.c    \
-    $(SRC)/tcmg-conf.c   \
-    $(SRC)/tcmg-emu.c    \
-    $(SRC)/tcmg-srvid2.c \
-    $(SRC)/tcmg-webif.c         \
-    $(SRC)/tcmg-webif-common.c  \
-    $(SRC)/tcmg-webif-layout.c  \
-    $(SRC)/tcmg-webif-pages.c   \
-    $(SRC)/tcmg-webif-tvcas.c
+	src/globals.c \
+	src/main.c \
+	src/client.c \
+	src/core/log.c \
+	src/core/conf.c \
+	src/core/ban.c \
+	src/core/emu.c \
+	src/core/srvid.c \
+	src/net/net.c \
+	src/crypto/crypto.c \
+	src/platform/platform.c \
+	src/webif/webif.c \
+	src/webif/webif_common.c \
+	src/webif/webif_layout.c \
+	src/webif/webif_page_login.c \
+	src/webif/webif_page_status.c \
+	src/webif/webif_page_users.c \
+	src/webif/webif_page_system.c \
+	src/webif/webif_api.c \
+	src/webif/webif_tvcas.c
 
-OBJS := $(patsubst $(SRC)/%.c,$(ODIR)/%.o,$(SRCS))
+# Map src/sub/file.c → build/obj/sub__file.o  (avoids name collisions)
+obj_name = $(OBJ_DIR)/$(subst /,__,$(patsubst src/%.c,%.o,$(1)))
+OBJS := $(foreach s,$(SRCS),$(call obj_name,$(s)))
 
-# ── Compiler flags ────────────────────────────────────────────────────────────
-WARN := \
-    -Wall -Wextra -Wshadow      \
-    -Wno-unused-parameter       \
-    -Wmissing-prototypes        \
-    -Wstrict-prototypes
+# ── Platform detection ───────────────────────────────────────────────────────
+UNAME_S := $(shell uname -s 2>/dev/null || echo Windows)
 
-STD  := -std=c11 -D_GNU_SOURCE
-
-ifdef RELEASE
-  OPT  := -Os -ffunction-sections -fdata-sections \
-           -fomit-frame-pointer -fstack-protector-strong \
-           -fmerge-all-constants -fno-ident \
-           -D_FORTIFY_SOURCE=2
-  LDFL := -Wl,--gc-sections -Wl,--strip-all
-  ifneq ($(OS),Windows_NT)
-    ifeq (,$(findstring mingw,$(CC)))
-      LDFL += -Wl,-z,relro -Wl,-z,now
-    endif
-  endif
-  DO_STRIP := 1
+ifeq ($(findstring MINGW,$(UNAME_S)),MINGW)
+  PLATFORM  := windows
+  TARGET    := $(BUILD_DIR)/tcmg_x64.exe
+  CFLAGS    += -DTCMG_OS_WINDOWS -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601
+  LDFLAGS   += -lws2_32 -ladvapi32 -lbcrypt -static -static-libgcc -lpthread
+else ifeq ($(UNAME_S),Darwin)
+  PLATFORM  := macos
+  TARGET    := $(BUILD_DIR)/tcmg
+  LDFLAGS   += -lpthread
+else ifneq ($(findstring mingw,$(CC)),)
+  PLATFORM  := windows-cross
+  TARGET    := $(BUILD_DIR)/tcmg_x64.exe
+  CFLAGS    += -DTCMG_OS_WINDOWS -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601
+  LDFLAGS   += -lws2_32 -ladvapi32 -lbcrypt -static -static-libgcc -lpthread
 else
-  OPT  := -Og -g
-  LDFL :=
+  PLATFORM  := linux
+  TARGET    := $(BUILD_DIR)/tcmg
+  LDFLAGS   += -lpthread -lm
 endif
 
-CFLAGS  := $(STD) $(WARN) $(OPT) -I$(SRC) $(EXTRA_CFLAGS)
-LDFLAGS := $(LDFL) -lpthread $(EXTRA_LDFLAGS)
+# ── Compile flags ─────────────────────────────────────────────────────────────
+# -Isrc  : lets any .c file use #include "tcmg.h", #include "core/log.h", etc.
+# Overlength-strings: CSS/JS literals exceed the ISO C99 minimum (4095 chars);
+# this is intentional for an embedded web interface.
+BASE_FLAGS := -std=c11 -Wall -Wextra -Wno-unused-parameter \
+              -Wno-overlength-strings \
+              -Wno-format \
+              -Isrc -D_FORTIFY_SOURCE=2
 
-# ── Platform detection ────────────────────────────────────────────────────────
-ifeq ($(OS),Windows_NT)
-  LDFLAGS += -lbcrypt -lws2_32 -ladvapi32 -static -static-libgcc
-  PROG    := $(PROG).exe
-else
-  ifneq (,$(findstring mingw,$(CC)))
-    LDFLAGS += -lbcrypt -lws2_32 -ladvapi32 -static -static-libgcc
-    PROG    := $(PROG).exe
+ifeq ($(RELEASE),1)
+  CFLAGS += $(BASE_FLAGS) -Os \
+            -ffunction-sections -fdata-sections \
+            -fmerge-all-constants -fno-ident \
+            -fstack-protector-strong \
+            -march=x86-64 -mtune=generic
+  ifeq ($(PLATFORM),linux)
+    LDFLAGS += -Wl,--gc-sections -Wl,--strip-all -Wl,--build-id=none
   endif
+else
+  CFLAGS += $(BASE_FLAGS) -O2 -g
 endif
-
-OUT := $(BDIR)/$(PROG)
 
 # ── Rules ─────────────────────────────────────────────────────────────────────
-.PHONY: all clean
+.PHONY: all clean debug release assets
 
-all: $(OUT)
+all: $(TARGET)
 
-$(ODIR):
-	mkdir -p $(ODIR)
+# Regenerate embedded CSS/JS header from source assets
+assets:
+	$(PYTHON) tools/gen_assets.py
+	@echo "webif_assets.h regenerated — rebuild required (make clean && make)"
 
-$(OUT): $(OBJS) | $(BDIR)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
-ifdef DO_STRIP
-	$(STRIP) --strip-all $@
+$(TARGET): $(OBJS)
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(OBJS) -o $@ $(LDFLAGS)
+ifeq ($(RELEASE),1)
+	$(STRIP) --strip-all $@ 2>/dev/null || true
 endif
-	@echo "  LINK  $@  ($(shell ls -lh $@ | awk '{print $$5}'))"
+	@echo "Built: $@  (platform=$(PLATFORM))"
 
-$(BDIR):
-	mkdir -p $(BDIR)
+# Pattern rule: src/sub/file.c → build/obj/sub__file.o
+define COMPILE_RULE
+$(call obj_name,$(1)): $(1) | $(OBJ_DIR)
+	$(CC) $(CFLAGS) -c $$< -o $$@
+endef
+$(foreach s,$(SRCS),$(eval $(call COMPILE_RULE,$(s))))
 
-$(ODIR)/%.o: $(SRC)/%.c | $(ODIR)
-	@echo "  CC    $<"
-	$(CC) $(CFLAGS) -c -o $@ $<
+$(OBJ_DIR):
+	@mkdir -p $(OBJ_DIR)
+
+debug: CFLAGS  += -g -O0 -DDEBUG -fsanitize=address
+debug: LDFLAGS += -fsanitize=address
+debug: $(TARGET)
+
+release:
+	$(MAKE) RELEASE=1
 
 clean:
-	rm -rf $(BDIR)
-
-# ── Header dependencies ───────────────────────────────────────────────────────
-D  := $(SRC)
-OD := $(ODIR)
-$(OD)/tcmg.o:        $(D)/tcmg-globals.h $(D)/tcmg-log.h $(D)/tcmg-net.h   \
-                     $(D)/tcmg-crypto.h  $(D)/tcmg-conf.h $(D)/tcmg-emu.h   \
-                     $(D)/tcmg-ban.h     $(D)/tcmg-webif.h $(D)/tcmg-srvid2.h
-$(OD)/tcmg-log.o:    $(D)/tcmg-globals.h $(D)/tcmg-log.h   $(D)/tcmg-srvid2.h
-$(OD)/tcmg-srvid2.o: $(D)/tcmg-srvid2.h
-$(OD)/tcmg-crypto.o: $(D)/tcmg-globals.h $(D)/tcmg-crypto.h $(D)/tcmg-net.h
-$(OD)/tcmg-net.o:    $(D)/tcmg-globals.h $(D)/tcmg-net.h    $(D)/tcmg-crypto.h
-$(OD)/tcmg-ban.o:    $(D)/tcmg-globals.h $(D)/tcmg-ban.h
-$(OD)/tcmg-conf.o:   $(D)/tcmg-globals.h $(D)/tcmg-conf.h
-$(OD)/tcmg-emu.o:    $(D)/tcmg-globals.h $(D)/tcmg-emu.h    $(D)/tcmg-crypto.h
-$(OD)/tcmg-webif.o:         $(D)/tcmg-globals.h $(D)/tcmg-webif.h  $(D)/tcmg-log.h $(D)/tcmg-webif-internal.h
-$(OD)/tcmg-webif-common.o:  $(D)/tcmg-globals.h $(D)/tcmg-webif-internal.h
-$(OD)/tcmg-webif-layout.o:  $(D)/tcmg-globals.h $(D)/tcmg-webif-internal.h
-$(OD)/tcmg-webif-pages.o:   $(D)/tcmg-globals.h $(D)/tcmg-webif-internal.h
-$(OD)/tcmg-webif-tvcas.o:   $(D)/tcmg-globals.h $(D)/tcmg-webif-internal.h
+	rm -rf $(BUILD_DIR)

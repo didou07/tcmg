@@ -1,220 +1,144 @@
-# TCMG
+# tcmg
 
-A lightweight C11 server daemon with a built-in WebIF dashboard, Android app, and CI/CD pipeline.
-Supports Linux x86-64, Windows x64 (MinGW), and Android (arm64-v8a / armeabi-v7a / x86_64).
+A lightweight C11 card-sharing server daemon with a built-in web dashboard, Android companion app, and a full CI/CD pipeline.
 
 ![Build & Release](https://github.com/didou07/tcmg/actions/workflows/build.yml/badge.svg)
 
+**Version:** 4.7 &nbsp;|&nbsp; **Platforms:** Linux x86-64, Windows x64, Android (arm64-v8a / armeabi-v7a / x86-64)
+
 ---
 
-## Repository Layout
+## Features
 
-```
-tcmg/
-├── src/                               ← C sources — shared by all platforms
-│   ├── tcmg.c                         ← Entry point / main loop
-│   ├── tcmg-globals.h                 ← TCMG_VERSION, shared structs
-│   ├── tcmg-conf.c / tcmg-conf.h      ← Config file parser
-│   ├── tcmg-net.c                     ← Network / socket layer
-│   ├── tcmg-log.c                     ← Logging subsystem
-│   ├── tcmg-ban.c                     ← Fail-ban engine
-│   ├── tcmg-emu.c                     ← Emulator core
-│   ├── tcmg-srvid2.c                  ← Server identity (srvid2)
-│   ├── tcmg-crypto.c / tcmg-crypto.h  ← Crypto helpers
-│   ├── tcmg-webif.c                   ← WebIF HTTP server
-│   ├── tcmg-webif-layout.c            ← CSS + HTML shell (VOID theme)
-│   ├── tcmg-webif-pages.c             ← Dashboard, log, config pages
-│   ├── tcmg-webif-tvcas.c             ← TVCAS tool page
-│   └── tcmg-webif-internal.h          ← WebIF shared types
-│
-├── build/                             ← Build output (git-ignored)
-│   ├── obj/                           ← Compiled object files
-│   ├── tcmg                           ← Linux binary
-│   └── tcmg.exe                       ← Windows binary
-│
-├── android/                           ← Android Studio project
-│   ├── app/
-│   │   ├── build.gradle               ← Signing config (env vars or keystore.properties)
-│   │   └── src/main/
-│   │       ├── java/com/tcmg/app/     ← Java sources
-│   │       ├── res/                   ← Resources (VOID theme)
-│   │       └── jni/
-│   │           ├── CMakeLists.txt     ← NDK build — links all src/*.c
-│   │           └── tcmg_jni_bridge.c  ← JNI glue
-│   └── gradlew / gradlew.bat
-│
-├── Makefile                           ← Linux & Windows (MinGW) builds
-├── build.sh                           ← Linux/Windows build helper
-├── build.bat                          ← Windows build helper (MinGW)
-├── .gitignore
-└── .github/
-    └── workflows/
-        └── build.yml                  ← CI: Linux · Windows · Android · Release
-```
-
-> **Never committed:** `android/tcmg-key.jks`, `android/keystore.properties`, and `build/`
-> are in `.gitignore`. Signing credentials live only in GitHub Secrets and on your
-> local machine.
+- TVCAS MGcamd/Newcamd protocol server with multi-client support
+- Built-in HTTP web interface
+- ECM emulator core with CAID/SID → channel-name lookup
+- Android app with foreground service and live control UI
+- Zero runtime dependencies — single static binary on Linux/Windows
 
 ---
 
 ## Building
 
-### Linux
+### Linux / macOS
 
 ```bash
 # Debug build
 make
 
-# Optimised + stripped release binary
-make RELEASE=1 -j$(nproc)
+# Release build (optimized, stripped)
+make RELEASE=1
+
+# Or use the shell script
+./build.sh
+./build.sh linux
+./build.sh all        # Linux + Windows cross-compile
 ```
 
-Output is placed in `build/tcmg`.
+Output: `build/tcmg`
 
-Or use the helper:
-
-```bash
-./build.sh              # Linux x64 release → build/tcmg
-./build.sh windows      # Windows x64 release → build/tcmg.exe (requires mingw-w64)
-./build.sh all          # both platforms
-./build.sh clean        # remove build/
-```
-
-### Windows (MinGW-w64)
+### Windows (MinGW / MSYS2)
 
 ```bat
-build.bat          :: x64 release → build\tcmg_x64.exe
-build.bat debug    :: x64 debug
-build.bat clean    :: remove build\
+build.bat
+build.bat release
 ```
 
-Requires MinGW-w64 in `PATH` — download from <https://winlibs.com>
+Output: `build/tcmg_x64.exe`
 
 ### Android
 
-The recommended way is GitHub Actions (push to `main` → signed APK is produced automatically).
-
-For a local debug build:
+Open `android/` in Android Studio and build, or run:
 
 ```bash
 cd android
-./gradlew assembleDebug      # debug APK — no keystore required
+./gradlew assembleRelease
 ```
 
-For a local release build you need `android/keystore.properties` (see below).
+Requires Android NDK 27. See [Android signing](#android-signing) below.
 
----
+### Regenerate web assets
 
-## Android APK Signing
-
-### Step 1 — Generate a keystore (one-time setup)
+If you edit `src/webif/assets/tcmg.css` or `tcmg.js`, regenerate the embedded header:
 
 ```bash
-keytool -genkeypair \
-  -keystore android/tcmg-key.jks \
-  -alias    tcmg-key \
-  -keyalg RSA -keysize 2048 -validity 10000 \
-  -storepass YOUR_STORE_PASSWORD \
-  -keypass   YOUR_KEY_PASSWORD \
-  -dname "CN=Your Name, O=Your Org, C=DZ"
+make assets
+# then rebuild
+make clean && make
 ```
 
-> **Keep `tcmg-key.jks` safe and backed up.** Losing it means you can never publish
-> an update to the same Play Store listing.
+---
 
-### Step 2 — Add GitHub Secrets (CI signing)
+## Usage
 
-Go to: **Repo → Settings → Secrets and variables → Actions → New repository secret**
+```
+tcmg [options]
 
-| Secret name        | Value                              |
-|--------------------|------------------------------------|
-| `KEYSTORE_BASE64`  | `base64 -w0 android/tcmg-key.jks` |
-| `KEYSTORE_PASSWORD`| Your keystore store password       |
-| `KEY_ALIAS`        | `tcmg-key`                         |
-| `KEY_PASSWORD`     | Your key password                  |
-
-The workflow decodes the keystore before building and wipes it from disk after,
-regardless of success or failure.
-
-### Step 3 — Local release builds (optional)
-
-Create `android/keystore.properties` (already in `.gitignore` — **never commit this file**):
-
-```properties
-storeFile=../tcmg-key.jks
-storePassword=YOUR_STORE_PASSWORD
-keyAlias=tcmg-key
-keyPassword=YOUR_KEY_PASSWORD
+  -c <dir>    Config directory (default: /usr/local/etc)
+  -b          Run in background (daemonize)
+  -d <level>  Debug bitmask  1=net 2=client 4=ecm 8=proto 16=conf 32=webif 64=ban
+  -v          Show version
+  -h          Show help
 ```
 
-Then run `./gradlew assembleRelease` from the `android/` directory.
+On first run, place `tcmg.conf` in the config directory. The server listens for card-sharing clients on port **15050** and the web interface on port **8080** by default.
 
 ---
 
-## CI / GitHub Actions
+## Project Layout
 
-Every push to `main` / `master` runs **build.yml** with four jobs:
-
-| Job       | Runner           | Output                                          |
-|-----------|------------------|-------------------------------------------------|
-| `linux`   | `ubuntu-latest`  | `tcmg-VERSION-linux-x86_64.tar.gz` + `.sha256` |
-| `windows` | `windows-latest` | `tcmg-VERSION-windows-x64.zip` + `.sha256`     |
-| `android` | `ubuntu-latest`  | `app-release.apk`                               |
-| `release` | `ubuntu-latest`  | GitHub Release (tag + all three artifacts)      |
-
-The `release` job runs only on push (not pull requests). It reads the version from
-`#define TCMG_VERSION` in `src/tcmg-globals.h`, creates a git tag `vX.Y`, and
-publishes a GitHub Release with all artifacts attached.
-
-> **To release a new version:** bump `TCMG_VERSION` in `src/tcmg-globals.h`, then
-> push to `main`. The CI handles everything else.
-
----
-
-## WebIF
-
-The built-in web interface (VOID theme — Deep Navy + Electric Blue) is served by
-the daemon itself. Open `http://<device-ip>:<port>` in any browser.
-
-| Path        | Description                          |
-|-------------|--------------------------------------|
-| `/status`   | Dashboard — live stats, clients      |
-| `/livelog`  | Real-time server log                 |
-| `/users`    | User account management              |
-| `/failban`  | Fail-ban IP list                     |
-| `/config`   | Configuration file editor            |
-| `/tvcas`    | TVCAS tool                           |
-| `/restart`  | Restart server                       |
-| `/shutdown` | Shutdown server                      |
-
----
-
-## Android App
-
-Minimum API 24 (Android 7.0). Wraps the C daemon via JNI.
-
-- **Control tab** — start/stop server, uptime counter, network addresses, WebIF quick-launch
-- **Log tab** — real-time log with filter and search
-- **Config Editor tab** — edit `tcmg.conf` and `tcmg.srvid2` on-device
-- **Theme** — VOID (Deep Navy `#090d14` + Electric Blue `#3b82f6`), matches the WebIF
-
----
-
-## Versioning
-
-Version is defined in one place:
-
-```c
-// src/tcmg-globals.h
-#define TCMG_VERSION  "4.4"
+```
+tcmg/
+├── src/
+│   ├── main.c                  Entry point and main loop
+│   ├── client.c / client.h     Per-client thread handling
+│   ├── tcmg.h                  Master header (version, platform, includes)
+│   ├── core/                   log, conf, ban, emu, srvid
+│   ├── crypto/                 DES / 3DES-EDE2-CBC / MD5 / CSPRNG
+│   ├── net/                    Socket I/O and Newcamd frame codec
+│   ├── platform/               OS abstraction (signals, daemon, paths)
+│   └── webif/                  HTTP server, pages, API, embedded assets
+├── android/                    Android Studio project (Java + JNI)
+├── tools/
+│   └── gen_assets.py           Embeds CSS/JS into webif_assets.h
+├── Makefile
+├── build.sh                    Shell build script (Linux / macOS / MSYS2)
+├── build.bat                   Batch build script (Windows)
+└── .github/workflows/
+    └── build.yml               CI: Linux, Windows, Android → GitHub Release
 ```
 
-The CI reads this value to name artifacts and create the git tag.
-To release `4.5`: change the string, commit, push.
+---
+
+## CI / CD
+
+GitHub Actions builds on every push to `main`/`master`:
+
+| Job | Runner | Output |
+|-----|--------|--------|
+| Linux | ubuntu-latest / GCC | `tcmg-<version>-linux-x86_64.tar.gz` |
+| Windows | MinGW-w64 | `tcmg-<version>-windows-x64.zip` |
+| Android | NDK 27 + Gradle | signed release APK |
+| Release | on version tag | GitHub Release with all artifacts + SHA-256 |
+
+### Android signing
+
+Add these secrets in **Settings → Secrets → Actions**:
+
+| Secret | Value |
+|--------|-------|
+| `KEYSTORE_BASE64` | `base64 -w0 tcmg-key.jks` |
+| `KEYSTORE_PASSWORD` | keystore store password |
+| `KEY_ALIAS` | key alias |
+| `KEY_PASSWORD` | key password |
 
 ---
 
-## License
+## Requirements
 
-See [LICENSE](LICENSE).
+| Target | Requirement |
+|--------|-------------|
+| Linux | GCC, make, python3 |
+| Windows | MinGW-w64 (MSYS2 / UCRT64) |
+| Android | Android Studio, NDK 27, SDK 35 (minSdk 24) |
+| Cross-compile | `x86_64-w64-mingw32-gcc` on Linux |

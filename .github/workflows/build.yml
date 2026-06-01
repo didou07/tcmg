@@ -1,16 +1,15 @@
 # =============================================================================
 # .github/workflows/build.yml
 #
-# Builds tcmg for all three platforms on every push to main/master.
-# Version is bumped manually in src/tcmg-globals.h — no auto-bump here.
+# Builds tcmg for Linux, Windows, and Android on every push to main/master.
 #
 # Jobs:
 #   linux    — GCC on ubuntu-latest   → build/tcmg  (ELF x86-64)
 #   windows  — MinGW-w64              → build/tcmg_x64.exe
 #   android  — NDK 27 + Gradle        → signed release APK
-#   release  — tags & publishes GitHub Release using current version in code
+#   release  — tags & publishes GitHub Release
 #
-# Required GitHub Secrets (Settings → Secrets and variables → Actions):
+# Required GitHub Secrets (Settings → Secrets → Actions):
 #   KEYSTORE_BASE64      base64 -w0 tcmg-key.jks
 #   KEYSTORE_PASSWORD    keystore store password
 #   KEY_ALIAS            key alias inside the keystore
@@ -47,13 +46,17 @@ jobs:
       - name: Install build tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends gcc make
+          sudo apt-get install -y --no-install-recommends gcc make python3
 
       - name: Verify source tree
         run: |
-          test -f src/tcmg.c         || { echo "ERROR: src/tcmg.c not found";        exit 1; }
-          test -f src/tcmg-globals.h || { echo "ERROR: src/tcmg-globals.h not found"; exit 1; }
+          test -f src/main.c  || { echo "ERROR: src/main.c not found";  exit 1; }
+          test -f src/tcmg.h  || { echo "ERROR: src/tcmg.h not found";  exit 1; }
+          test -f src/webif/assets/tcmg.css || { echo "ERROR: webif assets missing"; exit 1; }
           echo "Source tree OK"
+
+      - name: Generate webif assets
+        run: python3 tools/gen_assets.py
 
       - name: Build (release)
         run: make RELEASE=1 -j$(nproc)
@@ -61,13 +64,13 @@ jobs:
       - name: Smoke-test binary
         run: |
           file build/tcmg
-          ./build/tcmg --version 2>/dev/null || ./build/tcmg -V 2>/dev/null || true
+          ./build/tcmg -v
           ls -lh build/tcmg
 
       - name: Read version
         id: ver
         run: |
-          V=$(grep -oP '#define\s+TCMG_VERSION\s+"\K[^"]+' src/tcmg-globals.h || echo "dev")
+          V=$(grep -oP '#define\s+TCMG_VERSION\s+"\K[^"]+' src/tcmg.h || echo "dev")
           echo "version=${V}" >> "$GITHUB_OUTPUT"
 
       - name: Package
@@ -105,13 +108,18 @@ jobs:
           install: >-
             mingw-w64-x86_64-gcc
             make
+            python3
             zip
 
       - name: Verify source tree
         shell: msys2 {0}
         run: |
-          test -f src/tcmg.c || { echo "ERROR: src/tcmg.c not found"; exit 1; }
+          test -f src/main.c || { echo "ERROR: src/main.c not found"; exit 1; }
           echo "Source tree OK"
+
+      - name: Generate webif assets
+        shell: msys2 {0}
+        run: python3 tools/gen_assets.py
 
       - name: Build (release)
         shell: msys2 {0}
@@ -124,21 +132,21 @@ jobs:
       - name: Smoke-test
         shell: msys2 {0}
         run: |
-          file build/tcmg.exe
-          ls -lh build/tcmg.exe
+          file build/tcmg_x64.exe
+          ls -lh build/tcmg_x64.exe
 
       - name: Read version
         id: ver
         shell: msys2 {0}
         run: |
-          V=$(grep -oP '#define\s+TCMG_VERSION\s+"\K[^"]+' src/tcmg-globals.h || echo "dev")
+          V=$(grep -oP '#define\s+TCMG_VERSION\s+"\K[^"]+' src/tcmg.h || echo "dev")
           echo "version=${V}" >> "$GITHUB_OUTPUT"
 
       - name: Package
         shell: msys2 {0}
         run: |
           ARCHIVE="tcmg-${{ steps.ver.outputs.version }}-windows-x64.zip"
-          zip "${ARCHIVE}" build/tcmg.exe
+          zip "${ARCHIVE}" build/tcmg_x64.exe
           sha256sum "${ARCHIVE}" > "${ARCHIVE}.sha256"
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
 
@@ -153,12 +161,6 @@ jobs:
 
 # =============================================================================
 #  3. ANDROID — NDK 27, Gradle, signed release APK
-#
-#  Required GitHub Secrets:
-#    KEYSTORE_BASE64      base64 -w0 tcmg-key.jks
-#    KEYSTORE_PASSWORD    keystore store password
-#    KEY_ALIAS            key alias inside the keystore
-#    KEY_PASSWORD         key password
 # =============================================================================
   android:
     name: Android APK
@@ -176,23 +178,20 @@ jobs:
           [ -z "${{ secrets.KEY_ALIAS }}"          ] && missing="$missing KEY_ALIAS"
           [ -z "${{ secrets.KEY_PASSWORD }}"       ] && missing="$missing KEY_PASSWORD"
           if [ -n "$missing" ]; then
-            echo "ERROR: The following GitHub Secrets are not set:$missing"
-            echo ""
-            echo "Go to: Settings → Secrets and variables → Actions → New repository secret"
+            echo "ERROR: GitHub Secrets not set:$missing"
+            echo "Go to: Settings → Secrets and variables → Actions"
             exit 1
           fi
-          echo "All signing secrets present."
 
       - name: Verify source tree
         run: |
-          test -f src/tcmg.c                                  || { echo "ERROR: src/tcmg.c missing";     exit 1; }
-          test -f android/app/src/main/jni/CMakeLists.txt     || { echo "ERROR: CMakeLists.txt missing"; exit 1; }
-          test -f android/app/src/main/jni/tcmg_jni_bridge.c || { echo "ERROR: JNI bridge missing";     exit 1; }
+          test -f src/main.c                                  || { echo "ERROR: src/main.c missing";     exit 1; }
+          test -f android/app/src/main/jni/CMakeLists.txt    || { echo "ERROR: CMakeLists.txt missing"; exit 1; }
+          test -f android/app/src/main/jni/tcmg_jni_bridge.c || { echo "ERROR: JNI bridge missing";    exit 1; }
           echo "Source tree OK"
 
       - name: Decode keystore
-        run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/tcmg-key.jks
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/tcmg-key.jks
 
       - name: Setup JDK 17
         uses: actions/setup-java@v4
@@ -204,7 +203,7 @@ jobs:
       - name: Setup Android SDK + NDK + CMake
         uses: android-actions/setup-android@v3
 
-      - name: Install NDK 27 and CMake 3.22.1
+      - name: Install NDK 27 and CMake
         run: |
           sdkmanager --install \
             "ndk;27.2.12479018" \
@@ -217,8 +216,7 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('android/**/*.gradle',
-                                    'android/gradle/wrapper/gradle-wrapper.properties') }}
+          key: gradle-${{ hashFiles('android/**/*.gradle', 'android/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: gradle-
 
       - name: Restore Gradle wrapper JAR
@@ -268,7 +266,6 @@ jobs:
 
 # =============================================================================
 #  4. RELEASE — tag & publish GitHub Release
-#     Runs only on push to main/master, not on pull requests.
 # =============================================================================
   release:
     name: Tag & Publish Release
@@ -289,18 +286,15 @@ jobs:
       - name: Read version
         id: ver
         run: |
-          V=$(grep -oP '#define\s+TCMG_VERSION\s+"\K[^"]+' src/tcmg-globals.h || true)
-          if [[ -z "$V" ]]; then
-            echo "ERROR: TCMG_VERSION not found in src/tcmg-globals.h"
-            exit 1
-          fi
+          V=$(grep -oP '#define\s+TCMG_VERSION\s+"\K[^"]+' src/tcmg.h || true)
+          [ -z "$V" ] && { echo "ERROR: TCMG_VERSION not found in src/tcmg.h"; exit 1; }
           echo "version=${V}" >> "$GITHUB_OUTPUT"
           echo "Version: ${V}"
 
       - name: Create tag
         run: |
           TAG="v${{ steps.ver.outputs.version }}"
-          git tag -a "${TAG}" -m "Release ${TAG}" 2>/dev/null || echo "Tag ${TAG} already exists, skipping"
+          git tag -a "${TAG}" -m "Release ${TAG}" 2>/dev/null || echo "Tag ${TAG} already exists"
           git push origin "${TAG}" 2>/dev/null || echo "Tag already pushed"
 
       - name: Download all build artifacts
@@ -314,8 +308,8 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name:               v${{ steps.ver.outputs.version }}
-          name:                   "tcmg v${{ steps.ver.outputs.version }}"
+          tag_name:  v${{ steps.ver.outputs.version }}
+          name:      "tcmg v${{ steps.ver.outputs.version }}"
           body: |
             ## tcmg v${{ steps.ver.outputs.version }}
 
@@ -329,5 +323,5 @@ jobs:
             | Android      | `*.apk`                           |
 
             SHA-256 checksums are included alongside each archive.
-          files:                  dist/**/*
+          files: dist/**/*
           fail_on_unmatched_files: false

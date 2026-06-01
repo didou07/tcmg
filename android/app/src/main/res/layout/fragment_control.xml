@@ -172,7 +172,7 @@
             <!-- Action buttons: LAUNCH | STOP -->
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="52dp"
+                android:layout_height="56dp"
                 android:orientation="horizontal"
                 android:paddingStart="12dp"
                 android:paddingEnd="12dp"
@@ -189,6 +189,11 @@
                     android:textSize="13sp"
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
+                    app:icon="@drawable/ic_btn_start"
+                    app:iconGravity="textStart"
+                    app:iconSize="18dp"
+                    app:iconPadding="6dp"
+                    app:backgroundTint="@color/btn_start_tint"
                     app:cornerRadius="8dp"
                     style="@style/Widget.Material3.Button"/>
 
@@ -203,8 +208,13 @@
                     android:insetTop="0dp"
                     android:insetBottom="0dp"
                     android:enabled="false"
+                    app:icon="@drawable/ic_btn_stop"
+                    app:iconGravity="textStart"
+                    app:iconSize="18dp"
+                    app:iconPadding="6dp"
+                    app:backgroundTint="@color/btn_stop_tint"
                     app:cornerRadius="8dp"
-                    style="@style/Widget.Material3.Button.TonalButton"/>
+                    style="@style/Widget.Material3.Button"/>
             </LinearLayout>
         </LinearLayout>
 

@@ -21,27 +21,6 @@
     <color name="void_on_secondary">#ffffff</color>
     <color name="void_accent">#06b6d4</color>
 
-    <!-- ══════════════════════════════════════════════════════════════════
-         THEME B: EMBER — Warm Charcoal + Amber/Orange
-         Warm, energetic, completely different feel from Void
-         bg: warm dark brown-black | primary: amber gold | accent: coral
-         ══════════════════════════════════════════════════════════════════ -->
-    <color name="ember_bg">#110e09</color>
-    <color name="ember_surface">#1a1409</color>
-    <color name="ember_surface_var">#241b0b</color>
-    <color name="ember_primary">#f59e0b</color>
-    <color name="ember_primary_dim">#d97706</color>
-    <color name="ember_primary_container">#3d2a07</color>
-    <color name="ember_on_primary">#1a0f00</color>
-    <color name="ember_on_surface">#fef3c7</color>
-    <color name="ember_on_surface_var">#a87c3a</color>
-    <color name="ember_outline">#3d2a07</color>
-    <color name="ember_outline_var">#241b0b</color>
-    <color name="ember_secondary">#fb923c</color>
-    <color name="ember_secondary_container">#3d1f07</color>
-    <color name="ember_on_secondary">#1a0a00</color>
-    <color name="ember_accent">#fcd34d</color>
-
     <!-- ══ Status (shared) ════════════════════════════════════════════════ -->
     <color name="color_running">#22c55e</color>
     <color name="color_stopped">#ef4444</color>

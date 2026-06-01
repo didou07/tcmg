@@ -31,8 +31,6 @@ import com.tcmg.app.databinding.ActivityMainBinding;
 public final class MainActivity extends AppCompatActivity {
 
     public static final String PREF_FILE  = "tcmg_prefs";
-    public static final String KEY_THEME  = "ui_theme";
-    public static final String VAL_VOID   = "void";
 
     private static final String TAG_CONTROL = "frag_control";
     private static final String TAG_LOG     = "frag_log";
@@ -55,11 +53,7 @@ public final class MainActivity extends AppCompatActivity {
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         // Always apply VOID theme
         setTheme(R.style.Theme_TCMG);
-        // Clear any leftover ember preference so old installs default to void
         prefs = getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE);
-        if (!VAL_VOID.equals(prefs.getString(KEY_THEME, VAL_VOID))) {
-            prefs.edit().putString(KEY_THEME, VAL_VOID).apply();
-        }
 
         super.onCreate(savedInstanceState);
 
