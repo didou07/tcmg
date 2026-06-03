@@ -1,4 +1,3 @@
-
 #define MODULE_LOG_PREFIX "client"
 #include "tcmg.h"
 #include "client.h"
@@ -7,8 +6,9 @@ static bool cw_cache_lookup(const uint8_t *ecm_md5, uint8_t *cw_out)
 {
 	uint32_t idx = ((uint32_t)ecm_md5[0] | ((uint32_t)ecm_md5[1] << 8))
 	               & (CW_CACHE_SIZE - 1);
+	uint32_t shard = idx & (CW_CACHE_SHARDS - 1);
 	bool hit = false;
-	pthread_mutex_lock(&g_cw_cache_mtx);
+	pthread_mutex_lock(&g_cw_cache_mtx[shard]);
 	S_CW_CACHE_ENTRY *e = &g_cw_cache[idx];
 	if (e->valid && ct_memeq(e->ecm_md5, ecm_md5, 16) &&
 	    (time(NULL) - e->ts) < CW_CACHE_TTL_S)
@@ -16,7 +16,7 @@ static bool cw_cache_lookup(const uint8_t *ecm_md5, uint8_t *cw_out)
 		memcpy(cw_out, e->cw, CW_LEN);
 		hit = true;
 	}
-	pthread_mutex_unlock(&g_cw_cache_mtx);
+	pthread_mutex_unlock(&g_cw_cache_mtx[shard]);
 	return hit;
 }
 
@@ -24,13 +24,14 @@ static void cw_cache_store(const uint8_t *ecm_md5, const uint8_t *cw)
 {
 	uint32_t idx = ((uint32_t)ecm_md5[0] | ((uint32_t)ecm_md5[1] << 8))
 	               & (CW_CACHE_SIZE - 1);
-	pthread_mutex_lock(&g_cw_cache_mtx);
+	uint32_t shard = idx & (CW_CACHE_SHARDS - 1);
+	pthread_mutex_lock(&g_cw_cache_mtx[shard]);
 	S_CW_CACHE_ENTRY *e = &g_cw_cache[idx];
 	memcpy(e->ecm_md5, ecm_md5, 16);
 	memcpy(e->cw,      cw,      CW_LEN);
 	e->ts    = time(NULL);
 	e->valid = 1;
-	pthread_mutex_unlock(&g_cw_cache_mtx);
+	pthread_mutex_unlock(&g_cw_cache_mtx[shard]);
 }
 
 void client_register(S_CLIENT *cl)
@@ -157,7 +158,6 @@ static bool handle_login(S_CLIENT *cl,
 	{
 		nc_nak(cl, sid, mid, pid);
 		tcmg_log("%s LOGIN failed: IP banned", ip);
-		tcmg_log_dbg(D_BAN, "%s rejected (banned)", ip);
 		return false;
 	}
 
@@ -199,22 +199,34 @@ static bool handle_login(S_CLIENT *cl,
 		ban_record_fail(ip);
 		nc_nak(cl, sid, mid, pid);
 		tcmg_log("%s LOGIN failed: wrong password for '%s'", ip, user);
-		tcmg_log_dbg(D_CLIENT, "%s bad password attempt for '%s'", ip, user);
 		return false;
 	}
 
 	if (acc->expirationdate > 0 && time(NULL) > acc->expirationdate)
 	{
 		nc_nak(cl, sid, mid, pid);
-		tcmg_log("LOGIN DENIED: account '%s' expired", acc->user);
+		tcmg_log("%s LOGIN failed: account '%s' expired", ip, acc->user);
 		return false;
 	}
-	if (acc->max_connections > 0 && (int32_t)acc->active >= acc->max_connections)
+
+	if (acc->max_connections > 0)
 	{
-		nc_nak(cl, sid, mid, pid);
-		tcmg_log("LOGIN DENIED: '%s' max_connections=%d reached",
-		         acc->user, acc->max_connections);
-		return false;
+		pthread_rwlock_wrlock(&g_cfg.acc_lock);
+		bool over = ((int32_t)acc->active >= acc->max_connections);
+		if (!over)
+			__sync_fetch_and_add(&acc->active, 1);
+		pthread_rwlock_unlock(&g_cfg.acc_lock);
+		if (over)
+		{
+			nc_nak(cl, sid, mid, pid);
+			tcmg_log("%s LOGIN failed: '%s' max_connections=%d reached",
+			         ip, acc->user, acc->max_connections);
+			return false;
+		}
+	}
+	else
+	{
+		__sync_fetch_and_add(&acc->active, 1);
 	}
 
 	/* ACK */
@@ -239,8 +251,7 @@ static bool handle_login(S_CLIENT *cl,
 
 	log_set_user(acc->user);
 
-	__sync_fetch_and_add(&acc->active, 1);
-	acc->last_seen = time(NULL);
+	__sync_lock_test_and_set(&acc->last_seen, time(NULL));
 	if (acc->first_login == 0) acc->first_login = time(NULL);
 	ban_record_ok(ip);
 
@@ -251,11 +262,11 @@ static bool handle_login(S_CLIENT *cl,
 		for (i = 0; i < acc->ncaids; i++)
 			pos += snprintf(caids + pos, sizeof(caids) - pos,
 			                ",%04X", acc->caids[i]);
-		tcmg_log("%s  %-12s  [%s]  %s", ip, user, caids, cl->client_name);
+		tcmg_log("%s LOGIN ok: '%s' caids=[%s] client=%s", ip, user, caids, cl->client_name);
 	}
 	else
 	{
-		tcmg_log("%s  %-12s  %04X  %s", ip, user, acc->caid, cl->client_name);
+		tcmg_log("%s LOGIN ok: '%s' caid=%04X client=%s", ip, user, acc->caid, cl->client_name);
 	}
 	tcmg_log_dbg(D_CLIENT, "%s authenticated '%s' caid=%04X", ip, user, acc->caid);
 	return true;
@@ -315,7 +326,7 @@ static void handle_ecm(S_CLIENT *cl, uint8_t cmd,
 				if (cl->account->caids[i] == caid_hdr) { ok = true; break; }
 		if (!ok)
 		{
-			tcmg_log("CAID %04X not permitted for user=%s", caid_hdr, cl->user);
+			tcmg_log("%s ECM denied: CAID %04X not permitted for '%s'", cl->ip, caid_hdr, cl->user);
 			ecm_send_nak(cl, cmd, sid, mid, pid);
 			return;
 		}
@@ -336,15 +347,10 @@ static void handle_ecm(S_CLIENT *cl, uint8_t cmd,
 		}
 	}
 
-	tcmg_log_dbg(D_CLIENT, "%s  ECM CAID=%04X SID=%04X len=%d",
-	             cl->ip, ecm_caid, sid, dlen);
-
 	cl->last_ecm_time = time(NULL);
 	cl->last_caid     = ecm_caid;
 	cl->last_srvid    = sid;
-	const char *ch = srvid_lookup(ecm_caid, sid);
-	if (ch) tcmg_strlcpy(cl->last_channel, ch, sizeof(cl->last_channel));
-	else    cl->last_channel[0] = '\0';
+	srvid_lookup_copy(ecm_caid, sid, cl->last_channel, sizeof(cl->last_channel));
 
 	tcmg_strlcpy(ctx.user, cl->user, CFGKEY_LEN);
 	tcmg_strlcpy(ctx.ip,   cl->ip,  MAXIPLEN);
@@ -377,7 +383,7 @@ static void handle_ecm(S_CLIENT *cl, uint8_t cmd,
 		resp[2] = CW_LEN;
 		memcpy(resp + 3, cw, CW_LEN);
 		nc_send(cl, resp, 19, sid, mid, pid);
-		cl->account->last_seen = time(NULL);
+		__sync_lock_test_and_set(&cl->account->last_seen, time(NULL));
 	}
 	else
 	{
@@ -404,6 +410,7 @@ void *handle_client(void *arg)
 	tcmg_strlcpy(cl.ip, args->ip, MAXIPLEN);
 	free(args);
 
+	log_set_type(LOG_TYPE_CLIENT);
 	client_register(&cl);
 	tcmg_log("%s connected [%d active]", cl.ip, g_active_conns);
 	tcmg_log_dbg(D_CLIENT, "%s new connection", cl.ip);
@@ -417,7 +424,7 @@ void *handle_client(void *arg)
 			time_t idle = time(NULL) - cl.last_ecm_time;
 			if (idle >= cl.account->max_idle)
 			{
-				tcmg_log("%s idle timeout (%lds >= %ds) -- disconnecting '%s'",
+				tcmg_log("%s idle timeout: %lds >= %ds, disconnecting '%s'",
 				         cl.ip, (long)idle, cl.account->max_idle, cl.user);
 				break;
 			}
@@ -426,14 +433,11 @@ void *handle_client(void *arg)
 		dlen = nc_recv(&cl, data, &sid, &mid, &pid, &caid_hdr);
 		if (dlen < 0)
 		{
-			tcmg_log_dbg(D_CLIENT, "%s disconnect", cl.ip);
 			tcmg_log("%s disconnected", cl.ip);
 			break;
 		}
 
 		uint8_t cmd = data[0];
-		tcmg_log_dbg(D_PROTO, "%s cmd=0x%02X sid=%04X len=%d",
-		             cl.ip, cmd, sid, dlen);
 
 		if      (cmd == MSG_CLIENT_LOGIN)
 		{ if (!handle_login(&cl, data, dlen, sid, mid, pid)) break; }

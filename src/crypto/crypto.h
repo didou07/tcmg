@@ -7,6 +7,8 @@ void crypt_des_dec(const uint8_t *key8, const uint8_t *in8, uint8_t *out8);
 void crypt_key_spread(const uint8_t *key14, uint8_t *out16);
 void crypt_ede2_cbc(const uint8_t *key16, const uint8_t *iv,
                     const uint8_t *in, uint8_t *out, size_t len, bool encrypt);
+void crypt_ede2_ecb(const uint8_t *key16,
+                    const uint8_t *in, uint8_t *out, size_t len, bool encrypt);
 bool crypt_md5_crypt(const char *pw, const char *salt, char *out, size_t outsz);
 void crypt_md5_hash(const uint8_t *data, size_t len, uint8_t out[16]);
 

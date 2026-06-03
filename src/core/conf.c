@@ -281,6 +281,7 @@ S_ACCOUNT *cfg_account_new(S_CONFIG *cfg)
 	field_apply_defaults(cfg_account_fields, a);
 	a->caid          = 0x0B00;
 	a->sched_day_from = -1;   /* schedule not set */
+	pthread_mutex_init(&a->stat_mtx, NULL);
 	/* Append to tail */
 	if (!cfg->accounts)
 		cfg->accounts = a;
@@ -300,6 +301,7 @@ void cfg_accounts_free(S_CONFIG *cfg)
 	while (a)
 	{
 		S_ACCOUNT *next = a->next;
+		pthread_mutex_destroy(&a->stat_mtx);
 		secure_zero(a, sizeof(*a));
 		free(a);
 		a = next;
@@ -424,7 +426,7 @@ bool cfg_save(S_CONFIG *cfg)
 	FILE *f = fopen(tmppath, "w");
 	if (!f)
 	{
-		tcmg_log("cannot create %s (errno=%d %s)", tmppath, errno, strerror(errno));
+		tcmg_log("cannot create %s (errno=%d: %s)", tmppath, errno, strerror(errno));
 		return false;
 	}
 
@@ -491,14 +493,14 @@ bool cfg_save(S_CONFIG *cfg)
 	FILE *src = fopen(tmppath, "r");
 	if (!src)
 	{
-		tcmg_log("cannot re-open %s (errno=%d %s)", tmppath, errno, strerror(errno));
+		tcmg_log("cannot re-open %s (errno=%d: %s)", tmppath, errno, strerror(errno));
 		remove(tmppath);
 		return false;
 	}
 	FILE *dst = fopen(cfg->config_file, "w");
 	if (!dst)
 	{
-		tcmg_log("cannot write %s (errno=%d %s)", cfg->config_file, errno, strerror(errno));
+		tcmg_log("cannot write %s (errno=%d: %s)", cfg->config_file, errno, strerror(errno));
 		fclose(src);
 		remove(tmppath);
 		return false;
@@ -519,7 +521,7 @@ bool cfg_write_default(const char *path)
 	FILE *f = fopen(path, "w");
 	if (!f)
 	{
-		tcmg_log("cfg_write_default: cannot create %s (errno=%d %s)",
+		tcmg_log("cannot create default config %s (errno=%d: %s)",
 		         path, errno, strerror(errno));
 		return false;
 	}

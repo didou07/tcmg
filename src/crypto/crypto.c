@@ -250,6 +250,29 @@ void crypt_ede2_cbc(const uint8_t *k16, const uint8_t *iv,
 	secure_zero(ivec, sizeof(ivec));
 }
 
+void crypt_ede2_ecb(const uint8_t *k16, const uint8_t *in, uint8_t *out,
+                    size_t len, bool encrypt)
+{
+	size_t i;
+	uint8_t tmp[8];
+	for (i = 0; i < len; i += 8)
+	{
+		if (encrypt)
+		{
+			crypt_des_enc(k16,     in+i, tmp);
+			crypt_des_dec(k16+8,   tmp,  tmp);
+			crypt_des_enc(k16,     tmp,  out+i);
+		}
+		else
+		{
+			crypt_des_dec(k16,     in+i, tmp);
+			crypt_des_enc(k16+8,   tmp,  tmp);
+			crypt_des_dec(k16,     tmp,  out+i);
+		}
+		secure_zero(tmp, 8);
+	}
+}
+
 #define F(x,y,z) (((x)&(y))|((~x)&(z)))
 #define G(x,y,z) (((x)&(z))|((y)&(~z)))
 #define H(x,y,z) ((x)^(y)^(z))

@@ -24,7 +24,9 @@ document.querySelectorAll('.tnav a').forEach(function(a) {
 
 /* 2. Poll interval control — initial value comes from server config */
 var _pm = (function() {
-  var v = parseInt(sessionStorage.tcmg_poll) || %d;
+  var srv = %d;
+  var stored = parseInt(sessionStorage.tcmg_poll);
+  var v = (stored >= 1 && stored <= 99) ? stored : srv;
   var el = document.getElementById('ps_');
   if (el) el.value = v;
   return v * 1000;

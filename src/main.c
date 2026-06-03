@@ -127,6 +127,7 @@ int main(int argc, char *argv[])
 		tcmg_log("user statistics file: %s", g_cfg.usrfile);
 	}
 
+	log_init();
 	emu_init();
 	webif_start();
 
@@ -248,9 +249,11 @@ int main(int argc, char *argv[])
 
 	tcmg_winsock_cleanup();
 
+	log_flush();
+	log_shutdown();
+
 	if (g_restart)
 	{
-		tcmg_log("%s", "restarting process...");
 		tcmg_exec_restart(g_argv_saved);
 	}
 

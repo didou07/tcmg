@@ -132,8 +132,9 @@ char *file_read_escaped(const char *path, int maxbytes, int *truncated)
 int json_escape(const char *src, char *dst, int dstsz)
 {
 	int o = 0;
-	for (const char *p = src; *p && o < dstsz - 4; p++) {
-		if (*p == '\n' || *p == '\r') continue;
+	for (const char *p = src; *p && o < dstsz - 6; p++) {
+		if (*p == '\r') continue;
+		if (*p == '\n') { dst[o++] = '\\'; dst[o++] = 'n'; continue; }
 		if (*p == '"'  || *p == '\\') { dst[o++] = '\\'; }
 		dst[o++] = *p;
 	}
@@ -428,8 +429,9 @@ S_SERVER_STATS collect_stats(void)
 	pthread_rwlock_unlock(&g_cfg.acc_lock);
 
 	pthread_mutex_lock(&g_cfg.ban_lock);
-	for (const S_BAN_ENTRY *b = g_cfg.bans; b; b = b->next)
-		if (now < b->until) s.nbans++;
+	for (int _bi = 0; _bi < BAN_BUCKETS; _bi++)
+		for (const S_BAN_ENTRY *b = g_cfg.ban_table[_bi]; b; b = b->next)
+			if (now < b->until) s.nbans++;
 	pthread_mutex_unlock(&g_cfg.ban_lock);
 
 	s.ecm_total    = s.cw_found + s.cw_not;

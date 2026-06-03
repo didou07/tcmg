@@ -152,6 +152,34 @@ const char *srvid_lookup(uint16_t caid, uint16_t sid)
 	return found;
 }
 
+void srvid_lookup_copy(uint16_t caid, uint16_t sid, char *buf, size_t bufsz)
+{
+	buf[0] = '\0';
+	if (!bufsz) return;
+	pthread_mutex_lock(&g_srvid_mtx);
+	S_SRVID_TABLE *t = g_srvid;
+	if (!t || !sid || !caid) { pthread_mutex_unlock(&g_srvid_mtx); return; }
+
+	uint32_t key = ((uint32_t)caid << 16) | sid;
+	uint32_t h   = hash_key(key);
+
+	for (int i = 0; i < SRVID_BUCKETS; i++)
+	{
+		uint32_t idx = (h + i) & SRVID_MASK;
+		if (!t->tbl[idx].key) break;
+		if (t->tbl[idx].key == key)
+		{
+			size_t n = strlen(t->tbl[idx].name);
+			if (n >= bufsz) n = bufsz - 1;
+			memcpy(buf, t->tbl[idx].name, n);
+			buf[n] = '\0';
+			break;
+		}
+	}
+	if (!buf[0]) { /* channel not in srvid table */ }
+	pthread_mutex_unlock(&g_srvid_mtx);
+}
+
 /* Write default tcmg.srvid2 */
 int srvid_write_default(const char *path)
 {

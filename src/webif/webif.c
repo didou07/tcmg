@@ -2,20 +2,26 @@
 #include "tcmg.h"
 
 #include "webif_internal.h"
+#include <semaphore.h>
 
 volatile int8_t s_webif_running = 0;
 int             s_webif_sock    = -1;
 
 static pthread_t s_webif_tid;
+static sem_t     s_webif_sem;
+
+#define WEBIF_MAX_THREADS 16
 
 typedef struct { int fd; char ip[MAXIPLEN]; } s_conn_arg;
 
 static void *conn_thread(void *arg)
 {
 	s_conn_arg *c = (s_conn_arg *)arg;
+	log_set_type(LOG_TYPE_WEBIF);
 	handle_request(c->fd, c->ip);
 	close(c->fd);
 	free(c);
+	sem_post(&s_webif_sem);
 	return NULL;
 }
 
@@ -118,10 +124,10 @@ void handle_request(int fd, const char *client_ip)
 		if (check_credentials(u, pw)) {
 			char token[WEB_SESSION_LEN + 1];
 			session_create(token);
-			tcmg_log_dbg(D_WEBIF, "login OK for '%s' from %s", u, client_ip);
+			tcmg_log_dbg(D_WEBIF, "login ok for '%s' from %s", u, client_ip);
 			send_redirect_with_cookie(fd, "/status", token);
 		} else {
-			tcmg_log("login FAIL for '%s' from %s", u, client_ip);
+			tcmg_log("login failed for '%s' from %s", u, client_ip);
 			send_login_page(fd, 1);
 		}
 		req_free(&req);
@@ -231,6 +237,7 @@ void handle_request(int fd, const char *client_ip)
 static void *http_server_thread(void *arg)
 {
 	(void)arg;
+	log_set_type(LOG_TYPE_WEBIF);
 	tcmg_log("listening http %s:%d",
 	         g_cfg.webif_bindaddr[0] ? g_cfg.webif_bindaddr : "0.0.0.0",
 	         g_cfg.webif_port);
@@ -265,16 +272,19 @@ static void *http_server_thread(void *arg)
 		if (ca2) {
 			ca2->fd = cfd;
 			tcmg_strlcpy(ca2->ip, client_ip, MAXIPLEN);
-			pthread_t       t;
-			pthread_attr_t  a;
-			pthread_attr_init(&a);
-			pthread_attr_setdetachstate(&a, PTHREAD_CREATE_DETACHED);
-			pthread_attr_setstacksize(&a, 128 * 1024);
-			if (pthread_create(&t, &a, conn_thread, ca2) == 0) {
+			if (sem_trywait(&s_webif_sem) == 0) {
+				pthread_t       t;
+				pthread_attr_t  a;
+				pthread_attr_init(&a);
+				pthread_attr_setdetachstate(&a, PTHREAD_CREATE_DETACHED);
+				pthread_attr_setstacksize(&a, 128 * 1024);
+				if (pthread_create(&t, &a, conn_thread, ca2) == 0) {
+					pthread_attr_destroy(&a);
+					continue;
+				}
 				pthread_attr_destroy(&a);
-				continue;
+				sem_post(&s_webif_sem);
 			}
-			pthread_attr_destroy(&a);
 			free(ca2);
 		}
 		handle_request(cfd, client_ip);
@@ -320,6 +330,7 @@ int32_t webif_start(void)
 	}
 
 	s_webif_running = 1;
+	sem_init(&s_webif_sem, 0, WEBIF_MAX_THREADS);
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
@@ -341,4 +352,5 @@ void webif_stop(void)
 	s_webif_running = 0;
 	if (s_webif_sock >= 0) { close(s_webif_sock); s_webif_sock = -1; }
 	pthread_join(s_webif_tid, NULL);
+	sem_destroy(&s_webif_sem);
 }

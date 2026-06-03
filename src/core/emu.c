@@ -1,4 +1,3 @@
-
 #define MODULE_LOG_PREFIX "emu"
 #include "tcmg.h"
 
@@ -9,9 +8,26 @@ void emu_init(void)
 	crypt_init();
 }
 
+static uint8_t s_fake_prev[8] = {0};
+static int8_t  s_fake_half    = 0;
+static pthread_mutex_t s_fake_mtx = PTHREAD_MUTEX_INITIALIZER;
+
 static void gen_fake_cw(uint8_t *cw)
 {
-	csprng(cw, CW_LEN);
+    uint8_t fresh[8];
+    csprng(fresh, 8);
+    pthread_mutex_lock(&s_fake_mtx);
+    if (s_fake_half == 0) {
+        memcpy(cw,     fresh,        8);
+        memcpy(cw + 8, s_fake_prev,  8);
+        memcpy(s_fake_prev, fresh,   8);
+    } else {
+        memcpy(cw,     s_fake_prev,  8);
+        memcpy(cw + 8, fresh,        8);
+        memcpy(s_fake_prev, fresh,   8);
+    }
+    s_fake_half ^= 1;
+    pthread_mutex_unlock(&s_fake_mtx);
 }
 
 static bool key_lookup(const S_ACCOUNT *acc, uint16_t caid,
@@ -42,7 +58,7 @@ static int32_t tcmg_decode(uint16_t caid, const uint8_t *ecm, int32_t len,
 	/* Minimum: cmd(1) + ?? (3) + section_len(1) + nano(1) + ?(1) + data(≥1) */
 	if (len < 7) return EMU_NOT_SUPPORTED;
 
-	uint8_t kidx = ecm[0] & 1;
+	uint8_t kidx = ecm[0] & 3;
 
 	/* ecm[4] encodes the section length; data starts at ecm[7].
 	 * Guard against ecm[4] < 2 which would underflow slen.        */
@@ -63,9 +79,7 @@ static int32_t tcmg_decode(uint16_t caid, const uint8_t *ecm, int32_t len,
 	uint8_t dec[48];
 	memcpy(dec, sdata, slen);
 
-	/* Use the EDE2-CBC wrapper (same EDE2 ECB mode with zero IV) */
-	static const uint8_t zero_iv[8] = {0};
-	crypt_ede2_cbc(key, zero_iv, dec, dec, slen, false);
+	crypt_ede2_ecb(key, dec, dec, slen, false);
 
 	/* Checksum: last byte must equal sum of all preceding bytes */
 	if (dec[slen - 1] != csum8(dec, slen - 1))
@@ -91,7 +105,7 @@ int32_t emu_process(uint16_t caid, uint16_t sid,
 	int32_t res = EMU_NOT_SUPPORTED;
 	bool    hit = false;
 
-	log_ecm_raw(ecm, ecm_len);
+	log_ecm_raw(caid, sid, ecm, ecm_len);
 
 	if (!ctx->account) goto done;
 
@@ -101,7 +115,7 @@ int32_t emu_process(uint16_t caid, uint16_t sid,
 		gen_fake_cw(cw);
 		hit = true;
 		res = EMU_OK;
-		tcmg_log_dbg(D_ECM, "CAID=%04X SID=%04X fake_cw → generated", caid, sid);
+		tcmg_log_dbg(D_ECM, "FAKE_CW generated");
 		goto done;
 	}
 
@@ -112,14 +126,18 @@ int32_t emu_process(uint16_t caid, uint16_t sid,
 			if (ctx->account->keys[i].caid == caid)
 			{ has_key = true; break; }
 
-		/* Also attempt decode for any 0x0Bxx CAID even without explicit key */
-		if (has_key || (caid & 0xFF00) == 0x0B00)
+		if (!has_key && (caid & 0xFF00) != 0x0B00)
+		{
+			tcmg_log_dbg(D_ECM, "CAID=%04X SID=%04X no key for '%s' (account has %d key(s))",
+			             caid, sid, ctx->user, ctx->account->nkeys);
+		}
+		else
+		{
 			res = tcmg_decode(caid, ecm, ecm_len, cw, ctx->account);
+		}
 	}
 
 	hit = (res == EMU_OK);
-	tcmg_log_dbg(D_ECM, "CAID=%04X SID=%04X decode → %s (res=%d)",
-	             caid, sid, hit ? "OK" : "FAIL", res);
 
 done:
 	{
@@ -127,18 +145,12 @@ done:
 		log_cw_result(caid, sid, ecm_len, cw, hit, ms, ctx->user);
 		if (ctx->account)
 		{
-			/* Use a mutex for 64-bit stat updates: __sync_fetch_and_add_8 is
-			 * not available on 32-bit MIPS, SH4, or PowerPC SPE targets.
-			 * Stats are updated infrequently (once per ECM) so the lock
-			 * overhead is negligible. */
-			static pthread_mutex_t s_stat_mtx = PTHREAD_MUTEX_INITIALIZER;
-			pthread_mutex_lock(&s_stat_mtx);
+			pthread_mutex_lock(&ctx->account->stat_mtx);
 			ctx->account->ecm_total++;
 			if (hit)
 			{
 				ctx->account->cw_found++;
 				ctx->account->cw_time_total_ms += (int64_t)ms;
-				/* Track min/max ECM response time (inspired by OSCam cwlastresptimes) */
 				if (ctx->account->cw_time_min_ms == 0 || (int64_t)ms < ctx->account->cw_time_min_ms)
 					ctx->account->cw_time_min_ms = (int64_t)ms;
 				if ((int64_t)ms > ctx->account->cw_time_max_ms)
@@ -148,10 +160,9 @@ done:
 			{
 				ctx->account->cw_not++;
 			}
-			/* Record first login time on first successful ECM */
 			if (ctx->account->first_login == 0 && hit)
 				ctx->account->first_login = time(NULL);
-			pthread_mutex_unlock(&s_stat_mtx);
+			pthread_mutex_unlock(&ctx->account->stat_mtx);
 		}
 	}
 	if (!hit) secure_zero(cw, CW_LEN);

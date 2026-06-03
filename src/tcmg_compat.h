@@ -90,4 +90,16 @@
 #  define RECV_CAST(p) (p)
 #endif
 
+#if defined(TCMG_OS_WINDOWS)
+#  define tcmg_sleep_ms(ms) Sleep((DWORD)(ms))
+#else
+static inline void tcmg_sleep_ms(int ms)
+{
+    struct timespec ts;
+    ts.tv_sec  = ms / 1000;
+    ts.tv_nsec = (ms % 1000) * 1000000L;
+    nanosleep(&ts, NULL);
+}
+#endif
+
 #endif /* TCMG_COMPAT_H_ */

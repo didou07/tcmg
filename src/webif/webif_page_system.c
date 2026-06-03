@@ -13,13 +13,14 @@ void send_page_failban(int fd, const char *qs)
 	/* Mutate under lock before rendering */
 	if (strcmp(action, "clear") == 0 && clearip[0]) {
 		pthread_mutex_lock(&g_cfg.ban_lock);
-		for (S_BAN_ENTRY *b = g_cfg.bans; b; b = b->next)
+		for (S_BAN_ENTRY *b = g_cfg.ban_table[ban_hash_pub(clearip)]; b; b = b->next)
 			if (strcmp(b->ip, clearip) == 0) b->until = 0;
 		pthread_mutex_unlock(&g_cfg.ban_lock);
 		tcmg_log("cleared ban for %s", clearip);
 	} else if (strcmp(action, "clearall") == 0) {
 		pthread_mutex_lock(&g_cfg.ban_lock);
-		for (S_BAN_ENTRY *b = g_cfg.bans; b; b = b->next) b->until = 0;
+		for (int _bi = 0; _bi < BAN_BUCKETS; _bi++)
+			for (S_BAN_ENTRY *b = g_cfg.ban_table[_bi]; b; b = b->next) b->until = 0;
 		pthread_mutex_unlock(&g_cfg.ban_lock);
 		tcmg_log("%s", "cleared all bans");
 	}
@@ -33,8 +34,9 @@ void send_page_failban(int fd, const char *qs)
 	int    total_bans = 0, total_fails = 0;
 	time_t now        = time(NULL);
 	pthread_mutex_lock(&g_cfg.ban_lock);
-	for (S_BAN_ENTRY *b = g_cfg.bans; b; b = b->next)
-		if (b->until > now) { total_bans++; total_fails += b->fails; }
+	for (int _bi = 0; _bi < BAN_BUCKETS; _bi++)
+		for (S_BAN_ENTRY *b = g_cfg.ban_table[_bi]; b; b = b->next)
+			if (b->until > now) { total_bans++; total_fails += b->fails; }
 	pthread_mutex_unlock(&g_cfg.ban_lock);
 
 
@@ -76,7 +78,8 @@ void send_page_failban(int fd, const char *qs)
 
 	int shown = 0;
 	pthread_mutex_lock(&g_cfg.ban_lock);
-	for (S_BAN_ENTRY *b = g_cfg.bans; b; b = b->next) {
+	for (int _bi = 0; _bi < BAN_BUCKETS; _bi++)
+	for (S_BAN_ENTRY *b = g_cfg.ban_table[_bi]; b; b = b->next) {
 		if (b->until <= now) continue;
 		char exp[32];
 		struct tm tm_s;
@@ -509,21 +512,7 @@ void send_page_livelog(int fd)
 		"    if(usr)span.setAttribute('data-usr',usr);"
 		"    var show=!filterRe||filterRe.test(line)||(usr&&filterRe.test(usr));"
 		"    span.style.display=show?'block':'none';"
-		"    /* Align hex-only rows (no module tag) to match timestamped lines */"
-		"    var isHexRow=/^\\d{4}\\/\\d{2}\\/\\d{2} \\d{2}:\\d{2}:\\d{2} [0-9A-F][0-9A-F]/.test(line);"
-		"    if(isHexRow){"
-		"      var ts=line.substring(0,19);"
-		"      var hex=line.substring(19).trim();"
-		"      var tsNode=document.createTextNode(ts+' ');"
-		"      var pad=document.createElement('span');"
-		"      pad.style.cssText='display:inline-block;width:11ch;';"
-		"      var hexNode=document.createTextNode(hex);"
-		"      span.appendChild(tsNode);"
-		"      span.appendChild(pad);"
-		"      span.appendChild(hexNode);"
-		"    } else {"
-		"      span.appendChild(document.createTextNode(line));"
-		"    }"
+		"    span.appendChild(document.createTextNode(line));"
 		"    pre.appendChild(span);"
 		"  }"
 		"  while(pre.children.length>maxl)pre.removeChild(pre.firstChild);"
@@ -573,7 +562,7 @@ void send_logpoll(int fd, const char *qs)
 			uint16_t nv = (uint16_t)v;
 			if (nv != g_dblevel) {
 				g_dblevel = nv;
-				tcmg_log_dbg(D_WEBIF, "livelog debug_level -> %u", (unsigned)g_dblevel);
+				tcmg_log_dbg(D_WEBIF, "livelog debug_level=%u", (unsigned)g_dblevel);
 			}
 		}
 	}
@@ -603,7 +592,7 @@ void send_logpoll(int fd, const char *qs)
 		(unsigned)g_dblevel, next_id);
 
 	for (int i = 0; i < count; i++) {
-		char esc_line[2048];
+		char esc_line[4096];
 		char esc_usr[128];
 		json_escape(lines[i],              esc_line, sizeof(esc_line));
 		json_escape(users[i][0] ? users[i] : "", esc_usr,  sizeof(esc_usr));

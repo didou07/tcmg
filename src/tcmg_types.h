@@ -97,9 +97,12 @@ typedef struct s_account {
     volatile time_t   first_login;
     volatile int64_t  cw_time_min_ms;
     volatile int64_t  cw_time_max_ms;
+    pthread_mutex_t   stat_mtx;
 
     struct s_account *next;
 } S_ACCOUNT;
+
+#define BAN_BUCKETS 256
 
 typedef struct s_ban_entry {
     char    ip[MAXIPLEN];
@@ -127,7 +130,7 @@ typedef struct {
     S_ACCOUNT       *accounts;
     int32_t          naccounts;
     pthread_rwlock_t acc_lock;
-    S_BAN_ENTRY     *bans;
+    S_BAN_ENTRY     *ban_table[BAN_BUCKETS];
     pthread_mutex_t  ban_lock;
 } S_CONFIG;
 

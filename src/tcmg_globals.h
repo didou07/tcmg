@@ -11,8 +11,9 @@ extern volatile int32_t  g_active_conns;
 extern time_t            g_start_time;
 extern char              g_cfgdir[CFGPATH_LEN];
 
+#define CW_CACHE_SHARDS 16
 extern S_CW_CACHE_ENTRY  g_cw_cache[CW_CACHE_SIZE];
-extern pthread_mutex_t   g_cw_cache_mtx;
+extern pthread_mutex_t   g_cw_cache_mtx[CW_CACHE_SHARDS];
 
 extern S_CLIENT         *g_clients[MAX_ACTIVE_CLIENTS];
 extern pthread_mutex_t   g_clients_mtx;
