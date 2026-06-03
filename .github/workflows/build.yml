@@ -70,7 +70,7 @@ jobs:
       - name: Read version
         id: ver
         run: |
-          V=$(grep -oP '#define\s+TCMG_VERSION\s+"\K[^"]+' src/tcmg.h || echo "dev")
+          V=$(grep -oP '#\s*define\s+TCMG_VERSION\s+"\K[^"]+'  src/tcmg.h || echo "dev")
           echo "version=${V}" >> "$GITHUB_OUTPUT"
 
       - name: Package
@@ -139,7 +139,7 @@ jobs:
         id: ver
         shell: msys2 {0}
         run: |
-          V=$(grep -oP '#define\s+TCMG_VERSION\s+"\K[^"]+' src/tcmg.h || echo "dev")
+          V=$(grep -oP '#\s*define\s+TCMG_VERSION\s+"\K[^"]+'  src/tcmg.h || echo "dev")
           echo "version=${V}" >> "$GITHUB_OUTPUT"
 
       - name: Package
@@ -289,7 +289,7 @@ jobs:
       - name: Read version
         id: ver
         run: |
-          V=$(grep -oP '#define\s+TCMG_VERSION\s+"\K[^"]+' src/tcmg.h || true)
+          V=$(grep -oP '#\s*define\s+TCMG_VERSION\s+"\K[^"]+'  src/tcmg.h || true)
           [ -z "$V" ] && { echo "ERROR: TCMG_VERSION not found in src/tcmg.h"; exit 1; }
           echo "version=${V}" >> "$GITHUB_OUTPUT"
           echo "Version: ${V}"

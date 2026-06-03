@@ -54,9 +54,6 @@ add_definitions(
     -DNO_DAEMON_SUPPORT=1
 )
 
-if(DEFINED TCMG_VERSION)
-    add_definitions(-DTCMG_VERSION="${TCMG_VERSION}")
-endif()
 
 # =============================================================================
 # TCMG core — static library built from the unified src/ tree
