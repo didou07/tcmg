@@ -24,13 +24,12 @@ const S_DBLEVEL_NAME g_dblevel_names[MAX_DEBUG_LEVELS] = {
 #define WQ_SIZE             4096
 
 typedef struct {
-	char  *line;
-	char   usr[CFGKEY_LEN];
-	char  *usr_line;
+	char  line[LOG_LINE_MAX];
+	char  usr[CFGKEY_LEN];
+	char *usr_line;
 } S_WQ_ENTRY;
 
 static S_WQ_ENTRY         s_wq[WQ_SIZE];
-static char              *s_wq_pool   = NULL;
 static _Atomic  int32_t   s_wq_head   = 0;
 static _Atomic  int32_t   s_wq_tail   = 0;
 static pthread_mutex_t    s_wq_mtx    = PTHREAD_MUTEX_INITIALIZER;
@@ -38,9 +37,8 @@ static pthread_cond_t     s_wq_cond   = PTHREAD_COND_INITIALIZER;
 static pthread_t          s_wq_tid;
 static _Atomic  int8_t    s_wq_running = 0;
 
-typedef struct { char *line; char usr[CFGKEY_LEN]; } S_RING_ENTRY;
+typedef struct { char line[LOG_LINE_MAX]; char usr[CFGKEY_LEN]; } S_RING_ENTRY;
 static S_RING_ENTRY    s_ring[LOG_RING_MAX];
-static char           *s_ring_pool  = NULL;
 static int32_t         s_ring_head  = 0;
 static int32_t         s_ring_total = 0;
 static pthread_mutex_t s_ring_mtx   = PTHREAD_MUTEX_INITIALIZER;
@@ -92,7 +90,7 @@ static void ring_push(const char *line, const char *usr)
 {
 	pthread_mutex_lock(&s_ring_mtx);
 	S_RING_ENTRY *e = &s_ring[s_ring_head];
-	tcmg_strlcpy(e->line, line, LOG_LINE_MAX);
+	tcmg_strlcpy(e->line, line, sizeof(e->line));
 	tcmg_strlcpy(e->usr,  usr ? usr : "", sizeof(e->usr));
 	s_ring_head = (s_ring_head + 1) % LOG_RING_MAX;
 	s_ring_total++;
@@ -182,18 +180,6 @@ static void *writer_thread(void *arg)
 
 void log_init(void)
 {
-	s_wq_pool = (char *)malloc((size_t)WQ_SIZE * LOG_LINE_MAX);
-	if (s_wq_pool) {
-		for (int i = 0; i < WQ_SIZE; i++)
-			s_wq[i].line = s_wq_pool + (size_t)i * LOG_LINE_MAX;
-	}
-
-	s_ring_pool = (char *)malloc((size_t)LOG_RING_MAX * LOG_LINE_MAX);
-	if (s_ring_pool) {
-		for (int i = 0; i < LOG_RING_MAX; i++)
-			s_ring[i].line = s_ring_pool + (size_t)i * LOG_LINE_MAX;
-	}
-
 	atomic_store(&s_wq_running, 1);
 	pthread_create(&s_wq_tid, NULL, writer_thread, NULL);
 }
@@ -215,8 +201,6 @@ void log_shutdown(void)
 	pthread_cond_signal(&s_wq_cond);
 	pthread_mutex_unlock(&s_wq_mtx);
 	pthread_join(s_wq_tid, NULL);
-	free(s_wq_pool);   s_wq_pool   = NULL;
-	free(s_ring_pool); s_ring_pool = NULL;
 }
 
 static void wq_push(const char *line, const char *usr, char *usr_line)
@@ -232,8 +216,8 @@ static void wq_push(const char *line, const char *usr, char *usr_line)
 	int32_t    slot = head % WQ_SIZE;
 	S_WQ_ENTRY *e   = &s_wq[slot];
 	free(e->usr_line);
-	if (e->line) tcmg_strlcpy(e->line, line, LOG_LINE_MAX);
-	tcmg_strlcpy(e->usr, usr ? usr : "", sizeof(e->usr));
+	tcmg_strlcpy(e->line, line, sizeof(e->line));
+	tcmg_strlcpy(e->usr,  usr ? usr : "", sizeof(e->usr));
 	e->usr_line = usr_line;
 	atomic_store_explicit(&s_wq_head, head + 1, memory_order_release);
 	pthread_cond_signal(&s_wq_cond);
@@ -415,7 +399,7 @@ int32_t log_ring_since(int32_t from_id, char **out_lines, char **out_users,
 	if (from_id < oldest) from_id = oldest;
 	for (int32_t i = from_id; i < s_ring_total && count < max_lines; i++) {
 		int32_t    slot = i % LOG_RING_MAX;
-		const char *src = s_ring[slot].line ? s_ring[slot].line : "";
+		const char *src = s_ring[slot].line;
 		const char *usr = s_ring[slot].usr;
 		out_lines[count] = strdup(src);
 		if (!out_lines[count]) break;

@@ -75,16 +75,19 @@ BASE_FLAGS := -std=c11 -Wall -Wextra -Wno-unused-parameter \
               -Isrc -D_FORTIFY_SOURCE=2
 
 ifeq ($(RELEASE),1)
-  CFLAGS += $(BASE_FLAGS) -Os \
+  CFLAGS += $(BASE_FLAGS) -Os -flto \
             -ffunction-sections -fdata-sections \
             -fmerge-all-constants -fno-ident \
-            -fstack-protector-strong \
+            -fno-unwind-tables \
+            -fno-asynchronous-unwind-tables \
+            -fomit-frame-pointer \
             -march=x86-64 -mtune=generic
+
+  LDFLAGS += -flto -Wl,--gc-sections
+
   ifeq ($(PLATFORM),linux)
-    LDFLAGS += -Wl,--gc-sections -Wl,--strip-all -Wl,--build-id=none
+    LDFLAGS += -Wl,--strip-all -Wl,--build-id=none
   endif
-else
-  CFLAGS += $(BASE_FLAGS) -O2 -g
 endif
 
 # ── Rules ─────────────────────────────────────────────────────────────────────

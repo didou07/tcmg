@@ -6,7 +6,7 @@
 #include "tcmg_globals.h"
 #include "tcmg_helpers.h"
 
-#define TCMG_VERSION     "4.9"
+#define TCMG_VERSION     "5.0"
 #define TCMG_BANNER      "tcmg v" TCMG_VERSION
 #ifndef TCMG_BUILD_TIME
 #  define TCMG_BUILD_TIME __DATE__ " " __TIME__
