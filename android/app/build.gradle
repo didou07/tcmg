@@ -39,7 +39,8 @@ android {
 
         externalNativeBuild {
             cmake {
-                arguments "-DANDROID_STL=none"
+                arguments "-DANDROID_STL=none",
+                          "-DTCMG_VERSION=${versionName}"
             }
         }
     }
@@ -101,7 +102,8 @@ android {
 
     // ── Build features ────────────────────────────────────────────────────────
     buildFeatures {
-        viewBinding true
+        viewBinding  true
+        buildConfig  true
     }
 
     // ── Build types ───────────────────────────────────────────────────────────

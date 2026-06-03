@@ -99,7 +99,7 @@ public final class TcmgService extends Service {
         if (pm == null) return;
         mWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "tcmg:server");
         mWakeLock.setReferenceCounted(false);
-        mWakeLock.acquire(); // held until releaseWakeLock() is called
+        mWakeLock.acquire(10L * 60L * 60L * 1000L);
         Log.d(TAG, "WakeLock acquired");
     }
 

@@ -167,9 +167,9 @@ static bool handle_login(S_CLIENT *cl,
 
 	if (!acc)
 	{
-		ban_record_fail(ip);
 		nc_nak(cl, sid, mid, pid);
 		tcmg_log("%s LOGIN failed: unknown user '%s'", ip, user);
+		ban_record_fail(ip);
 		return false;
 	}
 	if (!acc->enabled)
@@ -196,9 +196,9 @@ static bool handle_login(S_CLIENT *cl,
 	if (!crypt_md5_crypt(acc->pass, hash, expected, sizeof(expected)) ||
 	    !ct_streq(expected, hash))
 	{
-		ban_record_fail(ip);
 		nc_nak(cl, sid, mid, pid);
 		tcmg_log("%s LOGIN failed: wrong password for '%s'", ip, user);
+		ban_record_fail(ip);
 		return false;
 	}
 
@@ -262,13 +262,16 @@ static bool handle_login(S_CLIENT *cl,
 		for (i = 0; i < acc->ncaids; i++)
 			pos += snprintf(caids + pos, sizeof(caids) - pos,
 			                ",%04X", acc->caids[i]);
-		tcmg_log("%s LOGIN ok: '%s' caids=[%s] client=%s", ip, user, caids, cl->client_name);
+		tcmg_log("%s granted ('%s')", ip, user);
+		tcmg_log("%s '%s' authenticated successfully (%s) caids=[%s]",
+		         ip, user, cl->client_name, caids);
 	}
 	else
 	{
-		tcmg_log("%s LOGIN ok: '%s' caid=%04X client=%s", ip, user, acc->caid, cl->client_name);
+		tcmg_log("%s granted ('%s')", ip, user);
+		tcmg_log("%s '%s' authenticated successfully (%s) caid=%04X",
+		         ip, user, cl->client_name, acc->caid);
 	}
-	tcmg_log_dbg(D_CLIENT, "%s authenticated '%s' caid=%04X", ip, user, acc->caid);
 	return true;
 }
 
@@ -412,7 +415,6 @@ void *handle_client(void *arg)
 
 	log_set_type(LOG_TYPE_CLIENT);
 	client_register(&cl);
-	tcmg_log("%s connected [%d active]", cl.ip, g_active_conns);
 	tcmg_log_dbg(D_CLIENT, "%s new connection", cl.ip);
 
 	nc_init(&cl, g_cfg.des_key, g_cfg.sock_timeout);

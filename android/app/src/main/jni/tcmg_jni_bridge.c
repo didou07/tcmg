@@ -53,7 +53,8 @@ extern S_CONFIG g_cfg;
 
 /* ── Server state (protected by g_state_mutex) ───────────────────────────── */
 static pthread_mutex_t g_state_mutex    = PTHREAD_MUTEX_INITIALIZER;
-static atomic_int      g_server_running = ATOMIC_VAR_INIT(0);
+static atomic_int      g_server_running  = ATOMIC_VAR_INIT(0);
+static atomic_llong    g_server_start_ms = ATOMIC_VAR_INIT(0);
 
 /* ── Server thread argument ──────────────────────────────────────────────── */
 typedef struct {
@@ -99,6 +100,7 @@ static void *server_thread_fn(void *arg)
 
     LOGI("server thread exited (rc=%d)", rc);
     atomic_store(&g_server_running, 0);
+    atomic_store(&g_server_start_ms, 0LL);
     return NULL;
 }
 
@@ -154,6 +156,10 @@ Java_com_tcmg_app_TcmgNative_startServer(
         return -3;
     }
 
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    atomic_store(&g_server_start_ms,
+                 (long long)ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL);
     LOGI("startServer: thread created OK");
     return 0;
 }
@@ -264,4 +270,12 @@ Java_com_tcmg_app_TcmgNative_getWebifPort(JNIEnv *env, jclass clazz)
     (void)clazz;
     if (!atomic_load(&g_server_running)) return -1;
     return (jint)g_cfg.webif_port;
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_tcmg_app_TcmgNative_getServerStartMs(JNIEnv *env, jclass clazz)
+{
+    (void)env;
+    (void)clazz;
+    return (jlong)atomic_load(&g_server_start_ms);
 }

@@ -25,7 +25,6 @@ import com.tcmg.app.databinding.ActivityMainBinding;
  *   Portrait  → BottomNavigationView  (binding.bottomNav)
  *   Landscape → NavigationRailView    (binding.navRail)
  *
- * Theme: VOID only (Deep Navy + Electric Blue). Ember theme removed.
  * Back: press twice within 2 s to exit.
  */
 public final class MainActivity extends AppCompatActivity {
@@ -51,7 +50,6 @@ public final class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
-        // Always apply VOID theme
         setTheme(R.style.Theme_TCMG);
         prefs = getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE);
 

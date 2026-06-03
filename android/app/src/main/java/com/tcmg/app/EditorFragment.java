@@ -54,7 +54,6 @@ public final class EditorFragment extends Fragment {
         super.onResume();
         // Force landscape — maximises editor width
         requireActivity().setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR);
-        refreshWarning();
     }
 
     @Override
@@ -102,9 +101,6 @@ public final class EditorFragment extends Fragment {
         });
     }
 
-    private void refreshWarning() {
-        if (binding == null) return;
-    }
 
     // ── File I/O ──────────────────────────────────────────────────────────────
 
@@ -132,7 +128,7 @@ public final class EditorFragment extends Fragment {
             loadingFile = true;
             binding.etEditor.setText("");
             loadingFile = false;
-            binding.etEditor.setHint("Error reading file: " + e.getMessage());
+            binding.etEditor.setHint(getString(R.string.editor_read_error, e.getMessage()));
         }
     }
 
@@ -162,16 +158,16 @@ public final class EditorFragment extends Fragment {
     private void showUnsavedDialog(int targetIndex) {
         if (getContext() == null) return;
         new androidx.appcompat.app.AlertDialog.Builder(requireContext())
-                .setTitle("Unsaved Changes")
-                .setMessage("Discard unsaved changes?")
-                .setPositiveButton("Discard", (d, w) -> {
+                .setTitle(R.string.dialog_unsaved_title)
+                .setMessage(R.string.dialog_unsaved_message)
+                .setPositiveButton(R.string.dialog_discard, (d, w) -> {
                     unsavedChanges = false;
                     activeFileIndex = targetIndex;
                     loadFile(activeFileIndex);
                     if (binding != null)
                         binding.tabLayoutEditor.selectTab(binding.tabLayoutEditor.getTabAt(targetIndex));
                 })
-                .setNegativeButton("Keep Editing", (d, w) -> {
+                .setNegativeButton(R.string.dialog_keep_editing, (d, w) -> {
                     if (binding != null)
                         binding.tabLayoutEditor.selectTab(binding.tabLayoutEditor.getTabAt(activeFileIndex));
                 })

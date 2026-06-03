@@ -20,6 +20,7 @@ import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 import android.content.pm.ActivityInfo;
 import androidx.fragment.app.Fragment;
+import com.tcmg.app.BuildConfig;
 import com.tcmg.app.databinding.FragmentControlBinding;
 
 import java.net.Inet4Address;
@@ -32,8 +33,6 @@ public final class ControlFragment extends Fragment {
 
     private static final String TAG     = "ControlFrag";
     private static final int    POLL_MS = 1200;
-
-    static volatile long serverStartMs = 0L;
 
     @Nullable private FragmentControlBinding binding;
     private SharedPreferences prefs;
@@ -50,7 +49,7 @@ public final class ControlFragment extends Fragment {
     @Override
     public void onAttach(@NonNull Context context) {
         super.onAttach(context);
-        prefs = context.getSharedPreferences(BootReceiver.PREF_FILE, Context.MODE_PRIVATE);
+        prefs = context.getSharedPreferences(MainActivity.PREF_FILE, Context.MODE_PRIVATE);
     }
 
     @Override @Nullable
@@ -63,6 +62,7 @@ public final class ControlFragment extends Fragment {
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
+        binding.tvAppVersion.setText("v" + BuildConfig.VERSION_NAME);
         setupListeners();
         restorePreferences();
     }
@@ -126,13 +126,11 @@ public final class ControlFragment extends Fragment {
                         .setAction(TcmgService.ACTION_START)
                         .putExtra(TcmgService.EXTRA_CFGDIR, cfgDir)
                         .putExtra(TcmgService.EXTRA_DEBUG, 0));
-        serverStartMs = System.currentTimeMillis();
     }
 
     private void doStopServer() {
         requireContext().startService(new Intent(requireContext(), TcmgService.class)
                 .setAction(TcmgService.ACTION_STOP));
-        serverStartMs = 0L;
     }
 
     // ── Status ───────────────────────────────────────────────────────────────
@@ -151,8 +149,9 @@ public final class ControlFragment extends Fragment {
         binding.btnStart.setEnabled(!running);
         binding.btnStop.setEnabled(running);
 
-        if (running && serverStartMs > 0L) {
-            long s = (System.currentTimeMillis() - serverStartMs) / 1000L;
+        long startMs = running ? TcmgNative.getServerStartMs() : 0L;
+        if (running && startMs > 0L) {
+            long s = (System.currentTimeMillis() - startMs) / 1000L;
             binding.tvUptime.setText(String.format(Locale.ROOT, "%02d:%02d:%02d",
                     s / 3600, (s % 3600) / 60, s % 60));
             binding.tvUptime.setVisibility(View.VISIBLE);
@@ -225,7 +224,7 @@ public final class ControlFragment extends Fragment {
             ClipboardManager cm = (ClipboardManager)
                     requireContext().getSystemService(Context.CLIPBOARD_SERVICE);
             if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("WebIF URL", url));
-            Toast.makeText(requireContext(), "URL copied: " + url, Toast.LENGTH_LONG).show();
+            Toast.makeText(requireContext(), getString(R.string.toast_url_copied, url), Toast.LENGTH_LONG).show();
         }
     }
 }

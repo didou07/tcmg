@@ -22,7 +22,7 @@
     <string name="nav_log">Log</string>
     <string name="nav_editor">Editor</string>
 
-    <string name="log_ready">[  TCMG] System ready — tap LAUNCH to start\n</string>
+    <string name="log_ready">[TCMG] System ready — tap LAUNCH to start\n</string>
     <string name="log_rotate_hint">⟳ landscape</string>
 
     <string name="editor_title">CONFIG EDITOR</string>
@@ -46,11 +46,16 @@
     <string name="toast_autostart_on">Auto-start enabled</string>
     <string name="toast_autostart_off">Auto-start disabled</string>
     <string name="toast_back_exit">Press back again to exit</string>
+    <string name="toast_url_copied">URL copied: %1$s</string>
+
+    <string name="dialog_unsaved_title">Unsaved Changes</string>
+    <string name="dialog_unsaved_message">Discard unsaved changes?</string>
+    <string name="dialog_discard">Discard</string>
+    <string name="dialog_keep_editing">Keep Editing</string>
+    <string name="editor_read_error">Error reading file: %1$s</string>
 
     <string name="hint_not_available">—</string>
-    <string name="about_title">TCMG v2.0</string>
-    <string name="about_text">TCMG Card-Server for Android\n\n• Android 7+ (API 24)\n• Native core: tcmg 4.2\n• AGP 8.7.3 / Gradle 8.11.1</string>
+    <string name="about_title">TCMG</string>
+    <string name="about_text">TCMG Card-Server for Android\n\n• Android 7+ (API 24)\n• AGP 8.7.3 / Gradle 8.11.1</string>
 
-    <string name="theme_matrix">VOID</string>
-    <string name="theme_amber">EMBER</string>
 </resources>

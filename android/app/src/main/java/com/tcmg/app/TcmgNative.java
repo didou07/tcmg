@@ -4,7 +4,7 @@ package com.tcmg.app;
  * JNI bridge to the native TCMG library.
  * All methods are thread-safe (synchronisation handled in C).
  */
-public class TcmgNative {
+public final class TcmgNative {
 
     static {
         System.loadLibrary("tcmg_jni");
@@ -40,4 +40,6 @@ public class TcmgNative {
      * Returns the configured WebIF port (e.g. 8080), or -1 if not available.
      */
     public static native int getWebifPort();
+
+    public static native long getServerStartMs();
 }

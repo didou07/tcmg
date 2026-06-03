@@ -16,10 +16,6 @@ public final class BootReceiver extends BroadcastReceiver {
 
     private static final String TAG = "BootReceiver";
 
-    /** SharedPreferences file name — shared across the whole application. */
-    static final String PREF_FILE     = "tcmg_prefs";
-
-    /** Key: whether auto-start on boot is enabled (boolean, default false). */
     static final String KEY_AUTOSTART = "autostart_enabled";
 
     @Override
@@ -27,7 +23,7 @@ public final class BootReceiver extends BroadcastReceiver {
         Log.d(TAG, "onReceive: " + intent.getAction());
 
         SharedPreferences prefs =
-                context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE);
+                context.getSharedPreferences(MainActivity.PREF_FILE, Context.MODE_PRIVATE);
 
         if (!prefs.getBoolean(KEY_AUTOSTART, false)) {
             Log.d(TAG, "Auto-start disabled — skipping");

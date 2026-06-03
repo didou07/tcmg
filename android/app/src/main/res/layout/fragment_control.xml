@@ -33,7 +33,8 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:orientation="vertical">
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -42,38 +43,13 @@
                     android:textStyle="bold"
                     android:fontFamily="sans-serif-medium"
                     android:textColor="?attr/colorOnSurface"/>
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="32dp"
-                android:orientation="horizontal"
-                android:background="@drawable/bg_theme_pill"
-                android:padding="3dp"
-                android:gravity="center_vertical">
                 <TextView
-                    android:id="@+id/tvThemeMatrix"
-                    android:layout_width="58dp"
-                    android:layout_height="match_parent"
-                    android:text="@string/theme_matrix"
-                    android:gravity="center"
-                    android:fontFamily="sans-serif-medium"
-                    android:textSize="10sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.04"
-                    android:background="@drawable/bg_theme_active"
-                    android:textColor="#ffffff"/>
-                <TextView
-                    android:id="@+id/tvThemeAmber"
-                    android:layout_width="58dp"
-                    android:layout_height="match_parent"
-                    android:text="@string/theme_amber"
-                    android:gravity="center"
-                    android:fontFamily="sans-serif-medium"
-                    android:textSize="10sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.04"
-                    android:background="@android:color/transparent"
+                    android:id="@+id/tvAppVersion"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:textSize="11sp"
+                    android:fontFamily="monospace"
                     android:textColor="?attr/colorOnSurfaceVariant"/>
             </LinearLayout>
         </LinearLayout>

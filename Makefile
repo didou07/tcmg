@@ -75,19 +75,26 @@ BASE_FLAGS := -std=c11 -Wall -Wextra -Wno-unused-parameter \
               -Isrc -D_FORTIFY_SOURCE=2
 
 ifeq ($(RELEASE),1)
-  CFLAGS += $(BASE_FLAGS) -Os -flto \
+  CFLAGS += $(BASE_FLAGS) -Os \
             -ffunction-sections -fdata-sections \
             -fmerge-all-constants -fno-ident \
-            -fno-unwind-tables \
-            -fno-asynchronous-unwind-tables \
-            -fomit-frame-pointer \
+            -fstack-protector-strong \
+            -flto \
             -march=x86-64 -mtune=generic
-
-  LDFLAGS += -flto -Wl,--gc-sections
-
   ifeq ($(PLATFORM),linux)
-    LDFLAGS += -Wl,--strip-all -Wl,--build-id=none
+    LDFLAGS += -flto -Wl,--gc-sections -Wl,--strip-all \
+               -Wl,--build-id=none -Wl,--relax -Wl,-O1
   endif
+  ifeq ($(PLATFORM),windows)
+    LDFLAGS += -flto -Wl,--gc-sections -Wl,--strip-all \
+               -Wl,--build-id=none -Wl,-O1
+  endif
+  ifeq ($(PLATFORM),windows-cross)
+    LDFLAGS += -flto -Wl,--gc-sections -Wl,--strip-all \
+               -Wl,--build-id=none -Wl,-O1
+  endif
+else
+  CFLAGS += $(BASE_FLAGS) -O2 -g
 endif
 
 # ── Rules ─────────────────────────────────────────────────────────────────────
@@ -102,6 +109,9 @@ assets:
 
 $(TARGET): $(OBJS)
 	@mkdir -p $(BUILD_DIR)
+ifeq ($(RELEASE),1)
+	$(STRIP) --strip-unneeded $(OBJS) 2>/dev/null || true
+endif
 	$(CC) $(OBJS) -o $@ $(LDFLAGS)
 ifeq ($(RELEASE),1)
 	$(STRIP) --strip-all $@ 2>/dev/null || true

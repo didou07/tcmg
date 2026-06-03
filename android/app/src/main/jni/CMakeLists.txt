@@ -50,11 +50,13 @@ add_definitions(
     -D_GNU_SOURCE
     -DANDROID
     -D__ANDROID__
-    # Rename main() → tcmg_server_main() — no conflict with Android entry point
     -Dmain=tcmg_server_main
-    # Suppress fork/daemonize on Android
     -DNO_DAEMON_SUPPORT=1
 )
+
+if(DEFINED TCMG_VERSION)
+    add_definitions(-DTCMG_VERSION="${TCMG_VERSION}")
+endif()
 
 # =============================================================================
 # TCMG core — static library built from the unified src/ tree
