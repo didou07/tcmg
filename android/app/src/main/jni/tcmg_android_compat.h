@@ -15,6 +15,6 @@
 #endif
 
 #endif /* __ANDROID__ */
-#include "tcmg_compat.h"
-#include "tcmg_types.h"
-#include "tcmg_helpers.h"
+
+
+#include "../../../../../globals.h"

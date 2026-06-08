@@ -1,29 +1,23 @@
 #!/usr/bin/env python3
 """
 gen_assets.py — embed CSS and JS assets into a C header at build time.
-
 Usage:
     python3 tools/gen_assets.py
-
 Reads:
-    src/webif/assets/tcmg.css
-    src/webif/assets/tcmg.js
-
+    webif/assets/tcmg.css
+    webif/assets/tcmg.js
 Writes:
-    src/webif/webif_assets.h
-
+    webif/webif_assets.h
 The generated header exposes two C string literals:
     TCMG_CSS  — the stylesheet (suitable for <style> tags)
     TCMG_JS   — the JS (suitable for <script> tags; contains %d/%% printf specifiers)
-
 Embedding method: each file is converted to a C string literal via
-repr()-style escaping so that the result is a plain `const char[]` with
+repr()-style escaping so that the result is a plain const char[] with
 no runtime allocation.  The CSS string has no format specifiers and is
 safe to pass to buf_printf() as a %s argument.  The JS string contains
 intentional %d and %% markers and must be passed directly as the fmt
 argument to buf_printf() (not via %s).
 """
-
 import os
 import sys
 
@@ -31,14 +25,12 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT       = os.path.dirname(SCRIPT_DIR)
 
 SRC = {
-    'css': os.path.join(ROOT, 'src', 'webif', 'assets', 'tcmg.css'),
-    'js' : os.path.join(ROOT, 'src', 'webif', 'assets', 'tcmg.js'),
+    'css': os.path.join(ROOT, 'webif', 'assets', 'tcmg.css'),
+    'js' : os.path.join(ROOT, 'webif', 'assets', 'tcmg.js'),
 }
-OUT = os.path.join(ROOT, 'src', 'webif', 'webif_assets.h')
+OUT = os.path.join(ROOT, 'webif', 'webif_assets.h')
 
-# Characters that need escaping in C string literals
 def to_c_string(text):
-    """Convert a Python string to a C string literal body (no outer quotes)."""
     out = []
     for ch in text:
         if ch == '\\': out.append('\\\\')
@@ -50,12 +42,11 @@ def to_c_string(text):
         else: out.append(ch)
     return ''.join(out)
 
-# Split into ≤4000-char lines to stay within ISO C99 string literal limit
 def split_c_string(body, width=4000):
     chunks = []
     while body:
         chunk = body[:width]
-        body = body[width:]
+        body  = body[width:]
         chunks.append(chunk)
     lines = []
     for i, chunk in enumerate(chunks):
@@ -90,7 +81,12 @@ banner = """\
 
 """
 
-footer = "\n#endif /* TCMG_WEBIF_ASSETS_H_ */\n"
+footer = "\n#endif\n"
+
+for k, p in SRC.items():
+    if not os.path.exists(p):
+        print(f"ERROR: source file not found: {p}", file=sys.stderr)
+        sys.exit(1)
 
 with open(OUT, 'w', encoding='utf-8') as out:
     out.write(banner)

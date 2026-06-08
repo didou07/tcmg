@@ -21,7 +21,7 @@ plugins {
     id 'com.android.application'
 }
 
-def tcmgHeaderFile = new File(projectDir, "src/main/jni/../../../../../src/tcmg.h")
+def tcmgHeaderFile = new File(projectDir, "../../globals.h")
 def tcmgVersionMatch = tcmgHeaderFile.text =~ /#\s*define\s+TCMG_VERSION\s+"([^"]+)"/
 def tcmgVersion = tcmgVersionMatch ? tcmgVersionMatch[0][1] : "dev"
 
