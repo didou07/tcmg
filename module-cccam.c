@@ -513,7 +513,7 @@ static void *cccam_listen_thread(void *arg)
         }
     }
     pthread_attr_destroy(&attr);
-    tcmg_log_dbg(D_CONN, "[cccam] accept thread exiting");
+    tcmg_log_dbg(D_CONN, "%s", "[cccam] accept thread exiting");
     return NULL;
 }
 
@@ -521,7 +521,7 @@ void cccam_start(void)
 {
     struct sockaddr_in sa; int opt=1;
     if(!g_cfg.cccam_port) {
-        tcmg_log_dbg(D_CCCAM, "disabled (port=0)");
+        tcmg_log_dbg(D_CCCAM, "%s", "disabled (port=0)");
         return;
     }
 
@@ -557,9 +557,9 @@ void cccam_start(void)
 void cccam_stop(void)
 {
     if(!s_cccam_running) return;
-    tcmg_log_dbg(D_CCCAM, "[cccam] stopping...");
+    tcmg_log_dbg(D_CCCAM, "%s", "[cccam] stopping...");
     s_cccam_running=0;
     if(s_cccam_srv_fd>=0){close(s_cccam_srv_fd);s_cccam_srv_fd=-1;}
     pthread_join(s_cccam_thread,NULL);
-    tcmg_log("[cccam] stopped");
+    tcmg_log("%s", "[cccam] stopped");
 }

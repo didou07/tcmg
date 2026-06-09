@@ -300,7 +300,7 @@ void send_headers_ex(int fd, int code, const char *reason,
 		         "Set-Cookie: tcmg_session=%s; Path=/; HttpOnly; SameSite=Lax\r\n",
 		         set_cookie);
 
-	snprintf(hdr, sizeof(hdr),
+	int hdr_n = snprintf(hdr, sizeof(hdr),
 	         "HTTP/1.1 %d %s\r\n"
 	         "Server: %s\r\n"
 	         "Date: %s\r\n"
@@ -312,6 +312,8 @@ void send_headers_ex(int fd, int code, const char *reason,
 	         "\r\n",
 	         code, reason, WEB_SERVER_NAME, date_str,
 	         ctype, length, cookie_line);
+	if (hdr_n >= (int)sizeof(hdr))
+		tcmg_log("webif: HTTP header truncated (needed %d bytes)", hdr_n);
 	send(fd, SO_CAST(hdr), (int)strlen(hdr), MSG_NOSIGNAL);
 }
 

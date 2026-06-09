@@ -11,7 +11,6 @@ const S_CFG_FIELD cfg_server_fields[] =
 	DEF_OPT_INT32("CCCAM_PORT",       S_CONFIG, cccam_port,          0,     0, 65535),
 	DEF_OPT_INT32("SOCKET_TIMEOUT",   S_CONFIG, sock_timeout,        30,    5, 600  ),
 	DEF_OPT_INT8 ("ECM_LOG",          S_CONFIG, ecm_log,             1              ),
-	DEF_OPT_HEX14("DES_KEY",          S_CONFIG, des_key                             ),
 	DEF_OPT_STR  ("LOGFILE",          S_CONFIG, logfile,             ""             ),
 	DEF_OPT_STR  ("USRFILE",          S_CONFIG, usrfile,             ""             ),
 	DEF_OPT_END
@@ -531,8 +530,7 @@ bool cfg_write_default(const char *path)
 	"NEWCAMD_MGCLIENT      = 0              # Treat all clients as MGcamd: 1=on 0=auto\n"
 	"# NEWCAMD_BINDADDR    =               # Bind address (empty = all interfaces)\n"
 	"CCCAM_PORT            = 0              # CCcam port (0 = disabled)\n"
-	"DES_KEY               = 0102030405060708091011121314  # Legacy fallback DES key\n"
-	"SOCKET_TIMEOUT        = 30             # Client socket timeout in seconds (5-600)\n"
+		"SOCKET_TIMEOUT        = 30             # Client socket timeout in seconds (5-600)\n"
 	"ECM_LOG               = 1             # Log ECM requests: 1=on 0=off\n"
 	"# LOGFILE             = /var/log/tcmg.log   # Log to file (empty = stdout only; rotates at 10 MB)\n"
 	"# USRFILE             = /var/log/tcmg.usr   # User statistics log (tab-separated; rotates at 5 MB)\n"
@@ -619,7 +617,6 @@ bool cfg_reload(const char *file, char *errbuf, size_t errsz)
 	tcmg_strlcpy(g_cfg.newcamd_bindaddr, ncfg.newcamd_bindaddr, MAXIPLEN);
 	g_cfg.cccam_port  = ncfg.cccam_port;
 	g_cfg.sock_timeout= ncfg.sock_timeout;
-	memcpy(g_cfg.des_key, ncfg.des_key, 14);
 	g_cfg.ecm_log     = ncfg.ecm_log;
 	g_cfg.webif_refresh = ncfg.webif_refresh;
 	tcmg_strlcpy(g_cfg.logfile,    ncfg.logfile,    CFGPATH_LEN);

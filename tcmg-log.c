@@ -34,6 +34,7 @@ static _Atomic int32_t  s_wq_head    = 0;
 static _Atomic int32_t  s_wq_tail    = 0;
 static pthread_mutex_t  s_wq_mtx     = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t   s_wq_cond    = PTHREAD_COND_INITIALIZER;
+static pthread_cond_t   s_wq_empty   = PTHREAD_COND_INITIALIZER;
 static pthread_t        s_wq_tid;
 static _Atomic int8_t   s_wq_running = 0;
 
@@ -210,6 +211,10 @@ static void writer_drain(void)
 	fflush(stdout);
 	if (s_log_fp) fflush(s_log_fp);
 	if (s_usr_fp) fflush(s_usr_fp);
+
+	pthread_mutex_lock(&s_wq_mtx);
+	pthread_cond_broadcast(&s_wq_empty);
+	pthread_mutex_unlock(&s_wq_mtx);
 }
 
 static void *writer_thread(void *arg)
@@ -241,17 +246,16 @@ void log_init(void)
 
 void log_flush(void)
 {
-	for (int i = 0; i < 400; i++) {
-		if (atomic_load_explicit(&s_wq_head, memory_order_acquire) ==
-		    atomic_load_explicit(&s_wq_tail, memory_order_acquire))
-			break;
-		tcmg_sleep_ms(1);
-	}
+	pthread_mutex_lock(&s_wq_mtx);
+	while (atomic_load_explicit(&s_wq_head, memory_order_relaxed) !=
+	       atomic_load_explicit(&s_wq_tail, memory_order_relaxed))
+		pthread_cond_wait(&s_wq_empty, &s_wq_mtx);
+	pthread_mutex_unlock(&s_wq_mtx);
 }
 
 void log_shutdown(void)
 {
-	tcmg_log(">> " TCMG_BANNER " << shutting down");
+	tcmg_log("%s", ">> " TCMG_BANNER " << shutting down");
 	log_flush();
 	atomic_store_explicit(&s_wq_running, 0, memory_order_release);
 	pthread_mutex_lock(&s_wq_mtx);
@@ -406,15 +410,14 @@ static void hex_row(const uint8_t *buf, int32_t offset, int32_t count, char *row
 		row[rp++] = hex_ch[b >> 4];
 		row[rp++] = hex_ch[b & 0xF];
 		row[rp++] = ' ';
-		if (j == 7) row[rp++] = ' ';
 	}
 	while (j < 16) {
 		row[rp++] = ' ';
 		row[rp++] = ' ';
 		row[rp++] = ' ';
-		if (j == 7) row[rp++] = ' ';
 		j++;
 	}
+	while (rp > 0 && row[rp - 1] == ' ') rp--;
 	row[rp] = '\0';
 }
 
@@ -482,62 +485,28 @@ void tcmg_log_hex(const char *mod, const uint8_t *buf, int32_t n,
 
 void log_ecm_raw(uint16_t caid, uint16_t sid, const uint8_t *data, int32_t len)
 {
-	char    header[64];
 	int32_t cap;
 	int32_t i;
 
 	if (!(D_ECM & g_dblevel)) return;
 
 	{
-		static const char s1[] = "ECM IN  caid=";
-		static const char s2[] = " sid=";
-		static const char s3[] = " len=";
-		static const char hx[] = "0123456789ABCDEF";
-		int32_t rp = 0;
-		int32_t k;
-		char tmp[8];
-		int32_t tl;
-
-		for (k = 0; s1[k]; k++) header[rp++] = s1[k];
-		header[rp++] = hx[(caid >> 12) & 0xF];
-		header[rp++] = hx[(caid >>  8) & 0xF];
-		header[rp++] = hx[(caid >>  4) & 0xF];
-		header[rp++] = hx[ caid        & 0xF];
-		for (k = 0; s2[k]; k++) header[rp++] = s2[k];
-		header[rp++] = hx[(sid >> 12) & 0xF];
-		header[rp++] = hx[(sid >>  8) & 0xF];
-		header[rp++] = hx[(sid >>  4) & 0xF];
-		header[rp++] = hx[ sid        & 0xF];
-		for (k = 0; s3[k]; k++) header[rp++] = s3[k];
-		tl = 0;
-		{ int32_t v = len; do { tmp[tl++] = (char)('0' + v % 10); v /= 10; } while (v); }
-		while (tl > 0) header[rp++] = tmp[--tl];
-		header[rp] = '\0';
+		char header[64];
+		snprintf(header, sizeof(header), "caid=%04X sid=%04X len=%d", caid, sid, len);
+		emit_line("ecm", header);
 	}
-	emit_line("ecm", header);
 
 	cap = (len > 256) ? 256 : len;
 	for (i = 0; i < cap; i += 16) {
 		int32_t count = (i + 16 < cap) ? 16 : (cap - i);
-		char    row[56];
+		char    row[64];
 		hex_row(data, i, count, row);
 		emit_line(NULL, row);
 	}
 
 	if (len > 256) {
 		char trunc[40];
-		int32_t rp = 0;
-		int32_t rem = len - 256;
-		char    tmp[8];
-		int32_t tl = 0;
-		static const char s[] = "  ... (";
-		static const char e[] = " bytes truncated)";
-		int32_t k;
-		for (k = 0; s[k]; k++) trunc[rp++] = s[k];
-		do { tmp[tl++] = (char)('0' + rem % 10); rem /= 10; } while (rem);
-		while (tl > 0) trunc[rp++] = tmp[--tl];
-		for (k = 0; e[k]; k++) trunc[rp++] = e[k];
-		trunc[rp] = '\0';
+		snprintf(trunc, sizeof(trunc), "  ... (%d bytes truncated)", len - 256);
 		emit_line(NULL, trunc);
 	}
 }
@@ -571,26 +540,18 @@ void log_cw_result(uint16_t caid, uint16_t sid, int32_t len,
 		if (hit) {
 			if (ch)
 				snprintf(body, sizeof(body),
-				         "%04X:%04X:%02X  %s  found %dms by %s  [%s]",
+				         "(%04X:%04X:%02X:%s): found (%d ms) by %s  [%s]",
 				         caid, sid, (int)len, cw_str, ms,
 				         user ? user : "?", ch);
 			else
 				snprintf(body, sizeof(body),
-				         "%04X:%04X:%02X  %s  found %dms by %s",
+				         "(%04X:%04X:%02X:%s): found (%d ms) by %s",
 				         caid, sid, (int)len, cw_str, ms,
 				         user ? user : "?");
 		} else {
 			snprintf(body, sizeof(body),
-			         "%04X:%04X:%02X  not found %dms",
+			         "(%04X:%04X:%02X): not found (%d ms)",
 			         caid, sid, (int)len, ms);
-		}
-
-		if (hit && cw && (D_ECM & g_dblevel)) {
-			char cw0[56], cw1[56];
-			hex_row(cw,     0, 8, cw0);
-			hex_row(cw + 8, 0, 8, cw1);
-			emit_line("ecm", cw0);
-			emit_line("ecm", cw1);
 		}
 
 		usr_line[0] = '\0';

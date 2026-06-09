@@ -2,6 +2,10 @@
 #include "../globals.h"
 #include "webif-internal.h"
 
+#pragma GCC diagnostic ignored "-Wformat"
+#pragma GCC diagnostic ignored "-Wformat-extra-args"
+#pragma GCC diagnostic ignored "-Woverlength-strings"
+
 void send_page_users(int fd)
 {
 	int   bsz = 65536, pos = 0;

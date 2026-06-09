@@ -116,7 +116,7 @@ static inline void tcmg_sleep_ms(int ms)
 #define TCMG_SRVID_FILE    "tcmg.srvid2"
 
 #define CW_LEN               16
-#define NC_MSG_MAX           400
+#define NC_MSG_MAX           1024
 #define NC_HDR_LEN           8
 #define LOG_RING_MAX         4000
 #define MAX_CONNS            256
@@ -220,7 +220,6 @@ typedef struct s_ban_entry {
 typedef struct {
     int32_t  sock_timeout;
     int8_t   ecm_log;
-    uint8_t  des_key[14];
     char     logfile[CFGPATH_LEN];
     char     usrfile[CFGPATH_LEN];
 

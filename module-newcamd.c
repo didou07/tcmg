@@ -426,18 +426,7 @@ void *handle_newcamd_client(void *arg)
 	tcmg_log_dbg(D_CONN, "%s new newcamd/mgcamd connection fd=%d tid=%u",
 	             cl.ip, cl.fd, cl.thread_id);
 
-	const uint8_t *des_key = g_cfg.newcamd_key;
-	bool key_is_set = false;
-	for (int i = 0; i < 14; i++)
-		if (des_key[i]) { key_is_set = true; break; }
-	if (!key_is_set) {
-		des_key = g_cfg.des_key;
-		tcmg_log_dbg(D_NEWCAMD, "%s using global DES key (no per-module key set)", cl.ip);
-	} else {
-		tcmg_log_dbg(D_NEWCAMD, "%s using module-specific DES key", cl.ip);
-	}
-
-	nc_init(&cl, des_key, g_cfg.sock_timeout);
+	nc_init(&cl, g_cfg.newcamd_key, g_cfg.sock_timeout);
 
 	while (g_running && !cl.kill_flag)
 	{
@@ -570,14 +559,14 @@ static void *ncd_accept_thread(void *arg)
 	}
 
 	pthread_attr_destroy(&attr);
-	tcmg_log_dbg(D_CONN, "accept thread exiting");
+	tcmg_log_dbg(D_CONN, "%s", "accept thread exiting");
 	return NULL;
 }
 
 void newcamd_start(void)
 {
 	if (!g_cfg.newcamd_port) {
-		tcmg_log_dbg(D_NEWCAMD, "disabled (port=0)");
+		tcmg_log_dbg(D_NEWCAMD, "%s", "disabled (port=0)");
 		return;
 	}
 
@@ -641,7 +630,7 @@ void newcamd_start(void)
 
 void newcamd_stop(void)
 {
-	tcmg_log_dbg(D_NEWCAMD, "stopping...");
+	tcmg_log_dbg(D_NEWCAMD, "%s", "stopping...");
 	s_ncd_running = 0;
 	if (s_ncd_srv_fd >= 0)
 	{
@@ -649,5 +638,5 @@ void newcamd_stop(void)
 		s_ncd_srv_fd = -1;
 	}
 	pthread_join(s_ncd_thread, NULL);
-	tcmg_log_dbg(D_NEWCAMD, "stopped");
+	tcmg_log_dbg(D_NEWCAMD, "%s", "stopped");
 }

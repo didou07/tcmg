@@ -3,6 +3,10 @@
 #include "webif-internal.h"
 #include "webif_assets.h"
 
+#pragma GCC diagnostic ignored "-Wformat"
+#pragma GCC diagnostic ignored "-Wformat-extra-args"
+#pragma GCC diagnostic ignored "-Woverlength-strings"
+
 void send_login_page(int fd, int failed)
 {
 	int   bsz = 8192, pos = 0;

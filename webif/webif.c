@@ -3,8 +3,9 @@
 
 #include "webif-internal.h"
 #include <semaphore.h>
+#include <stdatomic.h>
 
-volatile int8_t s_webif_running = 0;
+_Atomic int8_t s_webif_running = 0;
 int             s_webif_sock    = -1;
 
 static pthread_t s_webif_tid;
@@ -120,12 +121,19 @@ void handle_request(int fd, const char *client_ip)
 		char u[CFGKEY_LEN] = {0}, pw[CFGKEY_LEN] = {0};
 		form_get(req.body, "u",  u,  sizeof(u));
 		form_get(req.body, "p", pw, sizeof(pw));
+		if (ban_is_banned(client_ip)) {
+			send_login_page(fd, 1);
+			req_free(&req);
+			return;
+		}
 		if (check_credentials(u, pw)) {
+			ban_record_ok(client_ip);
 			char token[WEB_SESSION_LEN + 1];
 			session_create(token);
 			tcmg_log_dbg(D_HTTP, "webif LOGIN ok user='%s' from=%s", u, client_ip);
 			send_redirect_with_cookie(fd, "/status", token);
 		} else {
+			ban_record_fail(client_ip);
 			tcmg_log("webif LOGIN failed: user='%s' from=%s", u, client_ip);
 			send_login_page(fd, 1);
 		}
@@ -236,7 +244,7 @@ static void *http_server_thread(void *arg)
 	         g_cfg.webif_bindaddr[0] ? g_cfg.webif_bindaddr : "0.0.0.0",
 	         g_cfg.webif_port);
 
-	while (s_webif_running) {
+	while (atomic_load_explicit(&s_webif_running, memory_order_acquire)) {
 		fd_set rfds;
 		FD_ZERO(&rfds);
 		FD_SET(s_webif_sock, &rfds);
@@ -248,7 +256,7 @@ static void *http_server_thread(void *arg)
 		socklen_t clen = sizeof(ca);
 		int cfd = accept(s_webif_sock, (struct sockaddr *)&ca, &clen);
 		if (cfd < 0) {
-			if (s_webif_running)
+			if (atomic_load_explicit(&s_webif_running, memory_order_acquire))
 				tcmg_log_dbg(D_HTTP, "accept() failed errno=%d (%s)", errno, strerror(errno));
 			continue;
 		}
@@ -290,7 +298,7 @@ static void *http_server_thread(void *arg)
 
 int32_t webif_start(void)
 {
-	if (!g_cfg.webif_enabled) { tcmg_log_dbg(D_HTTP, "disabled in config"); return -1; }
+	if (!g_cfg.webif_enabled) { tcmg_log_dbg(D_HTTP, "%s", "disabled in config"); return -1; }
 
 	s_webif_sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (s_webif_sock < 0) {
@@ -322,7 +330,7 @@ int32_t webif_start(void)
 		close(s_webif_sock); s_webif_sock = -1; return -1;
 	}
 
-	s_webif_running = 1;
+	atomic_store_explicit(&s_webif_running, 1, memory_order_release);
 	sem_init(&s_webif_sem, 0, WEBIF_MAX_THREADS);
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
@@ -342,7 +350,7 @@ int32_t webif_start(void)
 void webif_stop(void)
 {
 	if (!s_webif_running) return;
-	s_webif_running = 0;
+	atomic_store_explicit(&s_webif_running, 0, memory_order_release);
 	if (s_webif_sock >= 0) { close(s_webif_sock); s_webif_sock = -1; }
 	pthread_join(s_webif_tid, NULL);
 	sem_destroy(&s_webif_sem);

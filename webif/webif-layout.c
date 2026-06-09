@@ -3,6 +3,10 @@
 #include "webif-internal.h"
 #include "webif_assets.h"
 
+#pragma GCC diagnostic ignored "-Wformat"
+#pragma GCC diagnostic ignored "-Wformat-extra-args"
+#pragma GCC diagnostic ignored "-Woverlength-strings"
+
 #define ICO_LOGO \
  "<svg width='16' height='16' viewBox='0 0 24 24' fill='none'>" \
  "<path d='M12 2L2 7l10 5 10-5-10-5z' stroke='var(--p)' stroke-width='1.8' stroke-linejoin='round'/>" \
@@ -110,7 +114,7 @@ int emit_header(char **buf, int *bsz, int pos,
             nav[i].href, cls, nav[i].icon, nav[i].label);
     }
 
-    int refresh = g_cfg.webif_refresh > 0 ? g_cfg.webif_refresh : 5;
+    int refresh = g_cfg.webif_refresh;
 
     pos = buf_printf(buf, bsz, pos,
         "</div>"
@@ -120,7 +124,7 @@ int emit_header(char **buf, int *bsz, int pos,
         "    <span id='tb_conn'>%d</span>&nbsp;online"
         "  </div>"
         "  <span class='chip' id='tb_addr'>%s</span>"
-        "  <div class='pc'>"
+        "  <div class='pc%s'>"
         "    <label>AUTO</label>"
         "    <button onclick='_ap(-1)'>&#8722;</button>"
         "    <input id='ps_' type='text' value='%d' readonly>"
@@ -129,7 +133,9 @@ int emit_header(char **buf, int *bsz, int pos,
         "</div>"
         "</nav>"
         "<div id='mn'><div id='ct'>",
-        g_active_conns, srv_addr, refresh);
+        g_active_conns, srv_addr,
+        refresh <= 0 ? " pc-off" : "",
+        refresh > 0 ? refresh : 5);
 
     pos = buf_printf(buf, bsz, pos,
         "<script>" TCMG_JS "</script>",

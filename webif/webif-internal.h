@@ -10,7 +10,7 @@ extern const char CSS[];
 #define WEB_SESSION_TIMEOUT  3600
 #define WEB_SESSION_MAX_AGE  86400
 #define WEB_SESSION_LEN      32
-#define WEB_MAX_SESSIONS     16
+#define WEB_MAX_SESSIONS     64
 #define WEB_POST_MAX         65536
 
 typedef struct {
@@ -106,7 +106,7 @@ void handle_user_resetstats(int fd, const char *qs);
 
 void handle_srvid2_save(int fd, const char *body);
 
-extern volatile int8_t s_webif_running;
+extern _Atomic int8_t s_webif_running;
 extern int             s_webif_sock;
 
 #define ICO_CLOCK \

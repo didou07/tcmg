@@ -122,8 +122,7 @@ int32_t nc_recv(S_CLIENT *cl, uint8_t *data,
 	*caid_hdr = be16(buf + 4);
 	*pid      = ((uint32_t)buf[6] << 16) |
 	            ((uint32_t)buf[7] <<  8) |
-	             (uint32_t)buf[8]        |
-	            ((uint32_t)buf[9] << 24);
+	             (uint32_t)buf[8];
 
 	tcmg_dump_dbg(D_NEWCAMD, buf, (int32_t)payload_len,
 	              "%s [newcamd/mgcamd] recv payload mid=%04X sid=%04X caid=%04X",
@@ -188,7 +187,7 @@ int32_t nc_send(S_CLIENT *cl, const uint8_t *data, int32_t dlen,
 	buf[8]  = (uint8_t)(pid   >> 16);
 	buf[9]  = (uint8_t)(pid   >>  8);
 	buf[10] = (uint8_t)(pid);
-	buf[11] = (uint8_t)(pid   >> 24);
+	buf[11] = 0x00;
 
 	memcpy(buf + 12, data, dlen);
 	buf[13] = (data[1] & 0xF0) | (((dlen - 3) >> 8) & 0x0F);
@@ -209,17 +208,17 @@ int32_t nc_send_addcard(S_CLIENT *cl, uint16_t caid,
 	uint8_t *buf = cl->send_buf;
 	static const uint8_t payload[3] = { MSG_ADDCARD, 0x00, 0x00 };
 
-	memset(buf + 2, 0, NC_HDR_LEN + 2);
-	memcpy(buf + NC_HDR_LEN + 4, payload, 3);
+	memset(buf + 2, 0, 12);
+	memcpy(buf + 12, payload, 3);
 	wr_be16(buf + 2, mid);
 	buf[6]  = (uint8_t)(caid   >> 8);
 	buf[7]  = (uint8_t)(caid   & 0xFF);
 	buf[8]  = (uint8_t)(provid >> 16);
 	buf[9]  = (uint8_t)(provid >>  8);
 	buf[10] = (uint8_t)(provid & 0xFF);
-	buf[11] = (uint8_t)(provid >> 24);
+	buf[11] = 0x00;
 
-	return nc_finalize_send(cl, 3 + NC_HDR_LEN + 4);
+	return nc_finalize_send(cl, 15);
 }
 
 int32_t nc_send_version(S_CLIENT *cl, uint16_t mid)

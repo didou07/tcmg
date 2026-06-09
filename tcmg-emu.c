@@ -4,7 +4,7 @@
 void emu_init(void)
 {
 	crypt_init();
-	tcmg_log_dbg(D_EMU, "initialized");
+	tcmg_log_dbg(D_EMU, "%s", "initialized");
 }
 
 static uint8_t s_fake_prev[8] = {0};
@@ -167,27 +167,6 @@ int32_t emu_process(uint16_t caid, uint16_t sid,
 done:
 	{
 		int32_t ms = tcmg_elapsed_ms(t0);
-		if (ctx->account)
-		{
-			pthread_mutex_lock(&ctx->account->stat_mtx);
-			ctx->account->ecm_total++;
-			if (hit)
-			{
-				ctx->account->cw_found++;
-				ctx->account->cw_time_total_ms += (int64_t)ms;
-				if (ctx->account->cw_time_min_ms == 0 || (int64_t)ms < ctx->account->cw_time_min_ms)
-					ctx->account->cw_time_min_ms = (int64_t)ms;
-				if ((int64_t)ms > ctx->account->cw_time_max_ms)
-					ctx->account->cw_time_max_ms = (int64_t)ms;
-			}
-			else
-			{
-				ctx->account->cw_not++;
-			}
-			if (ctx->account->first_login == 0 && hit)
-				ctx->account->first_login = time(NULL);
-			pthread_mutex_unlock(&ctx->account->stat_mtx);
-		}
 		tcmg_log_dbg(D_EMU, "done user='%s' caid=%04X sid=%04X result=%s time=%dms",
 		             ctx->user ? ctx->user : "?", caid, sid,
 		             hit ? "FOUND" : (res == EMU_KEY_NOT_FOUND ? "KEY_NOT_FOUND" :

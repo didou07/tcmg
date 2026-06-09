@@ -313,75 +313,65 @@ void send_page_livelog(int fd)
 
 	pos = buf_printf(&buf, &bsz, pos,
 		"<div class='card' style='margin-bottom:12px'>"
-		"<div class='ch'>"
+		"<div class='ll-ch'>"
 		"  <span class='ct'>"
 		"    <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'>"
 		"      <path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/>"
 		"      <polyline points='14 2 14 8 20 8'/>"
 		"    </svg>Live Log"
 		"  </span>"
-		"  <div style='display:flex;align-items:center;gap:6px;font-size:11px;font-family:var(--mono);color:var(--t2)'>"
-		"    mask:<span id='dbmask' style='color:var(--p)'>0x%04X</span>"
-		"  </div>"
-		"</div>"
-		"<div class='cb' style='display:flex;flex-direction:column;gap:10px'>",
+		"  <div class='ll-hdr-right'>",
 		g_dblevel);
 
 	pos = buf_printf(&buf, &bsz, pos,
-		"<div style='display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px'>"
-		"  <span style='font-size:10px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.1em'>Debug</span>");
+		"    <div class='ll-dbrow'>"
+		"      <span class='ll-label'>Debug</span>");
 
 	for (int i = 0; i < MAX_DEBUG_LEVELS; i++) {
 		uint16_t m  = g_dblevel_names[i].mask;
 		int      on = !!(g_dblevel & m);
 		pos = buf_printf(&buf, &bsz, pos,
 			"<a id='db%u' href='#' class='dt%s' onclick='toggleDbg(%u);return false;'"
-			" title='mask 0x%04X'>%s</a>",
+			" title='0x%04X'>%s</a>",
 			m, on ? " on" : "", m, m, g_dblevel_names[i].name);
 		ma += snprintf(masks_js + ma, (int)sizeof(masks_js) - ma, "%s%u", i ? "," : "", m);
 	}
+	pos = buf_printf(&buf, &bsz, pos,
+		"      <a id='dbALL' href='#' class='dt%s' onclick='toggleAll();return false;'>ALL</a>"
+		"      <div class='ll-vsep'></div>"
+		"      <div class='ll-meta'>"
+		"        <span class='ll-dot'></span>"
+		"        mask:<span id='dbmask' class='ll-mask'>0x%04X</span>"
+		"        &nbsp;|&nbsp;"
+		"        <span id='linecnt' class='ll-mask'>0</span> lines"
+		"      </div>"
+		"    </div>"
+		"  </div>"
+		"</div>"
+		"<div class='cb' style='padding:10px 18px'>",
+		(g_dblevel == D_ALL) ? " on" : "",
+		g_dblevel);
 
 	pos = buf_printf(&buf, &bsz, pos,
-		"  <a id='dbALL' href='#' class='dt%s' onclick='toggleAll();return false;'>ALL</a>"
-		"</div>",
-		(g_dblevel == D_ALL) ? " on" : "");
-
-	pos = buf_printf(&buf, &bsz, pos,
-		"<div style='display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px'>"
+		"<div class='ll-toolbar2'>"
+		"  <input class='ls' id='filter' placeholder='Filter&#8230;' oninput='applyFilter()'"
+		"   title='Regex, e.g.: hit|miss'>"
+		"  <div class='ll-sep'></div>"
 		"  <button class='btn bg sm' onclick='clearLog()'>" ICO_TRASH "&nbsp;Clear</button>"
 		"  <a id='savelog' download='tcmg.log'>"
 		"    <button class='btn bg sm' onclick='prepSave()'>&#128190;&nbsp;Save</button>"
 		"  </a>"
-		"  <input class='ls' id='filter' placeholder='Filter (regex)...' oninput='applyFilter()'"
-		"   title='Supports regex, e.g.: hit|miss' style='width:180px'>"
-		"  <label class='flex gap8' style='font-size:12px;color:var(--t1)'>"
-		"    <input type='checkbox' id='asc' checked>&nbsp;Auto-scroll"
-		"  </label>"
-		"  <label class='flex gap8' style='font-size:12px;color:var(--t1)'>"
-		"    <input type='checkbox' id='paused'>&nbsp;Pause"
-		"  </label>"
-		"  <span style='display:flex;align-items:center;gap:5px;font-size:11px;color:var(--t2)'>"
-		"    Lines:<select class='lsel' id='maxlines'>"
-		"      <option value='200' selected>200</option>"
-		"      <option value='500'>500</option>"
-		"      <option value='1000'>1000</option>"
-		"      <option value='2000'>2000</option>"
-		"    </select>"
-		"    <span id='linecnt' style='font-family:var(--mono)'>0</span> shown"
-		"  </span>"
-		"</div>");
-
-	pos = buf_printf(&buf, &bsz, pos,
-		"<div style='display:flex;gap:10px;flex-wrap:wrap;justify-content:center;"
-		"font-size:11px;font-family:var(--mono);padding:4px 0'>"
-		"  <span style='color:#4ade80'>&#9632; hit</span>"
-		"  <span style='color:#f87171'>&#9632; miss</span>"
-		"  <span style='color:#60a5fa'>&#9632; webif</span>"
-		"  <span style='color:#fb923c'>&#9632; ban</span>"
-		"  <span style='color:#c084fc'>&#9632; net</span>"
-		"  <span style='color:#22d3ee'>&#9632; proto</span>"
-		"  <span style='color:#fde68a'>&#9632; conf</span>"
-		"  <span style='color:#f87171'>&#9632; error/warn</span>"
+		"  <div class='ll-sep'></div>"
+		"  <label class='ll-chk'><input type='checkbox' id='asc' checked>&nbsp;Scroll</label>"
+		"  <label class='ll-chk'><input type='checkbox' id='paused'>&nbsp;Pause</label>"
+		"  <div class='ll-sep'></div>"
+		"  <span class='ll-label'>Lines</span>"
+		"  <select class='lsel' id='maxlines'>"
+		"    <option value='200' selected>200</option>"
+		"    <option value='500'>500</option>"
+		"    <option value='1000'>1000</option>"
+		"    <option value='2000'>2000</option>"
+		"  </select>"
 		"</div>"
 		"</div>"
 		"</div>");
@@ -395,14 +385,13 @@ void send_page_livelog(int fd)
 
 	pos = buf_printf(&buf, &bsz, pos,
 		"<script>"
-		"var lastid=%d,curmask=%u,hovered=0;"
-		"var masks=[%s],filterRe=null;",
+		"var lastid=%d,curmask=%u,hovered=0,_pollBusy=0;"
+		"var masks=[%s],filterRe=null,visCount=0;",
 		(ring_now > 200) ? ring_now - 200 : 0,
 		(unsigned)g_dblevel,
 		masks_js);
 
 	pos = buf_printf(&buf, &bsz, pos,
-
 		"function updateDbgUI(){"
 		"  var el=document.getElementById('dbmask');"
 		"  if(el)el.textContent='0x'+curmask.toString(16).toUpperCase().padStart(4,'0');"
@@ -417,111 +406,116 @@ void send_page_livelog(int fd)
 		"function toggleAll(){curmask=(curmask===65535)?0:65535;updateDbgUI();sendDebug();return false;}"
 		"function sendDebug(){"
 		"  fetch('/logpoll?since='+lastid+'&debug='+curmask,{credentials:'same-origin'})"
-		"    .then(function(r){if(!r.ok)return null;return r.json();})"
-		"    .then(function(d){if(d&&d.next!==undefined)lastid=d.next;if(d&&d.lines&&d.lines.length)appendLines(d.lines);})"
-		"    .catch(function(){});"
-		"}"
+		"    .then(function(r){return r.ok?r.json():null;})"
+		"    .then(function(d){"
+		"      if(!d)return;"
+		"      if(typeof d.next==='number')lastid=d.next;"
+		"      if(d.lines&&d.lines.length)appendLines(d.lines);"
+		"    }).catch(function(){});"
+		"}");
 
+	pos = buf_printf(&buf, &bsz, pos,
+		"function setLineCnt(v){"
+		"  visCount=v;"
+		"  var lc=document.getElementById('linecnt');if(lc)lc.textContent=v;"
+		"}"
 		"function applyFilter(){"
 		"  var s=document.getElementById('filter').value;"
 		"  try{filterRe=s?new RegExp(s,'i'):null;}catch(e){filterRe=null;}"
 		"  var spans=document.getElementById('lp').children,vis=0;"
 		"  for(var i=0;i<spans.length;i++){"
-		"    var raw=spans[i].getAttribute('data-raw')||'';"
-		"    var usr=spans[i].getAttribute('data-usr')||'';"
-		"    var show=!filterRe||filterRe.test(raw)||filterRe.test(usr);"
-		"    spans[i].style.display=show?'block':'none';"
+		"    var show=!filterRe||filterRe.test(spans[i].getAttribute('data-r')||'');"
+		"    spans[i].style.display=show?'':'none';"
 		"    if(show)vis++;"
 		"  }"
-		"  var lc=document.getElementById('linecnt');if(lc)lc.textContent=vis;"
+		"  setLineCnt(vis);"
 		"}"
-
 		"function clearLog(){"
-		"  document.getElementById('lp').innerHTML='';"
-		"  var lc=document.getElementById('linecnt');if(lc)lc.textContent='0';"
+		"  var pre=document.getElementById('lp');"
+		"  pre.textContent='';"
+		"  setLineCnt(0);"
 		"  fetch('/logpoll?since=999999999&debug='+curmask,{credentials:'same-origin'})"
-		"    .then(function(r){if(!r.ok)return null;return r.json();})"
-		"    .then(function(d){if(d&&d.next!==undefined)lastid=d.next;})"
+		"    .then(function(r){return r.ok?r.json():null;})"
+		"    .then(function(d){if(d&&typeof d.next==='number')lastid=d.next;})"
 		"    .catch(function(){});"
 		"}"
 		"function prepSave(){"
 		"  var spans=document.getElementById('lp').children,txt='';"
 		"  for(var i=0;i<spans.length;i++){"
 		"    if(spans[i].style.display==='none')continue;"
-		"    var usr=spans[i].getAttribute('data-usr')||'';"
-		"    var raw=spans[i].getAttribute('data-raw')||'';"
-		"    txt+=(usr?'['+usr+'] ':'')+raw+'\\n';"
+		"    txt+=(spans[i].getAttribute('data-r')||'')+'\\n';"
 		"  }"
-		"  var blob=new Blob([txt],{type:'text/plain'});"
 		"  var a=document.getElementById('savelog');"
-		"  if(a)a.href=URL.createObjectURL(blob);"
-		"}"
+		"  if(a)a.href=URL.createObjectURL(new Blob([txt],{type:'text/plain'}));"
+		"}");
 
-		"var CM={"
-		"  hit:'#4ade80',miss:'#f87171',webif:'#60a5fa',"
-		"  ban:'#fb923c',net:'#c084fc',proto:'#22d3ee',"
-		"  conf:'#fde68a',err:'#f87171',warn:'#fb923c'"
-		"};"
-		"function colorLine(l){"
-		"  var s=l.toLowerCase();"
-		"  if(s.indexOf('[hit]')>=0)  return CM.hit;"
-		"  if(s.indexOf('[miss]')>=0) return CM.miss;"
-		"  if(s.indexOf('(webif')>=0) return CM.webif;"
-		"  if(s.indexOf('(ban')>=0)   return CM.ban;"
-		"  if(s.indexOf('(net')>=0)   return CM.net;"
-		"  if(s.indexOf('(proto')>=0) return CM.proto;"
-		"  if(s.indexOf('(conf')>=0)  return CM.conf;"
-		"  if(s.indexOf('error')>=0)  return CM.err;"
-		"  if(s.indexOf('warn')>=0)   return CM.warn;"
+	pos = buf_printf(&buf, &bsz, pos,
+		"var CM=["
+		"  ['[hit]','#4ade80'],['[miss]','#f87171'],"
+		"  ['(webif','#60a5fa'],['(ban','#fb923c'],"
+		"  ['(net','#c084fc'],['(proto','#22d3ee'],"
+		"  ['(conf','#fde68a'],['error','#f87171'],['warn','#fb923c']"
+		"];"
+		"function colorLine(s){"
+		"  for(var i=0;i<CM.length;i++)if(s.indexOf(CM[i][0])>=0)return CM[i][1];"
 		"  return null;"
 		"}"
-
-		"function updateLineCnt(){"
-		"  var spans=document.getElementById('lp').children,v=0;"
-		"  for(var i=0;i<spans.length;i++)if(spans[i].style.display!=='none')v++;"
-		"  var lc=document.getElementById('linecnt');if(lc)lc.textContent=v;"
-		"}"
-
 		"function appendLines(entries){"
-		"  var pre=document.getElementById('lp');"
-		"  if(!pre)return;"
-		"  var maxl=parseInt((document.getElementById('maxlines')||{}).value)||200;"
+		"  var pre=document.getElementById('lp');if(!pre)return;"
+		"  var maxl=parseInt((document.getElementById('maxlines')||{value:'200'}).value)||200;"
+		"  var frag=document.createDocumentFragment();"
+		"  var added=0,addedVis=0;"
 		"  for(var i=0;i<entries.length;i++){"
 		"    var e=entries[i];"
-		"    var line=(typeof e==='string')?e:(e.line||'')+'';"
-		"    var usr=(typeof e==='string')?'':(e.usr||'')+'';"
+		"    var line=typeof e==='string'?e:((e.line||'')+'');"
+		"    var col=colorLine(line.toLowerCase());"
 		"    var span=document.createElement('span');"
-		"    span.style.cssText='display:block;white-space:pre;';"
-		"    var col=colorLine(line);"
 		"    if(col)span.style.color=col;"
-		"    span.setAttribute('data-raw',line);"
-		"    if(usr)span.setAttribute('data-usr',usr);"
-		"    var show=!filterRe||filterRe.test(line)||(usr&&filterRe.test(usr));"
-		"    span.style.display=show?'block':'none';"
+		"    span.setAttribute('data-r',line);"
+		"    var show=!filterRe||filterRe.test(line);"
+		"    if(!show)span.style.display='none';"
 		"    span.appendChild(document.createTextNode(line));"
-		"    pre.appendChild(span);"
+		"    frag.appendChild(span);"
+		"    added++;"
+		"    if(show)addedVis++;"
 		"  }"
-		"  while(pre.children.length>maxl)pre.removeChild(pre.firstChild);"
-		"  updateLineCnt();"
+		"  pre.appendChild(frag);"
+		"  var overflow=pre.children.length-maxl;"
+		"  if(overflow>0){"
+		"    var removed=0,removedVis=0,ch=pre.firstChild;"
+		"    while(ch&&removed<overflow){"
+		"      var nx=ch.nextSibling;"
+		"      if(ch.style&&ch.style.display!=='none')removedVis++;"
+		"      pre.removeChild(ch);"
+		"      ch=nx;removed++;"
+		"    }"
+		"    setLineCnt(visCount+addedVis-removedVis);"
+		"  } else {"
+		"    setLineCnt(visCount+addedVis);"
+		"  }"
 		"  var w=document.getElementById('lw');"
-		"  if(w&&!hovered&&document.getElementById('asc')&&document.getElementById('asc').checked)"
+		"  if(w&&!hovered&&addedVis>0"
+		"     &&document.getElementById('asc')&&document.getElementById('asc').checked)"
 		"    w.scrollTop=w.scrollHeight;"
-		"}"
+		"}");
 
+	pos = buf_printf(&buf, &bsz, pos,
 		"function poll(){"
+		"  if(_pollBusy)return;"
 		"  if(document.getElementById('paused')&&document.getElementById('paused').checked)return;"
+		"  _pollBusy=1;"
 		"  fetch('/logpoll?since='+lastid+'&debug='+curmask,{credentials:'same-origin'})"
 		"    .then(function(r){"
 		"      if(r.status===401||r.status===302){window.location.href='/login';return null;}"
-		"      if(!r.ok)return null;"
-		"      return r.json();"
+		"      return r.ok?r.json():null;"
 		"    })"
 		"    .then(function(d){"
+		"      _pollBusy=0;"
 		"      if(!d)return;"
 		"      if(typeof d.debug==='number'&&d.debug!==curmask){curmask=d.debug;updateDbgUI();}"
 		"      if(typeof d.next==='number')lastid=d.next;"
 		"      if(d.lines&&d.lines.length)appendLines(d.lines);"
-		"    }).catch(function(){});"
+		"    }).catch(function(){_pollBusy=0;});"
 		"}"
 		"updateDbgUI();"
 		"setInterval(poll,1000);"
@@ -579,8 +573,8 @@ void send_logpoll(int fd, const char *qs)
 		(unsigned)g_dblevel, next_id);
 
 	for (int i = 0; i < count; i++) {
-		char esc_line[4096];
-		char esc_usr[128];
+		char esc_line[8192];
+		char esc_usr[512];
 		json_escape(lines[i],              esc_line, sizeof(esc_line));
 		json_escape(users[i][0] ? users[i] : "", esc_usr,  sizeof(esc_usr));
 		free(lines[i]);

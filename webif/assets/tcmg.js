@@ -25,6 +25,7 @@ document.querySelectorAll('.tnav a').forEach(function(a) {
 /* 2. Poll interval control — initial value comes from server config */
 var _pm = (function() {
   var srv = %d;
+  if (srv <= 0) return 0;
   var stored = parseInt(sessionStorage.tcmg_poll);
   var v = (stored >= 1 && stored <= 99) ? stored : srv;
   var el = document.getElementById('ps_');
@@ -35,6 +36,7 @@ var _pm = (function() {
 var _pit = null, _busy = false, _ut = 0, _ut_tmr = null;
 
 function _ap(d) {
+  if (_pm === 0) return;
   var el = document.getElementById('ps_');
   var v = Math.max(1, Math.min(99, parseInt(el.value) || 5) + d);
   el.value = v;
@@ -175,6 +177,7 @@ function _poll() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+  if (_pm <= 0) return;
   _poll();
   _pit = setInterval(_poll, _pm);
 });
