@@ -99,7 +99,7 @@ static inline void tcmg_sleep_ms(int ms)
 #endif
 
 #ifndef TCMG_VERSION
-#  define TCMG_VERSION     "5.2"
+#  define TCMG_VERSION     "5.3"
 #endif
 #define TCMG_BANNER        "tcmg v" TCMG_VERSION
 #ifndef TCMG_BUILD_TIME
