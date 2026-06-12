@@ -1,0 +1,14 @@
+#ifndef TCMG_WEBIF_CONSTANTS_H_
+#define TCMG_WEBIF_CONSTANTS_H_
+
+#define WEB_SERVER_NAME     "tcmg/" TCMG_VERSION
+#define WEB_READ_TIMEOUT_S  4
+#define WEB_BUF_SIZE        16384
+#define WEB_MAX_LINES_POLL  200
+#define WEB_SESSION_TIMEOUT  3600
+#define WEB_SESSION_MAX_AGE  86400
+#define WEB_SESSION_LEN      32
+#define WEB_MAX_SESSIONS     64
+#define WEB_POST_MAX         65536
+
+#endif

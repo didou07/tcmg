@@ -11,44 +11,58 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="$SCRIPT_DIR/build"
 OBJ_DIR="$BUILD_DIR/obj"
 
+check_src() {
+    [[ -f "$SCRIPT_DIR/src/main.c" ]] || {
+        err "src/main.c not found. Run this script from the project root."
+        exit 1
+    }
+}
+
+regen_assets() {
+    info "Regenerating webif/assets/webif_assets.h ..."
+    python3 "$SCRIPT_DIR/tools/gen_assets.py"
+    ok "webif/assets/webif_assets.h updated"
+}
+
 ALL_SRCS="\
-tcmg-globals.c \
-tcmg-main.c \
-tcmg-client.c \
-tcmg-log.c \
-tcmg-conf.c \
-tcmg-failban.c \
-tcmg-emu.c \
-tcmg-srvid.c \
-tcmg-net.c \
-tcmg-platform.c \
-cscrypt/crypto.c \
-module-cccam.c \
-module-newcamd.c \
-webif/webif.c \
-webif/webif-common.c \
-webif/webif-layout.c \
-webif/webif-page-login.c \
-webif/webif-page-status.c \
-webif/webif-page-users.c \
-webif/webif-page-system.c \
-webif/webif-api.c \
-webif/webif-tvcas.c"
+src/core/globals.c \
+src/main.c \
+src/client/client.c \
+src/log/log.c \
+src/config/config.c \
+src/security/failban.c \
+src/emu/emu.c \
+src/srvid/srvid.c \
+src/net/net.c \
+src/cache/cw_cache.c \
+src/platform/platform.c \
+src/crypto/crypto.c \
+src/crypto/sha1.c \
+src/proto/newcamd.c \
+src/proto/cccam.c \
+webif/server.c \
+webif/layout.c \
+webif/stats.c \
+webif/http/request.c \
+webif/http/response.c \
+webif/http/auth.c \
+webif/pages/login.c \
+webif/pages/status.c \
+webif/pages/users.c \
+webif/pages/system.c \
+webif/pages/config.c \
+webif/pages/files.c \
+webif/pages/power.c \
+webif/pages/tvcas.c \
+webif/api/status.c \
+webif/api/users.c \
+webif/api/config.c \
+webif/api/system.c"
 
 VERSION=$(grep -oP '#define\s+TCMG_VERSION\s+"\K[^"]+' "$SCRIPT_DIR/globals.h" 2>/dev/null || echo "dev")
 
 ON_WINDOWS=0
 case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) ON_WINDOWS=1 ;; esac
-
-check_src() {
-    [[ -f "$SCRIPT_DIR/tcmg-main.c" ]] || { err "tcmg-main.c not found. Run from project root."; exit 1; }
-}
-
-regen_assets() {
-    info "Regenerating webif/webif_assets.h ..."
-    python3 "$SCRIPT_DIR/tools/gen_assets.py"
-    ok "webif/webif_assets.h updated"
-}
 
 find_gcc() {
     local want_triple="$1"
@@ -99,13 +113,14 @@ build_direct() {
     ok "Built: $OUT  ($sz)"
 }
 
-COMMON_FLAGS="-std=c11 -Os -ffunction-sections -fdata-sections \
+COMMON_FLAGS="-std=c11 -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L \
+    -Os -ffunction-sections -fdata-sections \
     -fmerge-all-constants -fno-ident -fstack-protector-strong \
     -march=x86-64 -mtune=generic \
     -I$SCRIPT_DIR \
     -D_FORTIFY_SOURCE=2 \
     -Wall -Wextra -Wno-unused-parameter \
-    -Wno-overlength-strings -Wno-format"
+    -Wno-overlength-strings"
 
 build_linux_native() {
     info "Linux x64 build  (tcmg v${VERSION})"
@@ -156,7 +171,7 @@ show_help() {
     echo "    linux     Build Linux x64  → build/tcmg"
     echo "    windows   Build Windows x64 → build/tcmg_x64.exe"
     echo "    all       Build both platforms"
-    echo "    assets    Regenerate webif/webif_assets.h"
+    echo "    assets    Regenerate webif/assets/webif_assets.h"
     echo "    clean     Remove build/ directory"
     echo ""
 }

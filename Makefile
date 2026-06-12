@@ -7,28 +7,39 @@ BUILD_DIR := build
 OBJ_DIR   := $(BUILD_DIR)/obj
 
 SRCS := \
-	tcmg-globals.c \
-	tcmg-main.c \
-	tcmg-client.c \
-	tcmg-log.c \
-	tcmg-conf.c \
-	tcmg-failban.c \
-	tcmg-emu.c \
-	tcmg-srvid.c \
-	tcmg-net.c \
-	tcmg-platform.c \
-	cscrypt/crypto.c \
-	module-cccam.c \
-	module-newcamd.c \
-	webif/webif.c \
-	webif/webif-common.c \
-	webif/webif-layout.c \
-	webif/webif-page-login.c \
-	webif/webif-page-status.c \
-	webif/webif-page-users.c \
-	webif/webif-page-system.c \
-	webif/webif-api.c \
-	webif/webif-tvcas.c
+	src/core/globals.c          \
+	src/main.c                  \
+	src/client/client.c         \
+	src/log/log.c               \
+	src/config/config.c         \
+	src/security/failban.c      \
+	src/emu/emu.c               \
+	src/srvid/srvid.c           \
+	src/net/net.c               \
+	src/cache/cw_cache.c        \
+	src/platform/platform.c     \
+	src/crypto/crypto.c         \
+	src/crypto/sha1.c           \
+	src/proto/newcamd.c         \
+	src/proto/cccam.c           \
+	webif/server.c              \
+	webif/layout.c              \
+	webif/stats.c               \
+	webif/http/request.c        \
+	webif/http/response.c       \
+	webif/http/auth.c           \
+	webif/pages/login.c         \
+	webif/pages/status.c        \
+	webif/pages/users.c         \
+	webif/pages/system.c        \
+	webif/pages/config.c        \
+	webif/pages/files.c         \
+	webif/pages/power.c         \
+	webif/pages/tvcas.c         \
+	webif/api/status.c          \
+	webif/api/users.c           \
+	webif/api/config.c          \
+	webif/api/system.c
 
 obj_name = $(OBJ_DIR)/$(subst /,__,$(patsubst %.c,%.o,$(1)))
 OBJS := $(foreach s,$(SRCS),$(call obj_name,$(s)))
@@ -55,9 +66,8 @@ else
   LDFLAGS   += -lpthread -lm
 endif
 
-BASE_FLAGS := -std=c11 -Wall -Wextra -Wno-unused-parameter \
+BASE_FLAGS := -std=c11 -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Wno-unused-parameter \
               -Wno-overlength-strings \
-              -Wno-format \
               -I. -D_FORTIFY_SOURCE=2
 
 ifeq ($(RELEASE),1)
@@ -91,7 +101,7 @@ endif
 
 .PHONY: all clean debug release assets
 
-ASSETS_H := webif/webif_assets.h
+ASSETS_H := webif/assets/webif_assets.h
 
 all: $(TARGET)
 
@@ -99,7 +109,7 @@ assets: $(ASSETS_H)
 
 $(ASSETS_H): webif/assets/tcmg.css webif/assets/tcmg.js tools/gen_assets.py
 	$(PYTHON) tools/gen_assets.py
-	@echo "webif/webif_assets.h regenerated"
+	@echo "webif/assets/webif_assets.h regenerated"
 
 $(OBJS): $(ASSETS_H)
 

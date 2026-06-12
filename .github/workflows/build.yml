@@ -27,7 +27,7 @@ jobs:
 
       - name: Verify source tree
         run: |
-          test -f tcmg-main.c   || { echo "ERROR: tcmg-main.c not found";  exit 1; }
+          test -f src/main.c    || { echo "ERROR: src/main.c not found";    exit 1; }
           test -f globals.h     || { echo "ERROR: globals.h not found";     exit 1; }
           test -f webif/assets/tcmg.css || { echo "ERROR: webif/assets/tcmg.css missing"; exit 1; }
           test -f webif/assets/tcmg.js  || { echo "ERROR: webif/assets/tcmg.js missing";  exit 1; }
@@ -49,7 +49,7 @@ jobs:
       - name: Read version
         id: ver
         run: |
-          V=$(grep -oP '#\s*define\s+TCMG_VERSION\s+"\K[^"]+' globals.h || echo "dev")
+          V=$(grep -oP '#\s*define\s+TCMG_VERSION\s+"\K[^"]+' src/core/constants.h || echo "dev")
           echo "version=${V}" >> "$GITHUB_OUTPUT"
 
       - name: Package
@@ -87,7 +87,7 @@ jobs:
       - name: Verify source tree
         shell: msys2 {0}
         run: |
-          test -f tcmg-main.c || { echo "ERROR: tcmg-main.c not found"; exit 1; }
+          test -f src/main.c  || { echo "ERROR: src/main.c not found";  exit 1; }
           test -f globals.h   || { echo "ERROR: globals.h not found";   exit 1; }
           test -f webif/assets/tcmg.css || { echo "ERROR: webif/assets/tcmg.css missing"; exit 1; }
           test -f webif/assets/tcmg.js  || { echo "ERROR: webif/assets/tcmg.js missing";  exit 1; }
@@ -116,7 +116,7 @@ jobs:
         id: ver
         shell: msys2 {0}
         run: |
-          V=$(grep -oP '#\s*define\s+TCMG_VERSION\s+"\K[^"]+' globals.h || echo "dev")
+          V=$(grep -oP '#\s*define\s+TCMG_VERSION\s+"\K[^"]+' src/core/constants.h || echo "dev")
           echo "version=${V}" >> "$GITHUB_OUTPUT"
 
       - name: Package
@@ -156,7 +156,7 @@ jobs:
 
       - name: Verify source tree
         run: |
-          test -f tcmg-main.c                                        || { echo "ERROR: tcmg-main.c missing";        exit 1; }
+          test -f src/main.c                                         || { echo "ERROR: src/main.c missing";          exit 1; }
           test -f android/app/src/main/jni/CMakeLists.txt            || { echo "ERROR: CMakeLists.txt missing";     exit 1; }
           test -f android/app/src/main/jni/tcmg_jni_bridge.c        || { echo "ERROR: JNI bridge missing";         exit 1; }
           test -f webif/assets/tcmg.css                              || { echo "ERROR: webif/assets/tcmg.css missing"; exit 1; }
@@ -253,8 +253,8 @@ jobs:
       - name: Read version
         id: ver
         run: |
-          V=$(grep -oP '#\s*define\s+TCMG_VERSION\s+"\K[^"]+' globals.h || true)
-          [ -z "$V" ] && { echo "ERROR: TCMG_VERSION not found in globals.h"; exit 1; }
+          V=$(grep -oP '#\s*define\s+TCMG_VERSION\s+"\K[^"]+' src/core/constants.h || true)
+          [ -z "$V" ] && { echo "ERROR: TCMG_VERSION not found in src/core/constants.h"; exit 1; }
           echo "version=${V}" >> "$GITHUB_OUTPUT"
           echo "Version: ${V}"
 

@@ -1,0 +1,24 @@
+#include "../../globals.h"
+
+S_CONFIG         g_cfg;
+_Atomic int32_t  g_running       = 1;
+_Atomic int32_t  g_reload_cfg    = 0;
+_Atomic int32_t  g_restart       = 0;
+_Atomic int32_t  g_active_conns  = 0;
+time_t           g_start_time    = 0;
+char             g_cfgdir[CFGPATH_LEN] = CS_CONFDIR;
+
+S_CW_CACHE_ENTRY g_cw_cache[CW_CACHE_SIZE];
+pthread_mutex_t  g_cw_cache_mtx[CW_CACHE_SHARDS] = {
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER,
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER,
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER,
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER,
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER,
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER,
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER,
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER,
+};
+
+S_CLIENT        *g_clients[MAX_ACTIVE_CLIENTS];
+pthread_mutex_t  g_clients_mtx = PTHREAD_MUTEX_INITIALIZER;

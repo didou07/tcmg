@@ -17,7 +17,7 @@ for %%A in (%*) do (
     if /i "%%A"=="assets" goto :assets
 )
 
-if not exist "tcmg-main.c" (
+if not exist "src\main.c" (
     echo.
     echo  ERROR: Run this script from the project root.
     echo.
@@ -96,28 +96,39 @@ echo  Compiler : !CC!
 echo.
 
 set SRCS=
-set SRCS=!SRCS! tcmg-globals.c
-set SRCS=!SRCS! tcmg-main.c
-set SRCS=!SRCS! tcmg-client.c
-set SRCS=!SRCS! tcmg-log.c
-set SRCS=!SRCS! tcmg-conf.c
-set SRCS=!SRCS! tcmg-failban.c
-set SRCS=!SRCS! tcmg-emu.c
-set SRCS=!SRCS! tcmg-srvid.c
-set SRCS=!SRCS! tcmg-net.c
-set SRCS=!SRCS! tcmg-platform.c
-set SRCS=!SRCS! cscrypt\crypto.c
-set SRCS=!SRCS! module-cccam.c
-set SRCS=!SRCS! module-newcamd.c
-set SRCS=!SRCS! webif\webif.c
-set SRCS=!SRCS! webif\webif-common.c
-set SRCS=!SRCS! webif\webif-layout.c
-set SRCS=!SRCS! webif\webif-page-login.c
-set SRCS=!SRCS! webif\webif-page-status.c
-set SRCS=!SRCS! webif\webif-page-users.c
-set SRCS=!SRCS! webif\webif-page-system.c
-set SRCS=!SRCS! webif\webif-api.c
-set SRCS=!SRCS! webif\webif-tvcas.c
+set SRCS=!SRCS! src\core\globals.c
+set SRCS=!SRCS! src\main.c
+set SRCS=!SRCS! src\client\client.c
+set SRCS=!SRCS! src\log\log.c
+set SRCS=!SRCS! src\config\config.c
+set SRCS=!SRCS! src\security\failban.c
+set SRCS=!SRCS! src\emu\emu.c
+set SRCS=!SRCS! src\srvid\srvid.c
+set SRCS=!SRCS! src\net\net.c
+set SRCS=!SRCS! src\cache\cw_cache.c
+set SRCS=!SRCS! src\platform\platform.c
+set SRCS=!SRCS! src\crypto\crypto.c
+set SRCS=!SRCS! src\crypto\sha1.c
+set SRCS=!SRCS! src\proto\newcamd.c
+set SRCS=!SRCS! src\proto\cccam.c
+set SRCS=!SRCS! webif\server.c
+set SRCS=!SRCS! webif\layout.c
+set SRCS=!SRCS! webif\stats.c
+set SRCS=!SRCS! webif\http\request.c
+set SRCS=!SRCS! webif\http\response.c
+set SRCS=!SRCS! webif\http\auth.c
+set SRCS=!SRCS! webif\pages\login.c
+set SRCS=!SRCS! webif\pages\status.c
+set SRCS=!SRCS! webif\pages\users.c
+set SRCS=!SRCS! webif\pages\system.c
+set SRCS=!SRCS! webif\pages\config.c
+set SRCS=!SRCS! webif\pages\files.c
+set SRCS=!SRCS! webif\pages\power.c
+set SRCS=!SRCS! webif\pages\tvcas.c
+set SRCS=!SRCS! webif\api\status.c
+set SRCS=!SRCS! webif\api\users.c
+set SRCS=!SRCS! webif\api\config.c
+set SRCS=!SRCS! webif\api\system.c
 
 if "%ARCH%"=="x86" (set ARCH_FLAGS=-march=i686 -m32) else (set ARCH_FLAGS=-march=x86-64 -mtune=generic)
 
@@ -132,13 +143,13 @@ if "%DEBUG%"=="1" (
 )
 echo.
 
-set CFLAGS=-std=c11 %OPT_FLAGS% %ARCH_FLAGS% -I. -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -D_FORTIFY_SOURCE=2 -Wall -Wextra -Wno-unused-parameter -Wno-overlength-strings -Wno-format
+set CFLAGS=-std=c11 %OPT_FLAGS% %ARCH_FLAGS% -I. -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -D_FORTIFY_SOURCE=2 -Wall -Wextra -Wno-unused-parameter -Wno-overlength-strings
 set LDFLAGS=-lws2_32 -ladvapi32 -lbcrypt -static -static-libgcc -lpthread %LD_EXTRA%
 
 if not exist "%BUILDDIR%"          mkdir "%BUILDDIR%"
 if not exist "%OBJDIR%\%ARCH%"     mkdir "%OBJDIR%\%ARCH%"
 
-echo  Generating webif/webif_assets.h ...
+echo  Generating webif/assets/webif_assets.h ...
 python tools\gen_assets.py
 if !errorlevel! neq 0 ( echo  ERROR: gen_assets.py failed & pause & exit /b 1 )
 echo.
@@ -191,7 +202,7 @@ pause
 exit /b 0
 
 :assets
-echo  Regenerating webif/webif_assets.h ...
+echo  Regenerating webif/assets/webif_assets.h ...
 python tools\gen_assets.py
 if !errorlevel! neq 0 ( echo  ERROR: gen_assets.py failed & pause & exit /b 1 )
 echo  Done. Rebuild required.

@@ -9,11 +9,11 @@ get_filename_component(REPO_ROOT
     ABSOLUTE
 )
 
-if(NOT EXISTS "${REPO_ROOT}/tcmg-main.c")
+if(NOT EXISTS "${REPO_ROOT}/src/main.c")
     message(FATAL_ERROR
-        "Cannot find tcmg-main.c in '${REPO_ROOT}'.\n"
+        "Cannot find src/main.c in '${REPO_ROOT}'.\n"
         "Expected repo layout:\n"
-        "  <repo>/tcmg-main.c\n"
+        "  <repo>/src/main.c\n"
         "  <repo>/android/app/src/main/jni/CMakeLists.txt\n"
     )
 endif()
@@ -24,6 +24,7 @@ add_compile_options(
     -Wno-unused-parameter
     -Wno-sign-compare
     -Wno-implicit-fallthrough
+    -Wno-overlength-strings
     -ffunction-sections
     -fdata-sections
     -fstack-protector-strong
@@ -39,33 +40,43 @@ add_definitions(
 )
 
 add_library(tcmg_core STATIC
-    ${REPO_ROOT}/tcmg-globals.c
-    ${REPO_ROOT}/tcmg-main.c
-    ${REPO_ROOT}/tcmg-client.c
-    ${REPO_ROOT}/tcmg-log.c
-    ${REPO_ROOT}/tcmg-conf.c
-    ${REPO_ROOT}/tcmg-failban.c
-    ${REPO_ROOT}/tcmg-emu.c
-    ${REPO_ROOT}/tcmg-srvid.c
-    ${REPO_ROOT}/tcmg-net.c
-    ${REPO_ROOT}/tcmg-platform.c
-    ${REPO_ROOT}/cscrypt/crypto.c
-    ${REPO_ROOT}/module-cccam.c
-    ${REPO_ROOT}/module-newcamd.c
-    ${REPO_ROOT}/webif/webif.c
-    ${REPO_ROOT}/webif/webif-api.c
-    ${REPO_ROOT}/webif/webif-common.c
-    ${REPO_ROOT}/webif/webif-layout.c
-    ${REPO_ROOT}/webif/webif-page-login.c
-    ${REPO_ROOT}/webif/webif-page-status.c
-    ${REPO_ROOT}/webif/webif-page-system.c
-    ${REPO_ROOT}/webif/webif-page-users.c
-    ${REPO_ROOT}/webif/webif-tvcas.c
+    ${REPO_ROOT}/src/core/globals.c
+    ${REPO_ROOT}/src/main.c
+    ${REPO_ROOT}/src/client/client.c
+    ${REPO_ROOT}/src/log/log.c
+    ${REPO_ROOT}/src/config/config.c
+    ${REPO_ROOT}/src/security/failban.c
+    ${REPO_ROOT}/src/emu/emu.c
+    ${REPO_ROOT}/src/srvid/srvid.c
+    ${REPO_ROOT}/src/net/net.c
+    ${REPO_ROOT}/src/platform/platform.c
+    ${REPO_ROOT}/src/cache/cw_cache.c
+    ${REPO_ROOT}/src/crypto/crypto.c
+    ${REPO_ROOT}/src/crypto/sha1.c
+    ${REPO_ROOT}/src/proto/cccam.c
+    ${REPO_ROOT}/src/proto/newcamd.c
+    ${REPO_ROOT}/webif/server.c
+    ${REPO_ROOT}/webif/layout.c
+    ${REPO_ROOT}/webif/stats.c
+    ${REPO_ROOT}/webif/http/request.c
+    ${REPO_ROOT}/webif/http/response.c
+    ${REPO_ROOT}/webif/http/auth.c
+    ${REPO_ROOT}/webif/pages/login.c
+    ${REPO_ROOT}/webif/pages/status.c
+    ${REPO_ROOT}/webif/pages/system.c
+    ${REPO_ROOT}/webif/pages/users.c
+    ${REPO_ROOT}/webif/pages/tvcas.c
+    ${REPO_ROOT}/webif/pages/config.c
+    ${REPO_ROOT}/webif/pages/files.c
+    ${REPO_ROOT}/webif/pages/power.c
+    ${REPO_ROOT}/webif/api/status.c
+    ${REPO_ROOT}/webif/api/users.c
+    ${REPO_ROOT}/webif/api/config.c
+    ${REPO_ROOT}/webif/api/system.c
 )
 
 target_include_directories(tcmg_core PUBLIC
     ${REPO_ROOT}
-    ${REPO_ROOT}/cscrypt
     ${REPO_ROOT}/webif
     ${CMAKE_CURRENT_SOURCE_DIR}
 )

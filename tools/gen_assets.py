@@ -28,7 +28,7 @@ SRC = {
     'css': os.path.join(ROOT, 'webif', 'assets', 'tcmg.css'),
     'js' : os.path.join(ROOT, 'webif', 'assets', 'tcmg.js'),
 }
-OUT = os.path.join(ROOT, 'webif', 'webif_assets.h')
+OUT = os.path.join(ROOT, 'webif', 'assets', 'webif_assets.h')
 
 def to_c_string(text):
     out = []
