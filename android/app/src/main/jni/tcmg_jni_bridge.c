@@ -38,10 +38,6 @@
 /* tcmg_server_main is the renamed main() from tcmg.c (-Dmain=tcmg_server_main) */
 extern int tcmg_server_main(int argc, char *argv[]);
 
-/* Volatile flags defined in tcmg.c — written here, read in server loop */
-extern volatile int32_t g_running;
-extern volatile int32_t g_restart;
-
 /* Log ring-buffer API from tcmg-log.c */
 extern int32_t log_ring_since(int32_t from_id, char **out_lines,
                                char **out_users,
