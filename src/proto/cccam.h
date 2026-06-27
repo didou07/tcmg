@@ -27,6 +27,7 @@ typedef struct {
     char       ip[MAXIPLEN];
     uint8_t    seq;
     uint8_t    node_id[8];
+    uint8_t    peer_node_id[8];
     S_CC_CRYPT send_block;
     S_CC_CRYPT recv_block;
 } S_CCCAM_CLIENT;

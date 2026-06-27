@@ -75,7 +75,7 @@ int main(int argc, char *argv[])
 		"  v" TCMG_VERSION "  --  built " TCMG_BUILD_TIME "\n"
 		"\n");
 
-	memset(&g_cfg, 0, sizeof(g_cfg));
+	secure_zero(&g_cfg, sizeof(g_cfg));
 	pthread_rwlock_init(&g_cfg.acc_lock, NULL);
 	pthread_mutex_init(&g_cfg.ban_lock, NULL);
 

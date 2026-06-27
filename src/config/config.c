@@ -273,7 +273,7 @@ static void parse_sid_whitelist(const char *v, S_ACCOUNT *a)
 
 S_ACCOUNT *cfg_account_new(S_CONFIG *cfg)
 {
-	S_ACCOUNT *a = (S_ACCOUNT *)calloc(1, sizeof(S_ACCOUNT));
+	S_ACCOUNT *a = (S_ACCOUNT *)tcmg_malloc(sizeof(S_ACCOUNT));
 	if (!a) return NULL;
 	field_apply_defaults(cfg_account_fields, a);
 	a->caid          = 0x0B00;

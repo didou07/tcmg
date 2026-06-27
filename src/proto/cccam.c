@@ -49,17 +49,20 @@ static void cc_seed_xor(uint8_t *buf)
 
 static void cc_derive_keys(S_CCCAM_CLIENT *cc, const uint8_t *seed)
 {
-    uint8_t xseed[16],hash[20],dec_seed[16];
-    memcpy(xseed,seed,16);
+    uint8_t xseed[16], hash[20], dec_seed[16], hash_buf[20];
+    memcpy(xseed, seed, 16);
     cc_seed_xor(xseed);
-    sha1_hash(xseed,16,hash);
-    cc_rc4_init(&cc->recv_block,hash,20);
-    memcpy(dec_seed,xseed,16);
-    cc_decrypt(&cc->recv_block,dec_seed,16);
-    cc_rc4_init(&cc->send_block,dec_seed,16);
-    secure_zero(xseed,sizeof(xseed));
-    secure_zero(hash,sizeof(hash));
-    secure_zero(dec_seed,sizeof(dec_seed));
+    sha1_hash(xseed, 16, hash);
+    cc_rc4_init(&cc->send_block, hash, 20);
+    memcpy(dec_seed, xseed, 16);
+    cc_decrypt(&cc->send_block, dec_seed, 16);
+    cc_rc4_init(&cc->recv_block, dec_seed, 16);
+    memcpy(hash_buf, hash, 20);
+    cc_decrypt(&cc->recv_block, hash_buf, 20);
+    secure_zero(xseed,    sizeof(xseed));
+    secure_zero(hash,     sizeof(hash));
+    secure_zero(hash_buf, sizeof(hash_buf));
+    secure_zero(dec_seed, sizeof(dec_seed));
 }
 
 static int cc_send_msg(S_CCCAM_CLIENT *cc, uint8_t cmd,
@@ -72,7 +75,7 @@ static int cc_send_msg(S_CCCAM_CLIENT *cc, uint8_t cmd,
     buf[2]=(uint8_t)(plen>>8);
     buf[3]=(uint8_t)(plen&0xFF);
     if(plen) memcpy(buf+4,payload,plen);
-    cc_encrypt(&cc->recv_block,buf,4+(int)plen);
+    cc_encrypt(&cc->send_block,buf,4+(int)plen);
     return net_send_all(cc->fd,buf,4+(int)plen);
 }
 
@@ -81,14 +84,14 @@ static int cc_recv_msg(S_CCCAM_CLIENT *cc, uint8_t *seq_out, uint8_t *cmd,
 {
     uint8_t hdr[4]; uint16_t len;
     if(net_recv_all(cc->fd,hdr,4)!=4) return -1;
-    cc_decrypt(&cc->send_block,hdr,4);
+    cc_decrypt(&cc->recv_block,hdr,4);
     *seq_out=hdr[0]; *cmd=hdr[1];
     len=((uint16_t)hdr[2]<<8)|hdr[3];
     if(len>CCCAM_MSG_MAX) return -1;
     *plen=len;
     if(len==0) return 0;
     if(net_recv_all(cc->fd,buf,(int)len)!=(int)len) return -1;
-    cc_decrypt(&cc->send_block,buf,(int)len);
+    cc_decrypt(&cc->recv_block,buf,(int)len);
     return 0;
 }
 
@@ -96,7 +99,11 @@ static void cc_cw_crypt(S_CCCAM_CLIENT *cc, uint8_t *cw, uint32_t card_id)
 {
     uint8_t nod[8], n, tmp;
     int i, j;
-    for(i=0;i<8;i++) nod[i]=cc->node_id[7-i];
+    const uint8_t *nid = (cc->peer_node_id[0]||cc->peer_node_id[1]||cc->peer_node_id[2]||
+                          cc->peer_node_id[3]||cc->peer_node_id[4]||cc->peer_node_id[5]||
+                          cc->peer_node_id[6]||cc->peer_node_id[7])
+                         ? cc->peer_node_id : cc->node_id;
+    for(i=0;i<8;i++) nod[i]=nid[7-i];
     for(i=0;i<16;i++){
         j=i>>1;
         if(i&1)
@@ -234,7 +241,7 @@ static void cc_handle_ecm(S_CCCAM_CLIENT *cc, S_CLIENT *cl,
         memcpy(resp, cw, 16);
         cc_cw_crypt(cc, resp, card_id);
         cc_send_msg(cc,CCCAM_CMD_ECM_REQ,resp,16);
-        cc_encrypt(&cc->recv_block,resp,16);
+        cc_encrypt(&cc->send_block,resp,16);
         tcmg_dump_dbg(D_CCCAM, cw, CW_LEN,
                       "%s [cccam] CW sent to user='%s' caid=%04X sid=%04X",
                       cl->ip, cl->user, caid, sid);
@@ -317,15 +324,14 @@ void *handle_cccam_client(void *arg)
         tcmg_log_dbg(D_CCCAM, "%s [cccam] failed to receive client hash", cl.ip);
         goto cleanup;
     }
-    cc_decrypt(&cc.send_block,cli_hash,CCCAM_HASH_LEN);
-    cc_encrypt(&cc.send_block,cli_hash,CCCAM_HASH_LEN);
+    cc_decrypt(&cc.recv_block,cli_hash,CCCAM_HASH_LEN);
     secure_zero(cli_hash,sizeof(cli_hash));
 
     if(net_recv_all(cc.fd,username,20)!=20) {
         tcmg_log_dbg(D_CCCAM, "%s [cccam] failed to receive username", cl.ip);
         goto cleanup;
     }
-    cc_decrypt(&cc.send_block,username,20);
+    cc_decrypt(&cc.recv_block,username,20);
     username[19]='\0';
     memset(user,0,sizeof(user));
     tcmg_strlcpy(user,(char*)username,sizeof(user));
@@ -350,7 +356,7 @@ void *handle_cccam_client(void *arg)
         size_t pwlen=strlen(acc->pass);
         if(pwlen>0&&pwlen<=255){
             memcpy(pwd_enc,acc->pass,pwlen);
-            cc_encrypt(&cc.send_block,pwd_enc,(int)pwlen);
+            cc_encrypt(&cc.recv_block,pwd_enc,(int)pwlen);
             secure_zero(pwd_enc,pwlen);
         }
     }
@@ -360,7 +366,7 @@ void *handle_cccam_client(void *arg)
                      cl.ip, user);
         goto cleanup;
     }
-    cc_decrypt(&cc.send_block,ccstr_recv,6);
+    cc_decrypt(&cc.recv_block,ccstr_recv,6);
 
     if(memcmp(ccstr_recv,"CCcam",5)!=0){
         tcmg_log("%s [cccam] LOGIN failed: wrong password for user='%s'", cl.ip, user);
@@ -370,7 +376,7 @@ void *handle_cccam_client(void *arg)
 
     memset(ack,0,sizeof(ack));
     memcpy(ack,"CCcam",5);
-    cc_encrypt(&cc.recv_block,ack,20);
+    cc_encrypt(&cc.send_block,ack,20);
     if(net_send_all(cc.fd,ack,20)!=20) goto cleanup;
     secure_zero(ack,sizeof(ack));
 
@@ -439,6 +445,7 @@ void *handle_cccam_client(void *arg)
             cc_send_msg(&cc,CCCAM_CMD_KEEPALIVE,NULL,0);
         } else if(cmd==CCCAM_CMD_CLI_DATA){
             tcmg_log_dbg(D_CCCAM, "%s [cccam] CLI_DATA user='%s' plen=%u", cl.ip, cl.user, plen);
+            if(plen>=28) memcpy(cc.peer_node_id, payload+20, 8);
             cc_send_msg(&cc,CCCAM_CMD_CLI_DATA,NULL,0);
         } else if(cmd==CCCAM_CMD_EMM_REQ){
             tcmg_log_dbg(D_CCCAM, "%s [cccam] EMM_REQ user='%s' plen=%u (ignored)", cl.ip, cl.user, plen);
@@ -495,7 +502,7 @@ static void *cccam_listen_thread(void *arg)
             continue;
         }
 
-        S_CONN_ARGS *a=(S_CONN_ARGS*)malloc(sizeof(S_CONN_ARGS));
+        S_CONN_ARGS *a=(S_CONN_ARGS*)tcmg_malloc(sizeof(S_CONN_ARGS));
         if(!a){
             atomic_fetch_sub(&g_active_conns,1); close(cfd);
             tcmg_log("[cccam] out of memory -- connection rejected active=%d", active);

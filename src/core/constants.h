@@ -2,7 +2,7 @@
 #define TCMG_CONSTANTS_H_
 
 #ifndef TCMG_VERSION
-#  define TCMG_VERSION    "5.4"
+#  define TCMG_VERSION    "5.5"
 #endif
 #define TCMG_BANNER       "tcmg v" TCMG_VERSION
 #ifndef TCMG_BUILD_TIME

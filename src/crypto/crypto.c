@@ -188,9 +188,19 @@ void crypt_des_dec(const uint8_t *key8, const uint8_t *in8, uint8_t *out8)
 	des_block(in8, out8, key8, true);
 }
 
+void crypt_des_key_parity_adjust(uint8_t *key, int len)
+{
+	int i, j;
+	for (i = 0; i < len; i++)
+	{
+		uint8_t p = 1;
+		for (j = 1; j < 8; j++) if ((key[i] >> j) & 1) p = !p;
+		key[i] = (key[i] & 0xFE) | p;
+	}
+}
+
 void crypt_key_spread(const uint8_t *k, uint8_t *s)
 {
-	int i;
 	s[0]  = k[0] & 0xfe;
 	s[1]  = ((k[0]  << 7) | (k[1]  >> 1)) & 0xfe;
 	s[2]  = ((k[1]  << 6) | (k[2]  >> 2)) & 0xfe;
@@ -207,12 +217,7 @@ void crypt_key_spread(const uint8_t *k, uint8_t *s)
 	s[13] = ((k[11] << 3) | (k[12] >> 5)) & 0xfe;
 	s[14] = ((k[12] << 2) | (k[13] >> 6)) & 0xfe;
 	s[15] =  k[13] << 1;
-	for (i = 0; i < 16; i++)
-	{
-		int par = 0, j;
-		for (j = 1; j < 8; j++) par ^= (s[i] >> j) & 1;
-		s[i] = (s[i] & 0xFE) | (par ^ 1);
-	}
+		crypt_des_key_parity_adjust(s, 16);
 }
 
 void crypt_ede2_cbc(const uint8_t *k16, const uint8_t *iv,

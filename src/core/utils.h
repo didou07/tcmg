@@ -3,12 +3,26 @@
 
 static inline size_t tcmg_strlcpy(char *dst, const char *src, size_t sz)
 {
+    if (!src) { if (sz > 0) dst[0] = '\0'; return 0; }
     size_t n = 0;
     if (sz > 0) {
         for (; n < sz - 1 && src[n]; n++) dst[n] = src[n];
         dst[n] = '\0';
     }
     return n;
+}
+
+static inline void *tcmg_malloc(size_t size)
+{
+    void *p = malloc(size);
+    if (p) memset(p, 0, size);
+    return p;
+}
+
+static inline void *tcmg_realloc(void *ptr, size_t size)
+{
+    void *p = realloc(ptr, size);
+    return p;
 }
 
 static inline size_t tcmg_strlcat(char *dst, const char *src, size_t sz)

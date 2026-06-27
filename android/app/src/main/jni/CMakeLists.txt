@@ -56,11 +56,7 @@ add_library(tcmg_core STATIC
     ${REPO_ROOT}/src/proto/cccam.c
     ${REPO_ROOT}/src/proto/newcamd.c
     ${REPO_ROOT}/webif/server.c
-    ${REPO_ROOT}/webif/layout.c
-    ${REPO_ROOT}/webif/stats.c
-    ${REPO_ROOT}/webif/http/request.c
-    ${REPO_ROOT}/webif/http/response.c
-    ${REPO_ROOT}/webif/http/auth.c
+    ${REPO_ROOT}/webif/core.c
     ${REPO_ROOT}/webif/pages/login.c
     ${REPO_ROOT}/webif/pages/status.c
     ${REPO_ROOT}/webif/pages/system.c

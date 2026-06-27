@@ -16,6 +16,13 @@ void client_unregister(S_CLIENT *cl)
 	for (int i = 0; i < MAX_ACTIVE_CLIENTS; i++)
 		if (g_clients[i] == cl) { g_clients[i] = NULL; break; }
 	pthread_mutex_unlock(&g_clients_mtx);
+	if (cl) {
+		secure_zero(cl->session_key, sizeof(cl->session_key));
+		secure_zero(cl->key1, sizeof(cl->key1));
+		secure_zero(cl->key2, sizeof(cl->key2));
+		secure_zero(cl->recv_buf, sizeof(cl->recv_buf));
+		secure_zero(cl->send_buf, sizeof(cl->send_buf));
+	}
 }
 
 void client_kill_by_tid(uint32_t tid)

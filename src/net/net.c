@@ -44,7 +44,9 @@ void net_tune_socket(int fd)
 {
 	int one = 1;
 #ifdef TCP_NODELAY
-	setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, SO_CAST(&one), sizeof(one));
+	if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, SO_CAST(&one), sizeof(one)) < 0) {
+		tcmg_log_dbg(D_WIRE, "setsockopt(TCP_NODELAY) failed");
+	}
 #endif
 #ifdef SO_KEEPALIVE
 	setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, SO_CAST(&one), sizeof(one));

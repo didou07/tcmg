@@ -4,6 +4,7 @@
 void crypt_init(void);
 void crypt_des_enc(const uint8_t *key8, const uint8_t *in8, uint8_t *out8);
 void crypt_des_dec(const uint8_t *key8, const uint8_t *in8, uint8_t *out8);
+void crypt_des_key_parity_adjust(uint8_t *key, int len);
 void crypt_key_spread(const uint8_t *key14, uint8_t *out16);
 void crypt_ede2_cbc(const uint8_t *key16, const uint8_t *iv,
                     const uint8_t *in, uint8_t *out, size_t len, bool encrypt);

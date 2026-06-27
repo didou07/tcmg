@@ -23,11 +23,7 @@ SRCS := \
 	src/proto/newcamd.c         \
 	src/proto/cccam.c           \
 	webif/server.c              \
-	webif/layout.c              \
-	webif/stats.c               \
-	webif/http/request.c        \
-	webif/http/response.c       \
-	webif/http/auth.c           \
+	webif/core.c                \
 	webif/pages/login.c         \
 	webif/pages/status.c        \
 	webif/pages/users.c         \
