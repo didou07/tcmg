@@ -55,7 +55,7 @@ webif/api/users.c \
 webif/api/config.c \
 webif/api/system.c"
 
-VERSION=$(grep -oP '#define\s+TCMG_VERSION\s+"\K[^"]+' "$SCRIPT_DIR/globals.h" 2>/dev/null || echo "dev")
+VERSION=$(grep -oP '#\s*define\s+TCMG_VERSION\s+"\K[^"]+' "$SCRIPT_DIR/src/core/constants.h" 2>/dev/null || echo "dev")
 
 ON_WINDOWS=0
 case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) ON_WINDOWS=1 ;; esac

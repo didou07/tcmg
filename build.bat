@@ -25,7 +25,7 @@ if not exist "src\main.c" (
 )
 
 set TCMG_VERSION=unknown
-for /f "tokens=3 delims= " %%V in ('findstr /c:"#define TCMG_VERSION" "globals.h" 2^>nul') do set TCMG_VERSION=%%~V
+for /f "tokens=3 delims= " %%V in ('findstr /c:"#define TCMG_VERSION" "src\core\constants.h" 2^>nul') do set TCMG_VERSION=%%~V
 
 echo.
 echo ==================================================
