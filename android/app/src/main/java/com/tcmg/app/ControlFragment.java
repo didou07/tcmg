@@ -143,7 +143,7 @@ public final class ControlFragment extends Fragment {
                 running ? R.drawable.status_dot_running : R.drawable.status_dot_stopped);
         binding.tvStatusText.setText(running ? R.string.status_running : R.string.status_stopped);
 
-        int textColor = running ? 0xFF3b82f6 : 0xFFe8f0fe;
+        int textColor = running ? 0xFF22c55e : 0xFFe8f0fe;
         binding.tvStatusText.setTextColor(textColor);
 
         binding.btnStart.setEnabled(!running);
