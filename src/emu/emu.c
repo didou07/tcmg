@@ -1,5 +1,8 @@
 #define MODULE_LOG_PREFIX "emu"
-#include "../../globals.h"
+#include "emu.h"
+#include "../crypto/crypto.h"
+#include "../log/log.h"
+#include "../platform/platform.h"
 
 void emu_init(void)
 {
@@ -7,43 +10,17 @@ void emu_init(void)
 	tcmg_log_dbg(D_EMU, "%s", "initialized");
 }
 
-static uint8_t s_fake_prev[8] = {0};
-static int8_t  s_fake_half    = 0;
-static pthread_mutex_t s_fake_mtx = PTHREAD_MUTEX_INITIALIZER;
-
-static void gen_fake_cw(uint8_t *cw)
-{
-    uint8_t fresh[8];
-    csprng(fresh, 8);
-    pthread_mutex_lock(&s_fake_mtx);
-    if (s_fake_half == 0) {
-        memcpy(cw,     fresh,        8);
-        memcpy(cw + 8, s_fake_prev,  8);
-        memcpy(s_fake_prev, fresh,   8);
-    } else {
-        memcpy(cw,     s_fake_prev,  8);
-        memcpy(cw + 8, fresh,        8);
-        memcpy(s_fake_prev, fresh,   8);
-    }
-    s_fake_half ^= 1;
-    pthread_mutex_unlock(&s_fake_mtx);
-}
-
-static bool key_lookup(const S_ACCOUNT *acc, uint16_t caid,
+static bool key_lookup(const S_ECMKEY *keys, int32_t nkeys, uint16_t caid,
                         uint8_t kidx, uint8_t *key_out)
 {
-	int i;
-	for (i = 0; i < acc->nkeys; i++)
+	for (int i = 0; i < nkeys; i++)
 	{
-		if (acc->keys[i].caid == caid)
-		{
-			memcpy(key_out, kidx == 0 ? acc->keys[i].key0 : acc->keys[i].key1, 16);
-			tcmg_log_dbg(D_EMU, "key found for caid=%04X kidx=%u slot=%d", caid, kidx, i);
-			return true;
-		}
+		if (keys[i].caid != caid) continue;
+		memcpy(key_out, kidx == 0 ? keys[i].key0 : keys[i].key1, 16);
+		tcmg_log_dbg(D_EMU, "key found for caid=%04X kidx=%u slot=%d", caid, kidx, i);
+		return true;
 	}
-	tcmg_log_dbg(D_EMU, "no key for caid=%04X kidx=%u (account has %d key(s))",
-	             caid, kidx, acc->nkeys);
+	tcmg_log_dbg(D_EMU, "no key for caid=%04X kidx=%u (key count=%d)", caid, kidx, nkeys);
 	return false;
 }
 
@@ -55,7 +32,7 @@ static uint8_t csum8(const uint8_t *d, uint8_t len)
 }
 
 static int32_t tcmg_decode(uint16_t caid, const uint8_t *ecm, int32_t len,
-                             uint8_t *cw, const S_ACCOUNT *acc)
+                             uint8_t *cw, const S_ECMKEY *keys, int32_t nkeys)
 {
 	if (len < 7) {
 		tcmg_log_dbg(D_EMU, "caid=%04X ECM too short len=%d expected>=7", caid, len);
@@ -84,7 +61,7 @@ static int32_t tcmg_decode(uint16_t caid, const uint8_t *ecm, int32_t len,
 	const uint8_t *sdata = ecm + 7;
 
 	uint8_t key[16];
-	if (!key_lookup(acc, caid, kidx, key)) return EMU_KEY_NOT_FOUND;
+	if (!key_lookup(keys, nkeys, caid, kidx, key)) return EMU_KEY_NOT_FOUND;
 
 	uint8_t dec[48];
 	memcpy(dec, sdata, slen);
@@ -117,63 +94,48 @@ static int32_t tcmg_decode(uint16_t caid, const uint8_t *ecm, int32_t len,
 	return EMU_OK;
 }
 
-int32_t emu_process(uint16_t caid, uint16_t sid,
-                    const uint8_t *ecm, int32_t ecm_len,
-                    uint8_t *cw, const S_ECM_CTX *ctx)
+int32_t emu_process_reader(const S_ECM_REQUEST *request, const S_READER *reader)
 {
-	int64_t t0  = tcmg_mono_ms();
-	int32_t res = EMU_NOT_SUPPORTED;
-	bool    hit = false;
+    int64_t t0 = tcmg_mono_ms();
+    int32_t res = EMU_NOT_SUPPORTED;
+    bool hit = false;
+    const S_ECMKEY *keys = NULL;
+    int32_t nkeys = 0;
+    const char *user = request && request->user ? request->user : "?";
 
-	tcmg_dump_dbg(D_EMU, ecm, ecm_len,
-	              "emu_process user='%s' caid=%04X sid=%04X",
-	              ctx->user ? ctx->user : "?", caid, sid);
+    if (!request || !request->ecm || !request->cw || !request->account) return -1;
+    tcmg_dump_dbg(D_EMU, request->ecm, request->ecm_len,
+                  "emu_process user='%s' caid=%04X sid=%04X reader='%s'",
+                  user, request->caid, request->sid, reader ? reader->label : "account");
 
-	if (!ctx->account) {
-		tcmg_log_dbg(D_EMU, "no account context for user='%s'",
-		             ctx->user ? ctx->user : "?");
-		goto done;
-	}
+    if (reader && reader->nkeys > 0) {
+        keys = reader->keys;
+        nkeys = reader->nkeys;
+    } else {
+        keys = request->account->keys;
+        nkeys = request->account->nkeys;
+    }
 
-	if (ctx->account->use_fake_cw)
-	{
-		gen_fake_cw(cw);
-		hit = true;
-		res = EMU_OK;
-		tcmg_log_dbg(D_EMU, "FAKE_CW generated for user='%s' caid=%04X sid=%04X",
-		             ctx->user, caid, sid);
-		goto done;
-	}
+    {
+        bool has_key = false;
+        for (int i = 0; i < nkeys; i++)
+            if (keys[i].caid == request->caid) { has_key = true; break; }
+        if (!has_key && (request->caid & 0xFF00) != 0x0B00) {
+            tcmg_log_dbg(D_EMU, "no key: user='%s' caid=%04X sid=%04X nkeys=%d",
+                         user, request->caid, request->sid, nkeys);
+        } else {
+            res = tcmg_decode(request->caid, request->ecm, request->ecm_len,
+                              request->cw, keys, nkeys);
+        }
+    }
 
-	{
-		bool has_key = false; int i;
-		for (i = 0; i < ctx->account->nkeys; i++)
-			if (ctx->account->keys[i].caid == caid)
-			{ has_key = true; break; }
-
-		if (!has_key && (caid & 0xFF00) != 0x0B00)
-		{
-			tcmg_log_dbg(D_EMU, "no key: user='%s' caid=%04X sid=%04X nkeys=%d",
-			             ctx->user, caid, sid, ctx->account->nkeys);
-		}
-		else
-		{
-			res = tcmg_decode(caid, ecm, ecm_len, cw, ctx->account);
-		}
-	}
-
-	hit = (res == EMU_OK);
-
-done:
-	{
-		int32_t ms = tcmg_elapsed_ms(t0);
-		tcmg_log_dbg(D_EMU, "done user='%s' caid=%04X sid=%04X result=%s time=%dms",
-		             ctx->user ? ctx->user : "?", caid, sid,
-		             hit ? "FOUND" : (res == EMU_KEY_NOT_FOUND ? "KEY_NOT_FOUND" :
-		                              res == EMU_CHECKSUM_ERROR ? "CHECKSUM_ERROR" :
-		                              res == EMU_NOT_SUPPORTED  ? "NOT_SUPPORTED"  : "ERROR"),
-		             ms);
-	}
-	if (!hit) secure_zero(cw, CW_LEN);
-	return res;
+    hit = (res == EMU_OK);
+    tcmg_log_dbg(D_EMU, "done user='%s' caid=%04X sid=%04X result=%s time=%dms",
+                 user, request->caid, request->sid,
+                 hit ? "FOUND" : (res == EMU_KEY_NOT_FOUND ? "KEY_NOT_FOUND" :
+                                  res == EMU_CHECKSUM_ERROR ? "CHECKSUM_ERROR" :
+                                  res == EMU_NOT_SUPPORTED ? "NOT_SUPPORTED" : "ERROR"),
+                 (int)tcmg_elapsed_ms(t0));
+    if (!hit) secure_zero(request->cw, CW_LEN);
+    return res;
 }

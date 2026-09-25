@@ -1,6 +1,7 @@
 #ifndef TCMG_WEBIF_TYPES_H_
 #define TCMG_WEBIF_TYPES_H_
 
+#include "../../src/core/compat.h"
 #include "constants.h"
 
 typedef struct {
@@ -15,6 +16,7 @@ typedef struct {
 	char  qs[512];
 	char *body;
 	int   body_len;
+	int   status;                                                                
 } s_http_req;
 
 typedef struct {

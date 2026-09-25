@@ -2,7 +2,7 @@
 #define TCMG_CONSTANTS_H_
 
 #ifndef TCMG_VERSION
-#  define TCMG_VERSION    "5.7"
+#  define TCMG_VERSION    "5.9"
 #endif
 #define TCMG_BANNER       "tcmg v" TCMG_VERSION
 #ifndef TCMG_BUILD_TIME
@@ -17,8 +17,10 @@
 #  endif
 #endif
 
-#define TCMG_CFG_FILE   "tcmg.conf"
-#define TCMG_SRVID_FILE "tcmg.srvid2"
+#define TCMG_CFG_FILE    "tcmg.conf"
+#define TCMG_USER_FILE   "tcmg.users"
+#define TCMG_SERVER_FILE "tcmg.readers"
+#define TCMG_SRVID_FILE  "tcmg.srvid2"
 
 #ifdef TCMG_OS_WINDOWS
 #  define TCMG_PATH_SEP '\\'
@@ -35,12 +37,19 @@
 #define BAN_SECS             300
 #define MAXIPLEN             16
 #define MAX_ECMKEYS_PER_ACC  8
+#define MAX_READERS            16
+#define MAX_GROUPS_PER_READER  16
+#define MAX_GROUPS_PER_ACC     16
+#define MAX_CAIDS_PER_READER   8
+#define READER_LABEL_LEN       64
+#define READER_PROTOCOL_LEN    16
 #define MAX_IP_WHITELIST     16
 #define MAX_CAIDS_PER_ACC    8
 #define CFGKEY_LEN           64
 #define CFGVAL_LEN           256
 #define CFGPATH_LEN          512
 #define MAX_SID_WHITELIST    64
+#define AS_LOG_SIZE          32
 #define CW_CACHE_SIZE        512
 #define CW_CACHE_SHARDS      16
 #define CW_CACHE_TTL_S       30
@@ -58,17 +67,6 @@
 #define MSG_GET_VERSION      0xD6
 #define MSG_ECM_0            0x80
 #define MSG_ECM_1            0x81
-
-#define D_WIRE      0x0001
-#define D_ECM       0x0002
-#define D_EMU       0x0004
-#define D_NEWCAMD   0x0008
-#define D_CCCAM     0x0010
-#define D_HTTP      0x0020
-#define D_CONN      0x0040
-#define D_ALL       0xFFFF
-
-#define MAX_DEBUG_LEVELS 7
 
 typedef enum {
     EMU_OK             = 0,

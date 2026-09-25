@@ -1,6 +1,7 @@
 #ifndef TCMG_PLATFORM_H_
 #define TCMG_PLATFORM_H_
 
+#include "../core/compat.h"
 void tcmg_mkdir(const char *path);
 void tcmg_build_path(char *dst, size_t dstsz, const char *dir, const char *file);
 

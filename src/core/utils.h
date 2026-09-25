@@ -1,6 +1,7 @@
 #ifndef TCMG_UTILS_H_
 #define TCMG_UTILS_H_
 
+#include "compat.h"
 static inline size_t tcmg_strlcpy(char *dst, const char *src, size_t sz)
 {
     if (!src) { if (sz > 0) dst[0] = '\0'; return 0; }

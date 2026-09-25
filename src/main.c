@@ -1,6 +1,20 @@
 #define MODULE_LOG_PREFIX "main"
-#include "../globals.h"
+#include "core/state.h"
+#include "core/utils.h"
+#include "crypto/crypto.h"
+#include "log/log.h"
+#include "config/config.h"
+#include "account/account.h"
+#include "platform/platform.h"
+#include "srvid/srvid.h"
+#include "emu/emu.h"
+#include "pcsc/pcsc.h"
+#include "internal/internal.h"
+#include "reader/reader.h"
+#include "proto/registry.h"
+#include "webif/server.h"
 #include "client/client.h"
+#include "security/failban.h"
 
 static char **g_argv_saved = NULL;
 
@@ -14,7 +28,7 @@ static void print_usage(const char *prog)
 	       "  -d <level>  Debug bitmask (hex or decimal)\n"
 	       "                0x0001=wire    0x0002=ecm     0x0004=emu\n"
 	       "                0x0008=newcamd 0x0010=cccam   0x0020=http\n"
-	       "                0x0040=conn    0xFFFF=all\n"
+	       "                0x0040=conn    0x0080=reader  0xFFFF=all\n"
 	       "  -v          Show version and exit\n"
 	       "  -h          Show this help\n\n",
 	       prog, CS_CONFDIR);
@@ -41,8 +55,10 @@ int main(int argc, char *argv[])
 		}
 		else if (strcmp(argv[i], "-d") == 0 && i + 1 < argc)
 		{
-			long v = strtol(argv[++i], NULL, 0);
-			if (v >= 0 && v <= 0xFFFF)
+			char *end = NULL;
+			errno = 0;
+			long v = strtol(argv[++i], &end, 0);
+			if (errno == 0 && end && *end == '\0' && v >= 0 && v <= 0xFFFF)
 				g_dblevel = (uint16_t)v;
 		}
 		else if (strcmp(argv[i], "-b") == 0)
@@ -84,11 +100,15 @@ int main(int argc, char *argv[])
 
 	if (!cfg_load(cfgpath, &g_cfg))
 	{
-		tcmg_log("config not found at %s -- writing defaults", cfgpath);
-		cfg_write_default(cfgpath);
-		if (!cfg_load(cfgpath, &g_cfg))
+		if (access(cfgpath, F_OK) == 0)
 		{
-			tcmg_log("FATAL cannot load generated config file=%s", cfgpath);
+			tcmg_log("FATAL invalid configuration: %s (existing file was not overwritten)", cfgpath);
+			return 1;
+		}
+		tcmg_log("config not found at %s -- writing split defaults", cfgpath);
+		if (!cfg_write_default(cfgpath) || !cfg_load(cfgpath, &g_cfg))
+		{
+			tcmg_log("FATAL cannot create/load default configuration dir=%s", g_cfgdir);
 			return 1;
 		}
 	}
@@ -125,11 +145,15 @@ int main(int argc, char *argv[])
 		tcmg_log("user stats file=%s", g_cfg.usrfile);
 	}
 
+	if (g_cfg.nreaders == 0)
+		tcmg_log("%s", "no readers configured: clients will receive no CW until a reader is added");
+
 	log_init();
 	emu_init();
+	pcsc_start();
+	internal_start();
 	webif_start();
-	cccam_start();
-	newcamd_start();
+	proto_start_all();
 
 	while (g_running)
 	{
@@ -139,13 +163,12 @@ int main(int argc, char *argv[])
 			char errbuf[256] = "";
 			if (cfg_reload(g_cfg.config_file, errbuf, sizeof(errbuf)))
 			{
-				tcmg_log("reload: config OK accounts=%d", g_cfg.naccounts);
 				srvid_load(srvidpath);
 			}
 			else
-				tcmg_log("reload: config FAILED reason=%s", errbuf);
+				tcmg_log("config reload failed: %s", errbuf);
 		}
-		sleep(1);
+		tcmg_sleep_ms(100);
 	}
 
 	{
@@ -157,8 +180,9 @@ int main(int argc, char *argv[])
 	}
 
 	webif_stop();
-	cccam_stop();
-	newcamd_stop();
+	pcsc_stop();
+	internal_stop();
+	proto_stop_all();
 
 	for (int w = 0; w < 50 && g_active_conns > 0; w++)
 	{
@@ -170,9 +194,18 @@ int main(int argc, char *argv[])
 		tcmg_log("shutdown: FORCED EXIT %d connection(s) still open --",
 		         g_active_conns);
 
-	pthread_rwlock_wrlock(&g_cfg.acc_lock);
-	cfg_accounts_free(&g_cfg);
-	pthread_rwlock_unlock(&g_cfg.acc_lock);
+	if (g_active_conns == 0)
+	{
+		reader_shutdown();
+		pthread_rwlock_wrlock(&g_cfg.acc_lock);
+		cfg_accounts_free(&g_cfg);
+		pthread_rwlock_unlock(&g_cfg.acc_lock);
+		account_retired_free();
+	}
+	else
+	{
+		tcmg_log("shutdown: active connections remain; skipping account reclamation before process exit");
+	}
 	ban_free_all();
 	srvid_free();
 	pthread_rwlock_destroy(&g_cfg.acc_lock);

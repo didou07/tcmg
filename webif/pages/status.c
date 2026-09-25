@@ -1,5 +1,8 @@
 #define MODULE_LOG_PREFIX "webif"
-#include "../../globals.h"
+#include "../service/service.h"
+#include "../../src/core/utils.h"
+#include "../../src/log/log.h"
+#include "../../src/pcsc/pcsc.h"
 #include "../internal/proto.h"
 
 static int emit_stat_card(char **buf, int *bsz, int pos,
@@ -45,12 +48,17 @@ void send_page_status(int fd)
 	int dis_cnt = 0, exp_cnt = 0;
 	{
 		time_t now = time(NULL);
-		pthread_rwlock_rdlock(&g_cfg.acc_lock);
-		for (S_ACCOUNT *a = g_cfg.accounts; a; a = a->next) {
-			if (!a->enabled) dis_cnt++;
-			if (a->expirationdate > 0 && now > a->expirationdate) exp_cnt++;
+		int cap = webif_account_count();
+		if (cap < 1) cap = 1;
+		S_WEBIF_ACCOUNT_VIEW *accounts = calloc((size_t)cap, sizeof(*accounts));
+		if (accounts) {
+			int n = webif_account_snapshot_all(accounts, (size_t)cap);
+			for (int i = 0; i < n; i++) {
+				if (!accounts[i].enabled) dis_cnt++;
+				if (accounts[i].expirationdate > 0 && now > accounts[i].expirationdate) exp_cnt++;
+			}
 		}
-		pthread_rwlock_unlock(&g_cfg.acc_lock);
+		free(accounts);
 	}
 
 	pos = buf_printf(&buf, &bsz, pos, "<div class='cg'>");
@@ -68,7 +76,7 @@ void send_page_status(int fd)
 	}
 
 	{
-		char dis_val[8], exp_val[8];
+		char dis_val[12], exp_val[12];
 		snprintf(dis_val, sizeof(dis_val), "%d", dis_cnt);
 		snprintf(exp_val, sizeof(exp_val), "%d", exp_cnt);
 
@@ -126,7 +134,7 @@ void send_page_status(int fd)
 		"<div class='sb_'>"
 		"  <div class='sl_'>Actions</div>"
 		"  <div class='sv' style='font-size:13px;font-weight:600'>"
-		"    <a href='#' onclick=\"if(confirm('Reset all stats?')){fetch('/api/resetstats').then(()=>location.reload());}return false\""
+		"    <a href='#' onclick=\"if(confirm('Reset all stats?')){fetch('/api/resetstats').then(function(){if(typeof _poll==='function')_poll();});}return false\""
 		"       style='color:inherit;text-decoration:none'>Reset Stats</a>"
 		"  </div>"
 		"  <div class='sd'>clear counters</div>"
@@ -143,8 +151,9 @@ void send_page_status(int fd)
 		"    </svg>Active Connections"
 		"  </div>"
 		"</div>"
-		"<div class='tw'><table>"
+		"<div class='tw cm auto'><table>"
 		"<thead><tr>"
+		"<th style='width:30px' title='Location'>" ICO_GLOBE "</th>"
 		"<th>User</th><th>IP Address</th><th>CAID</th>"
 		"<th>SID</th><th>Channel</th><th>Connected</th><th>Idle</th><th></th>"
 		"</tr></thead>"

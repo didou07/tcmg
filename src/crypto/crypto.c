@@ -1,6 +1,7 @@
+#include "crypto.h"
+#include "../core/utils.h"
 
 #define MODULE_LOG_PREFIX "crypto"
-#include "../../globals.h"
 
 #ifdef TCMG_OS_WINDOWS
 #  include <bcrypt.h>
@@ -20,15 +21,27 @@ bool csprng(uint8_t *buf, size_t len)
 	return BCRYPT_SUCCESS(st);
 #elif defined(__linux__) && defined(__GLIBC__) && \
       (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 25))
-	ssize_t n = getrandom(buf, len, 0);
-	return n == (ssize_t)len;
+	size_t off = 0;
+	while (off < len) {
+		ssize_t n = getrandom(buf + off, len - off, 0);
+		if (n > 0) { off += (size_t)n; continue; }
+		if (n < 0 && errno == EINTR) continue;
+		return false;
+	}
+	return true;
 #else
 	static int urfd = -1;
 	if (urfd < 0)
 		urfd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
 	if (urfd < 0) return false;
-	ssize_t n = read(urfd, buf, len);
-	return n == (ssize_t)len;
+	size_t off = 0;
+	while (off < len) {
+		ssize_t n = read(urfd, buf + off, len - off);
+		if (n > 0) { off += (size_t)n; continue; }
+		if (n < 0 && errno == EINTR) continue;
+		return false;
+	}
+	return true;
 #endif
 }
 
@@ -153,7 +166,7 @@ static uint32_t des_f(uint32_t r, uint64_t sk)
 		int bi  = (exp >> (42 - i * 6)) & 0x3F;
 		int row = ((bi & 0x20) >> 4) | (bi & 1);
 		int col = (bi >> 1) & 0x0F;
-		out |= (SB[i][row * 16 + col] << (28 - i * 4));
+		out |= ((uint32_t)SB[i][row * 16 + col] << (28 - i * 4));
 	}
 	return des_permute32(out, P, 32);
 }

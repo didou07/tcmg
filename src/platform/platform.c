@@ -1,5 +1,7 @@
 #define MODULE_LOG_PREFIX "platform"
-#include "../../globals.h"
+#include "platform.h"
+#include "../core/constants.h"
+#include "../core/utils.h"
 
 void tcmg_mkdir(const char *path)
 {

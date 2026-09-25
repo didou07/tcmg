@@ -1,5 +1,9 @@
 #define MODULE_LOG_PREFIX "ban"
-#include "../../globals.h"
+#include "failban.h"
+#include "../config/runtime_access.h"
+#include "../core/config_state.h"
+#include "../core/utils.h"
+#include "../log/log.h"
 
 uint32_t ban_hash_pub(const char *ip)
 {
@@ -7,6 +11,40 @@ uint32_t ban_hash_pub(const char *ip)
     for (; *ip; ip++)
         h = (h ^ (uint8_t)*ip) * 16777619u;
     return h & (BAN_BUCKETS - 1);
+}
+
+
+static bool ban_ip_allowed(const char *ip)
+{
+    S_CONFIG_FAILBAN_VIEW cfg;
+    if (!ip || !ip[0]) return false;
+    cfg_runtime_failban_snapshot(&cfg);
+    if (!cfg.enabled) return true;
+    if (!cfg.allowlist[0]) return false;
+
+    char list[CFGVAL_LEN];
+    tcmg_strlcpy(list, cfg.allowlist, sizeof(list));
+    char *save = NULL;
+    for (char *tok = strtok_r(list, ",; \t\r\n", &save); tok; tok = strtok_r(NULL, ",; \t\r\n", &save))
+    {
+        char *slash = strchr(tok, '/');
+        if (!slash) {
+            if (strncmp(tok, ip, MAXIPLEN) == 0) return true;
+            continue;
+        }
+#if defined(AF_INET)
+        *slash = '\0';
+        char *end = NULL;
+        errno = 0;
+        long prefix = strtol(slash + 1, &end, 10);
+        if (errno == ERANGE || end == slash + 1 || *end != '\0' || prefix < 0 || prefix > 32) continue;
+        struct in_addr net4, ip4;
+        if (inet_pton(AF_INET, tok, &net4) != 1 || inet_pton(AF_INET, ip, &ip4) != 1) continue;
+        uint32_t mask = prefix == 0 ? 0u : htonl(0xFFFFFFFFu << (32 - prefix));
+        if ((net4.s_addr & mask) == (ip4.s_addr & mask)) return true;
+#endif
+    }
+    return false;
 }
 
 static S_BAN_ENTRY *ban_find_locked(const char *ip)
@@ -29,8 +67,7 @@ static void ban_prune_locked(void)
             S_BAN_ENTRY *e = *pp;
             if (e->until > 0 && now >= e->until)
             {
-                tcmg_log("ban pruned expired entry: ip=%s ban_duration=%ds",
-                             e->ip, BAN_SECS);
+                tcmg_log("ban pruned expired entry: ip=%s", e->ip);
                 *pp = e->next;
                 free(e);
             }
@@ -44,6 +81,9 @@ static void ban_prune_locked(void)
 
 bool ban_is_banned(const char *ip)
 {
+    S_CONFIG_FAILBAN_VIEW cfg;
+    cfg_runtime_failban_snapshot(&cfg);
+    if (!cfg.enabled || ban_ip_allowed(ip)) return false;
     bool   banned = false;
     time_t now    = time(NULL);
 
@@ -63,6 +103,9 @@ bool ban_is_banned(const char *ip)
 
 void ban_record_fail(const char *ip)
 {
+    S_CONFIG_FAILBAN_VIEW cfg;
+    cfg_runtime_failban_snapshot(&cfg);
+    if (!cfg.enabled || ban_ip_allowed(ip)) return;
     pthread_mutex_lock(&g_cfg.ban_lock);
 
     S_BAN_ENTRY *e = ban_find_locked(ip);
@@ -77,15 +120,17 @@ void ban_record_fail(const char *ip)
     }
 
     e->fails++;
-    int remaining = BAN_MAX_FAILS - e->fails;
+    int max_fails = cfg.max_fails > 0 ? cfg.max_fails : BAN_MAX_FAILS;
+    int ban_secs  = cfg.ban_secs  > 0 ? cfg.ban_secs  : BAN_SECS;
+    int remaining = max_fails - e->fails;
     if (remaining > 0)
         tcmg_log("ban fail: ip=%s fail_count=%d/%d remaining_attempts=%d",
-                     ip, e->fails, BAN_MAX_FAILS, remaining);
+                     ip, e->fails, max_fails, remaining);
     else
     {
-        e->until = time(NULL) + BAN_SECS;
+        e->until = time(NULL) + ban_secs;
         tcmg_log("ban TRIGGERED: ip=%s banned_for=%ds fail_count=%d/%d",
-                 ip, BAN_SECS, e->fails, BAN_MAX_FAILS);
+                 ip, ban_secs, e->fails, max_fails);
     }
 
     pthread_mutex_unlock(&g_cfg.ban_lock);
@@ -93,6 +138,7 @@ void ban_record_fail(const char *ip)
 
 void ban_record_ok(const char *ip)
 {
+    if (!ip || !ip[0]) return;
     pthread_mutex_lock(&g_cfg.ban_lock);
 
     uint32_t     bucket = ban_hash_pub(ip);

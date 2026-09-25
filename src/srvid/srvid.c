@@ -1,4 +1,5 @@
-#include "../../globals.h"
+#include "srvid.h"
+#include "../core/utils.h"
 
 #include <stdio.h>
 #include <stdlib.h>

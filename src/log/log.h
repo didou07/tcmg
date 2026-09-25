@@ -1,6 +1,9 @@
 #ifndef TCMG_LOG_H_
 #define TCMG_LOG_H_
 
+#include "../core/compat.h"
+#include "../core/log_types.h"
+
 #define D_WIRE      0x0001
 #define D_ECM       0x0002
 #define D_EMU       0x0004
@@ -8,9 +11,10 @@
 #define D_CCCAM     0x0010
 #define D_HTTP      0x0020
 #define D_CONN      0x0040
+#define D_READER    0x0080
 #define D_ALL       0xFFFF
 
-#define MAX_DEBUG_LEVELS 7
+#define MAX_DEBUG_LEVELS 8
 
 
 extern const S_DBLEVEL_NAME g_dblevel_names[MAX_DEBUG_LEVELS];
@@ -21,12 +25,14 @@ extern _Atomic uint16_t     g_dblevel;
 #endif
 
 void tcmg_log_txt(const char *mod, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+void tcmg_log_force_txt(const char *mod, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 void tcmg_log_hex(const char *mod, const uint8_t *buf, int32_t n, const char *fmt, ...) __attribute__((format(printf, 4, 5)));
 
-#define tcmg_log(fmt, ...)                    tcmg_log_txt(MODULE_LOG_PREFIX, fmt, ##__VA_ARGS__)
-#define tcmg_log_dbg(mask, fmt, ...)          do { if ((mask) & g_dblevel) tcmg_log_txt(MODULE_LOG_PREFIX, fmt, ##__VA_ARGS__); } while(0)
-#define tcmg_dump(buf, n, fmt, ...)           tcmg_log_hex(MODULE_LOG_PREFIX, buf, n, fmt, ##__VA_ARGS__)
-#define tcmg_dump_dbg(mask, buf, n, fmt, ...) do { if ((mask) & g_dblevel) tcmg_log_hex(MODULE_LOG_PREFIX, buf, n, fmt, ##__VA_ARGS__); } while(0)
+#define tcmg_log(...)                    tcmg_log_txt(MODULE_LOG_PREFIX, __VA_ARGS__)
+#define tcmg_log_force(...)              tcmg_log_force_txt(MODULE_LOG_PREFIX, __VA_ARGS__)
+#define tcmg_log_dbg(mask, ...)           do { if ((mask) & g_dblevel) tcmg_log_txt(MODULE_LOG_PREFIX, __VA_ARGS__); } while (0)
+#define tcmg_dump(buf, n, ...)            tcmg_log_hex(MODULE_LOG_PREFIX, (buf), (n), __VA_ARGS__)
+#define tcmg_dump_dbg(mask, buf, n, ...)  do { if ((mask) & g_dblevel) tcmg_log_hex(MODULE_LOG_PREFIX, (buf), (n), __VA_ARGS__); } while (0)
 
 typedef enum {
 	LOG_TYPE_SYSTEM = 's',

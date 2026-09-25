@@ -1,6 +1,12 @@
 #define MODULE_LOG_PREFIX "webif"
-#include "../globals.h"
+#include "../src/core/utils.h"
+#include "../src/core/runtime_state.h"
+#include "../src/log/log.h"
+#include "../src/client/client.h"
+#include "../src/net/net.h"
+#include "../src/security/failban.h"
 #include "internal/proto.h"
+#include "service/service.h"
 #include <semaphore.h>
 #include <stdatomic.h>
 
@@ -25,37 +31,14 @@ static void *conn_thread(void *arg)
 	return NULL;
 }
 
-static const char *extract_header_value(const char *raw, const char *name,
-                                         char *buf, int bufsz)
-{
-	buf[0] = '\0';
-	char search[64];
-	snprintf(search, sizeof(search), "\r\n%s:", name);
-	const char *p = strstr(raw, search);
-	if (!p) {
-		snprintf(search, sizeof(search), "\n%s:", name);
-		p = strstr(raw, search);
-		if (!p) return NULL;
-	}
-	p = strchr(p, ':');
-	if (!p) return NULL;
-	p++;
-	while (*p == ' ' || *p == '\t') p++;
-	int i = 0;
-	while (i < bufsz - 1 && *p && *p != '\r' && *p != '\n')
-		buf[i++] = *p++;
-	buf[i] = '\0';
-	return buf;
-}
-
-static int request_is_authed(const char *raw, char *sess_tok_out)
+static int request_is_authed(const char *raw, const char *client_ip, char *sess_tok_out)
 {
 	sess_tok_out[0] = '\0';
 
-	if (!g_cfg.webif_user[0] && !g_cfg.webif_pass[0]) return 1;
+	if (!webif_auth_enabled()) return 1;
 
 	char cookie_hdr[512] = "";
-	if (extract_header_value(raw, "Cookie", cookie_hdr, sizeof(cookie_hdr))) {
+	if (web_header_get(raw, "Cookie", cookie_hdr, sizeof(cookie_hdr))) {
 		char tok[WEB_SESSION_LEN + 1];
 		const char *sess = cookie_get_session(cookie_hdr, tok, sizeof(tok));
 		if (sess && session_check(sess)) {
@@ -64,11 +47,50 @@ static int request_is_authed(const char *raw, char *sess_tok_out)
 		}
 	}
 
-	char auth_hdr[256] = "";
-	if (extract_header_value(raw, "Authorization", auth_hdr, sizeof(auth_hdr))) {
+	char auth_hdr[512] = "";
+	if (web_header_get(raw, "Authorization", auth_hdr, sizeof(auth_hdr))) {
+		                                                                        
+                                                                       
+		if (ban_is_banned(client_ip)) return 0;
 		if (check_auth(auth_hdr)) return 1;
+		ban_record_fail(client_ip);
+		tcmg_log("webif BASIC auth failed: from=%s", client_ip);
 	}
 
+	return 0;
+}
+
+                                                                             
+                                                                            
+                                                                                
+                                                                             
+static int is_state_changing(const char *method, const char *path, const char *qs)
+{
+	if (strcmp(method, "POST") == 0) return 1;
+	if (strncmp(path, "/api/user/", 10) == 0 && strcmp(path, "/api/user/get") != 0) return 1;
+	if (strncmp(path, "/api/failban/", 13) == 0) return 1;
+	if (strcmp(path, "/api/reload")     == 0 || strcmp(path, "/api/restart") == 0 ||
+	    strcmp(path, "/api/resetstats") == 0 || strcmp(path, "/restart")     == 0 ||
+	    strcmp(path, "/shutdown")       == 0) return 1;
+	if (strcmp(path, "/power")   == 0 && strstr(qs, "confirm="))  return 1;
+	if (strcmp(path, "/failban") == 0 && strstr(qs, "action="))   return 1;
+	if (strcmp(path, "/status")  == 0 && strstr(qs, "kill="))     return 1;
+	if (strcmp(path, "/logpoll") == 0 && strstr(qs, "debug="))    return 1;
+	return 0;
+}
+
+static int csrf_blocked(const char *raw)
+{
+	char v[128] = "";
+	if (web_header_get(raw, "Sec-Fetch-Site", v, sizeof(v)) && strcmp(v, "cross-site") == 0)
+		return 1;
+	char origin[256] = "", host[256] = "";
+	if (web_header_get(raw, "Origin", origin, sizeof(origin)) && strcmp(origin, "null") != 0 &&
+	    web_header_get(raw, "Host", host, sizeof(host))) {
+		const char *o = strstr(origin, "://");
+		o = o ? o + 3 : origin;
+		if (strcmp(o, host) != 0) return 1;
+	}
 	return 0;
 }
 
@@ -97,15 +119,33 @@ void handle_request(int fd, const char *client_ip)
 	if (rlen < 10) { free(raw); return; }
 	raw[rlen] = '\0';
 
+	if (!strstr(raw, "\r\n\r\n") && rlen >= WEB_BUF_SIZE - 1) {
+		free(raw);
+		send_json_error(fd, 431, "Request Header Fields Too Large", "headers too large");
+		return;
+	}
+
 	s_http_req req;
 	if (!req_parse(&req, fd, raw, rlen)) { free(raw); return; }
+	if (req.status) {
+		int st = req.status;
+		free(raw);
+		req_free(&req);
+		send_json_error(fd, st,
+			st == 413 ? "Payload Too Large" : st == 414 ? "URI Too Long" :
+			st == 503 ? "Service Unavailable" : "Bad Request",
+			st == 413 ? "request body too large" : st == 414 ? "uri too long" :
+			st == 503 ? "out of memory" : "bad request");
+		return;
+	}
 
 	if (strcmp(req.path, "/logpoll") != 0)
 		tcmg_log_dbg(D_HTTP, "HTTP %s %s%s%s", req.method, req.path,
 		             req.qs[0] ? "?" : "", req.qs);
 
 	char sess_tok[WEB_SESSION_LEN + 1];
-	int  authed = request_is_authed(raw, sess_tok);
+	int  authed = request_is_authed(raw, client_ip, sess_tok);
+	int  csrf   = authed && is_state_changing(req.method, req.path, req.qs) && csrf_blocked(raw);
 	free(raw); raw = NULL;
 
 	const char *p  = req.path;
@@ -116,7 +156,7 @@ void handle_request(int fd, const char *client_ip)
 		form_get(req.body, "u",  u,  sizeof(u));
 		form_get(req.body, "p", pw, sizeof(pw));
 		if (ban_is_banned(client_ip)) {
-			send_login_page(fd, 1);
+			send_login_page(fd, 2);
 			req_free(&req);
 			return;
 		}
@@ -160,6 +200,13 @@ void handle_request(int fd, const char *client_ip)
 	if (strcmp(p, "/login") == 0)
 		{ send_redirect(fd, "/status"); req_free(&req); return; }
 
+	if (csrf) {
+		tcmg_log("webif: cross-site request blocked: %s %s from=%s", req.method, p, client_ip);
+		send_json_error(fd, 403, "Forbidden", "cross-site request blocked");
+		req_free(&req);
+		return;
+	}
+
 	if (strcmp(p, "/") == 0)
 		send_redirect(fd, "/status");
 
@@ -167,16 +214,22 @@ void handle_request(int fd, const char *client_ip)
 		char killstr[16] = "", kill_user[CFGKEY_LEN] = "";
 		get_param(qs, "kill", killstr, sizeof(killstr));
 		if (killstr[0]) {
-			uint32_t tid = (uint32_t)strtoul(killstr, NULL, 10);
-			get_param(qs, "user", kill_user, sizeof(kill_user));
-			client_kill_by_tid(tid);
-			tcmg_log("webif: disconnect user='%s' tid=%u (requested via webif)",
-			         kill_user[0] ? kill_user : "?", tid);
+			char *end = NULL;
+			errno = 0;
+			unsigned long tid_u = strtoul(killstr, &end, 10);
+			if (errno == 0 && end && *end == '\0' && tid_u <= UINT32_MAX) {
+				uint32_t tid = (uint32_t)tid_u;
+				get_param(qs, "user", kill_user, sizeof(kill_user));
+				webif_client_kill_by_tid(tid);
+				tcmg_log("webif: disconnect user='%s' tid=%u (requested via webif)",
+				         kill_user[0] ? kill_user : "?", tid);
+			}
 		}
 		send_page_status(fd);
 	}
 
 	else if (strcmp(p, "/users")   == 0) send_page_users(fd);
+	else if (strcmp(p, "/readers") == 0) send_page_readers(fd);
 	else if (strcmp(p, "/failban") == 0) send_page_failban(fd, qs);
 	else if (strcmp(p, "/config")  == 0) send_page_config(fd);
 	else if (strcmp(p, "/files")   == 0) send_page_files(fd);
@@ -187,7 +240,14 @@ void handle_request(int fd, const char *client_ip)
 	else if (strcmp(p, "/shutdown")== 0) send_page_shutdown(fd, qs);
 	else if (strcmp(p, "/tvcas")   == 0) send_page_tvcas(fd);
 
-	else if (strcmp(p, "/api/status")               == 0) send_api_status(fd);
+	else if (strcmp(p, "/api/status")               == 0) send_api_status(fd, qs);
+	else if (strcmp(p, "/api/pcsc/readers")         == 0) send_api_pcsc_readers(fd);
+	else if (strcmp(p, "/api/readers")             == 0) send_api_readers(fd);
+	else if (strcmp(p, "/api/reader/get")           == 0) send_api_reader_get(fd, qs);
+	else if (strcmp(p, "/api/reader/save") == 0 && strcmp(req.method, "POST") == 0)
+		handle_api_reader_save(fd, req.body ? req.body : "");
+	else if (strcmp(p, "/api/reader/delete")        == 0) handle_api_reader_delete(fd, qs);
+	else if (strcmp(p, "/api/userstats")              == 0) send_api_userstats(fd);
 	else if (strcmp(p, "/api/user/toggle")           == 0) handle_user_toggle(fd, qs);
 	else if (strcmp(p, "/api/user/get")              == 0) send_api_user_get(fd, qs);
 	else if (strcmp(p, "/api/user/resetstats")       == 0) handle_user_resetstats(fd, qs);
@@ -200,8 +260,12 @@ void handle_request(int fd, const char *client_ip)
 	else if (strcmp(p, "/api/config/get")  == 0) send_api_config_get(fd);
 	else if (strcmp(p, "/api/config/save") == 0 && strcmp(req.method, "POST") == 0)
 		handle_api_config_save(fd, req.body ? req.body : "");
+	else if (strcmp(p, "/api/config/file/get") == 0) send_api_file_get(fd, qs);
 	else if (strcmp(p, "/api/config/file/save") == 0 && strcmp(req.method, "POST") == 0)
 		handle_api_file_save(fd, req.body ? req.body : "");
+
+	else if (strcmp(p, "/api/failban/clear")    == 0) handle_api_failban_clear(fd, qs);
+	else if (strcmp(p, "/api/failban/clearall") == 0) handle_api_failban_clearall(fd);
 
 	else if (strcmp(p, "/api/reload")     == 0) handle_api_reload(fd);
 	else if (strcmp(p, "/api/restart")    == 0) handle_api_restart(fd);
@@ -226,15 +290,15 @@ static void *http_server_thread(void *arg)
 {
 	(void)arg;
 	log_set_type(LOG_TYPE_WEBIF);
-	tcmg_log("listening http %s:%d",
-	         g_cfg.webif_bindaddr[0] ? g_cfg.webif_bindaddr : "0.0.0.0",
-	         g_cfg.webif_port);
+	char bindaddr[MAXIPLEN];
+	webif_bindaddr(bindaddr, sizeof(bindaddr));
+	tcmg_log("listening http %s:%d", bindaddr[0] ? bindaddr : "0.0.0.0", webif_port());
 
 	while (atomic_load_explicit(&s_webif_running, memory_order_acquire)) {
 		fd_set rfds;
 		FD_ZERO(&rfds);
 		FD_SET(s_webif_sock, &rfds);
-		struct timeval tv = { 1, 0 };
+		struct timeval tv = { 0, 200000 };
 		if (select(s_webif_sock + 1, &rfds, NULL, NULL, &tv) <= 0)
 			continue;
 
@@ -256,25 +320,26 @@ static void *http_server_thread(void *arg)
 		tcmg_log_dbg(D_HTTP, "webif HTTP connection from=%s fd=%d", client_ip, cfd);
 
 		s_conn_arg *ca2 = (s_conn_arg *)malloc(sizeof(s_conn_arg));
-		if (ca2) {
+		if (ca2 && sem_trywait(&s_webif_sem) == 0) {
+			pthread_t       t;
+			pthread_attr_t  a;
 			ca2->fd = cfd;
 			tcmg_strlcpy(ca2->ip, client_ip, MAXIPLEN);
-			if (sem_trywait(&s_webif_sem) == 0) {
-				pthread_t       t;
-				pthread_attr_t  a;
-				pthread_attr_init(&a);
-				pthread_attr_setdetachstate(&a, PTHREAD_CREATE_DETACHED);
-				pthread_attr_setstacksize(&a, 128 * 1024);
-				if (pthread_create(&t, &a, conn_thread, ca2) == 0) {
-					pthread_attr_destroy(&a);
-					continue;
-				}
+			pthread_attr_init(&a);
+			pthread_attr_setdetachstate(&a, PTHREAD_CREATE_DETACHED);
+			pthread_attr_setstacksize(&a, 128 * 1024);
+			if (pthread_create(&t, &a, conn_thread, ca2) == 0) {
 				pthread_attr_destroy(&a);
-				sem_post(&s_webif_sem);
+				continue;
 			}
+			pthread_attr_destroy(&a);
+			sem_post(&s_webif_sem);
 			free(ca2);
+		} else {
+			free(ca2);
+			static const char busy[] = "<html><body>WebIF busy</body></html>";
+			send_response(cfd, 503, "Service Unavailable", "text/html", busy, (int)strlen(busy));
 		}
-		handle_request(cfd, client_ip);
 		close(cfd);
 	}
 
@@ -284,7 +349,8 @@ static void *http_server_thread(void *arg)
 
 int32_t webif_start(void)
 {
-	if (!g_cfg.webif_enabled) { tcmg_log_dbg(D_HTTP, "%s", "disabled in config"); return -1; }
+	S_WEBIF_CONFIG_VIEW cfg;
+	if (!webif_config_snapshot(&cfg) || !cfg.webif_enabled) { tcmg_log_dbg(D_HTTP, "%s", "disabled in config"); return -1; }
 
 	s_webif_sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (s_webif_sock < 0) {
@@ -301,14 +367,18 @@ int32_t webif_start(void)
 	struct sockaddr_in sa;
 	memset(&sa, 0, sizeof(sa));
 	sa.sin_family = AF_INET;
-	sa.sin_port   = htons((uint16_t)g_cfg.webif_port);
-	if (g_cfg.webif_bindaddr[0])
-		inet_pton(AF_INET, g_cfg.webif_bindaddr, &sa.sin_addr);
-	else
+	sa.sin_port   = htons((uint16_t)cfg.webif_port);
+	if (cfg.webif_bindaddr[0]) {
+		if (inet_pton(AF_INET, cfg.webif_bindaddr, &sa.sin_addr) != 1) {
+			tcmg_log("invalid webif BINDADDR '%s' -- refusing to listen on all interfaces",
+			         cfg.webif_bindaddr);
+			close(s_webif_sock); s_webif_sock = -1; return -1;
+		}
+	} else
 		sa.sin_addr.s_addr = INADDR_ANY;
 
 	if (bind(s_webif_sock, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
-		tcmg_log("bind() failed: port=%d errno=%d (%s)", g_cfg.webif_port, errno, strerror(errno));
+		tcmg_log("bind() failed: port=%d errno=%d (%s)", cfg.webif_port, errno, strerror(errno));
 		close(s_webif_sock); s_webif_sock = -1; return -1;
 	}
 	if (listen(s_webif_sock, 128) < 0) {
@@ -316,8 +386,8 @@ int32_t webif_start(void)
 		close(s_webif_sock); s_webif_sock = -1; return -1;
 	}
 
-	atomic_store_explicit(&s_webif_running, 1, memory_order_release);
 	sem_init(&s_webif_sem, 0, WEBIF_MAX_THREADS);
+	atomic_store_explicit(&s_webif_running, 1, memory_order_release);
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
@@ -325,6 +395,7 @@ int32_t webif_start(void)
 	if (pthread_create(&s_webif_tid, &attr, http_server_thread, NULL) != 0) {
 		tcmg_log("pthread_create failed: errno=%d (%s)", errno, strerror(errno));
 		atomic_store_explicit(&s_webif_running, 0, memory_order_release);
+		sem_destroy(&s_webif_sem);
 		close(s_webif_sock); s_webif_sock = -1;
 		pthread_attr_destroy(&attr);
 		return -1;
@@ -337,7 +408,7 @@ void webif_stop(void)
 {
 	if (!s_webif_running) return;
 	atomic_store_explicit(&s_webif_running, 0, memory_order_release);
+	pthread_join(s_webif_tid, NULL);                                                     
 	if (s_webif_sock >= 0) { close(s_webif_sock); s_webif_sock = -1; }
-	pthread_join(s_webif_tid, NULL);
 	sem_destroy(&s_webif_sem);
 }

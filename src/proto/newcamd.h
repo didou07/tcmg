@@ -1,6 +1,8 @@
 #ifndef TCMG_NEWCAMD_H_
 #define TCMG_NEWCAMD_H_
 
+#include <stdint.h>
+
 #define NCD_DEFAULT_PORT      15050
 #define NCD_DEFAULT_KEEPALIVE 0
 

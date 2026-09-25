@@ -1,5 +1,6 @@
 #define MODULE_LOG_PREFIX "webif"
-#include "../../globals.h"
+#include "../../src/core/runtime_state.h"
+#include "../../src/log/log.h"
 #include "../internal/proto.h"
 
 void handle_api_reload(int fd)

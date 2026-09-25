@@ -1,76 +1,90 @@
 #define MODULE_LOG_PREFIX "webif"
-#include "../../globals.h"
+#include "../../src/core/utils.h"
+#include "../../src/pcsc/pcsc.h"
+#include "../../src/log/log.h"
 #include "../internal/proto.h"
+#include "../service/service.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-void send_api_status(int fd)
+static bool status_is_lite(const char *qs)
 {
-	int   bsz = 16384, pos = 0;
-	char *buf = (char *)malloc(bsz);
-	if (!buf) return;
+    return qs && strstr(qs, "lite=1") != NULL;
+}
 
-	S_SERVER_STATS st  = collect_stats();
-	time_t         now = time(NULL);
+void send_api_status(int fd, const char *qs)
+{
+    if (status_is_lite(qs)) {
+        char buf[96];
+        int n = snprintf(buf, sizeof(buf), "{\"active_connections\":%d}",
+                         webif_active_connection_count());
+        send_response(fd, 200, "OK", "application/json", buf, n);
+        return;
+    }
 
-	pos = buf_printf(&buf, &bsz, pos,
-		"{"
-		"\"version\":\"%s\","
-		"\"build\":\"%s\","
-		"\"uptime_s\":%ld,"
-		"\"uptime_str\":\"%s\","
-		"\"newcamd_port\":%d,"
-		"\"cccam_port\":%d,"
-		"\"active_connections\":%d,"
-		"\"accounts\":%d,"
-		"\"banned_ips\":%d,"
-		"\"cw_found\":%lld,"
-		"\"cw_not\":%lld,"
-		"\"ecm_total\":%lld,"
-		"\"hit_rate_pct\":%.1f,"
-		"\"debug_mask\":%u,"
-		"\"clients\":[",
-		TCMG_VERSION, TCMG_BUILD_TIME,
-		(long)st.uptime_s, st.uptime_str,
-		g_cfg.newcamd_port, g_cfg.cccam_port, st.active_conns,
-		st.naccounts, st.nbans,
-		(long long)st.cw_found, (long long)st.cw_not, (long long)st.ecm_total,
-		st.hit_rate, g_dblevel);
+    int bsz = 16384, pos = 0;
+    char *buf = (char *)malloc((size_t)bsz);
+    if (!buf) { send_json_error(fd, 503, "Service Unavailable", "out of memory"); return; }
 
-	pthread_mutex_lock(&g_clients_mtx);
-	bool first = true;
-	for (int i = 0; i < MAX_ACTIVE_CLIENTS; i++) {
-		S_CLIENT *cl = g_clients[i];
-		if (!cl || !cl->account) continue;
-		char conn_str[32], idle_str[32];
-		char esc_user[256], esc_ip[128], esc_proto[64], esc_chan[256];
-		format_uptime(now - cl->connect_time,         conn_str, sizeof(conn_str));
-		format_uptime(now - cl->account->last_seen,   idle_str, sizeof(idle_str));
-		json_escape(cl->user,                              esc_user,  sizeof(esc_user));
-		json_escape(cl->ip,                               esc_ip,    sizeof(esc_ip));
-		json_escape(cl->proto,                            esc_proto, sizeof(esc_proto));
-		json_escape(cl->last_channel[0] ? cl->last_channel : "", esc_chan, sizeof(esc_chan));
-		pos = buf_printf(&buf, &bsz, pos,
-			"%s{"
-			"\"user\":\"%s\","
-			"\"ip\":\"%s\","
-			"\"proto\":\"%s\","
-			"\"caid\":\"%04X\","
-			"\"sid\":\"%04X\","
-			"\"channel\":\"%s\","
-			"\"connected\":\"%s\","
-			"\"idle\":\"%s\","
-			"\"thread_id\":%u"
-			"}",
-			first ? "" : ",",
-			esc_user, esc_ip, esc_proto,
-			cl->last_caid, cl->last_srvid,
-			esc_chan,
-			conn_str, idle_str,
-			cl->thread_id);
-		first = false;
-	}
-	pthread_mutex_unlock(&g_clients_mtx);
+    S_WEBIF_CONFIG_VIEW cfg;
+    S_SERVER_STATS st = collect_stats();
+    webif_config_snapshot(&cfg);
+    time_t now = time(NULL);
+    S_WEBIF_CLIENT_VIEW clients[MAX_ACTIVE_CLIENTS];
+    int nclients = webif_client_snapshot_all(clients, MAX_ACTIVE_CLIENTS);
 
-	pos = buf_printf(&buf, &bsz, pos, "]}");
-	send_response(fd, 200, "OK", "application/json", buf, pos);
-	free(buf);
+    pos = buf_printf(&buf, &bsz, pos,
+        "{"
+        "\"version\":\"%s\","
+        "\"build\":\"%s\","
+        "\"uptime_s\":%ld,"
+        "\"uptime_str\":\"%s\","
+        "\"newcamd_port\":%d,"
+        "\"cccam_port\":%d,"
+        "\"cs378x_port\":%d,"
+        "\"active_connections\":%d,"
+        "\"accounts\":%d,"
+        "\"banned_ips\":%d,"
+        "\"cw_found\":%lld,"
+        "\"cw_not\":%lld,"
+        "\"ecm_total\":%lld,"
+        "\"hit_rate_pct\":%.1f,"
+        "\"debug_mask\":%u,"
+        "\"pcsc_enabled\":%d,"
+        "\"pcsc_available\":%d,"
+        "\"pcsc_readers\":%d,"
+        "\"clients\":[",
+        TCMG_VERSION, TCMG_BUILD_TIME,
+        (long)st.uptime_s, st.uptime_str,
+        cfg.newcamd_port, cfg.cccam_port, cfg.cs378x_port, st.active_conns,
+        st.naccounts, st.nbans,
+        (long long)st.cw_found, (long long)st.cw_not, (long long)st.ecm_total,
+        st.hit_rate, g_dblevel,
+        webif_pcsc_enabled(), pcsc_available(), pcsc_reader_count());
+
+    bool first = true;
+    for (int i = 0; i < nclients; i++) {
+        const S_WEBIF_CLIENT_VIEW *cl = &clients[i];
+        char conn_str[32], idle_str[32];
+        char esc_user[256], esc_ip[128], esc_proto[64], esc_chan[256];
+        format_uptime(now > cl->connect_time ? now - cl->connect_time : 0, conn_str, sizeof(conn_str));
+        time_t last_act = cl->last_activity ? cl->last_activity : cl->connect_time;
+        format_uptime(now > last_act ? now - last_act : 0, idle_str, sizeof(idle_str));
+        json_escape(cl->user, esc_user, sizeof(esc_user));
+        json_escape(cl->ip, esc_ip, sizeof(esc_ip));
+        json_escape(cl->proto, esc_proto, sizeof(esc_proto));
+        json_escape(cl->channel, esc_chan, sizeof(esc_chan));
+        pos = buf_printf(&buf, &bsz, pos,
+            "%s{\"user\":\"%s\",\"ip\":\"%s\",\"proto\":\"%s\","
+            "\"caid\":\"%04X\",\"sid\":\"%04X\",\"channel\":\"%s\","
+            "\"connected\":\"%s\",\"idle\":\"%s\",\"thread_id\":%u}",
+            first ? "" : ",", esc_user, esc_ip, esc_proto,
+            cl->caid, cl->sid, esc_chan, conn_str, idle_str, cl->thread_id);
+        first = false;
+    }
+
+    pos = buf_printf(&buf, &bsz, pos, "]}");
+    send_response(fd, 200, "OK", "application/json", buf, pos);
+    free(buf);
 }

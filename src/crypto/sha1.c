@@ -1,4 +1,4 @@
-#include "../../globals.h"
+#include "../core/compat.h"
 
 #define SHA1_ROL(v,b) (((v)<<(b))|((v)>>(32-(b))))
 

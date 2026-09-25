@@ -1,5 +1,4 @@
 #define MODULE_LOG_PREFIX "webif"
-#include "../../globals.h"
 #include "../internal/proto.h"
 #include "../assets/webif_assets.h"
 
@@ -11,14 +10,15 @@ void send_login_page(int fd, int failed)
 {
 	int   bsz = 8192, pos = 0;
 	char *buf = (char *)malloc(bsz);
-	if (!buf) return;
+	if (!buf) { send_json_error(fd, 503, "Service Unavailable", "out of memory"); return; }
 
 	pos = buf_printf(&buf, &bsz, pos,
-		"<!DOCTYPE html><html lang='en'><head>"
+		"<!DOCTYPE html><html lang='en' data-theme='dark' data-tpref='dark'><head>"
 		"<meta charset='UTF-8'>"
 		"<meta name='viewport' content='width=device-width,initial-scale=1'>"
 		"<title>TCMG &mdash; Login</title>"
 		"<style>%s</style>"
+		"<script>" WEB_THEME_INIT_JS WEB_ACCENT_INIT_JS "</script>"
 		"</head><body>",
 		TCMG_CSS);
 
@@ -46,18 +46,20 @@ void send_login_page(int fd, int failed)
 			"<line x1='12' y1='8' x2='12' y2='12'/>"
 			"<line x1='12' y1='16' x2='12.01' y2='16'/>"
 			"</svg>"
-			"Invalid credentials &mdash; please try again."
-			"</div>");
+			"%s"
+			"</div>",
+			failed == 2 ? "Too many failed attempts &mdash; this address is temporarily blocked."
+			            : "Invalid credentials &mdash; please try again.");
 
 	pos = buf_printf(&buf, &bsz, pos,
 		"<form method='POST' action='/login'>"
 		"<div class='fg'>"
-		"  <label class='fld'>USERNAME</label>"
-		"  <input class='fi' type='text' name='u' placeholder='Enter username' autofocus autocomplete='username'>"
+		"  <label class='fld' for='lu'>USERNAME</label>"
+		"  <input class='fi' id='lu' type='text' name='u' placeholder='Enter username' autofocus autocomplete='username'>"
 		"</div>"
 		"<div class='fg'>"
-		"  <label class='fld'>PASSWORD</label>"
-		"  <input class='fi' type='password' name='p' placeholder='Enter password' autocomplete='current-password'>"
+		"  <label class='fld' for='lp'>PASSWORD</label>"
+		"  <input class='fi' id='lp' type='password' name='p' placeholder='Enter password' autocomplete='current-password'>"
 		"</div>"
 		"<button type='submit' class='btn bp' style='width:100%%;justify-content:center;padding:11px;margin-top:4px'>"
 		"<svg width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>"
@@ -69,7 +71,8 @@ void send_login_page(int fd, int failed)
 		"</div></div>"
 		"</body></html>");
 
-	send_response(fd, 200, "OK", "text/html", buf, pos);
+	if (failed == 2) send_response(fd, 429, "Too Many Requests", "text/html", buf, pos);
+	else             send_response(fd, 200, "OK", "text/html", buf, pos);
 	free(buf);
 }
 

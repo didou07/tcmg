@@ -1,6 +1,7 @@
 #ifndef TCMG_SRVID_H_
 #define TCMG_SRVID_H_
 
+#include "../core/compat.h"
 #define SRVID_NAME_MAX 80
 
 int         srvid_load(const char *path);

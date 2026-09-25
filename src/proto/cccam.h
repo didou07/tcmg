@@ -1,6 +1,9 @@
 #ifndef TCMG_CCCAM_H_
 #define TCMG_CCCAM_H_
 
+#include <stdint.h>
+#include "core/constants.h"
+
 #define CCCAM_MSG_MAX       1024
 #define CCCAM_SEED_LEN      16
 #define CCCAM_HASH_LEN      20
@@ -25,7 +28,7 @@ typedef struct {
 typedef struct {
     int        fd;
     char       ip[MAXIPLEN];
-    uint8_t    seq;
+    uint8_t    g_flag;
     uint8_t    node_id[8];
     uint8_t    peer_node_id[8];
     S_CC_CRYPT send_block;

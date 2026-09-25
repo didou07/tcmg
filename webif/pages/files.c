@@ -1,5 +1,5 @@
 #define MODULE_LOG_PREFIX "webif"
-#include "../../globals.h"
+#include "../../src/log/log.h"
 #include "../internal/proto.h"
 
 void send_page_livelog(int fd)
@@ -8,7 +8,7 @@ void send_page_livelog(int fd)
 
 	pos = emit_header(&buf, &bsz, pos, "Live Log", "livelog");
 
-	char masks_js[256];
+	char masks_js[256] = "";
 	int  ma = 0;
 
 	pos = buf_printf(&buf, &bsz, pos,
@@ -33,7 +33,10 @@ void send_page_livelog(int fd)
 			"<a id='db%u' href='#' class='dt%s' onclick='toggleDbg(%u);return false;'"
 			" title='0x%04X'>%s</a>",
 			m, on ? " on" : "", m, m, g_dblevel_names[i].name);
-		ma += snprintf(masks_js + ma, (int)sizeof(masks_js) - ma, "%s%u", i ? "," : "", m);
+		if (ma < (int)sizeof(masks_js) - 8) {                                                                               
+			int w = snprintf(masks_js + ma, sizeof(masks_js) - (size_t)ma, "%s%u", i ? "," : "", m);
+			if (w > 0 && ma + w < (int)sizeof(masks_js)) ma += w; else masks_js[ma] = '\0';
+		}
 	}
 	pos = buf_printf(&buf, &bsz, pos,
 		"      <a id='dbALL' href='#' class='dt%s' onclick='toggleAll();return false;'>ALL</a>"
@@ -57,20 +60,12 @@ void send_page_livelog(int fd)
 		"   title='Regex, e.g.: hit|miss'>"
 		"  <div class='ll-sep'></div>"
 		"  <button class='btn bg sm' onclick='clearLog()'>" ICO_TRASH "&nbsp;Clear</button>"
-		"  <a id='savelog' download='tcmg.log'>"
-		"    <button class='btn bg sm' onclick='prepSave()'>&#128190;&nbsp;Save</button>"
-		"  </a>"
+		"  <button class='btn bg sm' onclick='prepSave()'>&#128190;&nbsp;Save</button>"
 		"  <div class='ll-sep'></div>"
 		"  <label class='ll-chk'><input type='checkbox' id='asc' checked>&nbsp;Scroll</label>"
 		"  <label class='ll-chk'><input type='checkbox' id='paused'>&nbsp;Pause</label>"
 		"  <div class='ll-sep'></div>"
-		"  <span class='ll-label'>Lines</span>"
-		"  <select class='lsel' id='maxlines'>"
-		"    <option value='200' selected>200</option>"
-		"    <option value='500'>500</option>"
-		"    <option value='1000'>1000</option>"
-		"    <option value='2000'>2000</option>"
-		"  </select>"
+		"  <span class='ll-label' title='Capped to limit memory/DOM use'>Lines: 200 max</span>"
 		"</div>"
 		"</div>"
 		"</div>");
@@ -104,13 +99,7 @@ void send_page_livelog(int fd)
 		"function toggleDbg(m){curmask^=m;updateDbgUI();sendDebug();return false;}"
 		"function toggleAll(){curmask=(curmask===65535)?0:65535;updateDbgUI();sendDebug();return false;}"
 		"function sendDebug(){"
-		"  fetch('/logpoll?since='+lastid+'&debug='+curmask,{credentials:'same-origin'})"
-		"    .then(function(r){return r.ok?r.json():null;})"
-		"    .then(function(d){"
-		"      if(!d)return;"
-		"      if(typeof d.next==='number')lastid=d.next;"
-		"      if(d.lines&&d.lines.length)appendLines(d.lines);"
-		"    }).catch(function(){});"
+		"  fetch('/logpoll?since=999999999&debug='+curmask,{credentials:'same-origin'}).catch(function(){});"
 		"}");
 
 	pos = buf_printf(&buf, &bsz, pos,
@@ -144,8 +133,10 @@ void send_page_livelog(int fd)
 		"    if(spans[i].style.display==='none')continue;"
 		"    txt+=(spans[i].getAttribute('data-r')||'')+'\\n';"
 		"  }"
-		"  var a=document.getElementById('savelog');"
-		"  if(a)a.href=URL.createObjectURL(new Blob([txt],{type:'text/plain'}));"
+		"  var url=URL.createObjectURL(new Blob([txt],{type:'text/plain'}));"
+		"  var a=document.createElement('a');a.href=url;a.download='tcmg.log';"
+		"  document.body.appendChild(a);a.click();document.body.removeChild(a);"
+		"  setTimeout(function(){URL.revokeObjectURL(url);},2000);"
 		"}");
 
 	pos = buf_printf(&buf, &bsz, pos,
@@ -178,7 +169,7 @@ void send_page_livelog(int fd)
 		"}"
 		"function appendLines(entries){"
 		"  var pre=document.getElementById('lp');if(!pre)return;"
-		"  var maxl=parseInt((document.getElementById('maxlines')||{value:'200'}).value)||200;"
+		"  var maxl=200;"
 		"  var frag=document.createDocumentFragment();"
 		"  var added=0,addedVis=0;"
 		"  for(var i=0;i<entries.length;i++){"
@@ -251,8 +242,9 @@ void send_logpoll(int fd, const char *qs)
 
 	if (dbg_s[0]) {
 		char    *end;
+		errno = 0;
 		long     v = strtol(dbg_s, &end, 0);
-		if (*end == '\0' && v >= 0 && v <= 0xFFFF) {
+		if (errno == 0 && *end == '\0' && v >= 0 && v <= 0xFFFF) {
 			uint16_t nv = (uint16_t)v;
 			if (nv != g_dblevel) {
 				uint16_t old = g_dblevel;
@@ -265,8 +257,10 @@ void send_logpoll(int fd, const char *qs)
 
 	int32_t from_id = 0;
 	if (since_s[0]) {
-		long v = strtol(since_s, NULL, 10);
-		if (v > 0) from_id = (int32_t)v;
+		char *end = NULL;
+		errno = 0;
+		long v = strtol(since_s, &end, 10);
+		if (errno == 0 && end && *end == '\0' && v > 0 && v <= INT32_MAX) from_id = (int32_t)v;
 	}
 
 	char    *lines[WEB_MAX_LINES_POLL];
@@ -279,6 +273,7 @@ void send_logpoll(int fd, const char *qs)
 	char *buf = (char *)malloc((size_t)(bsz < 512 ? 512 : bsz));
 	if (!buf) {
 		for (int i = 0; i < count; i++) { free(lines[i]); free(users[i]); }
+		send_json_error(fd, 503, "Service Unavailable", "out of memory");
 		return;
 	}
 

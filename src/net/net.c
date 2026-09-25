@@ -1,235 +1,376 @@
 #define MODULE_LOG_PREFIX "net"
-#include "../../globals.h"
+#include "net.h"
+#include "../crypto/crypto.h"
+#include "../core/utils.h"
+#include "../log/log.h"
+#include "../crypto/newcamd_des.h"
 
 int32_t net_recv_all(int fd, void *buf, int32_t len)
 {
-	uint8_t *p = (uint8_t *)buf;
-	int32_t  total = 0;
-	while (total < len)
-	{
-		ssize_t n = recv(fd, RECV_CAST(p + total), len - total, 0);
-		if (n <= 0) return -1;
-		total += (int32_t)n;
-	}
-	return total;
+    uint8_t *p = (uint8_t *)buf;
+    int32_t total = 0;
+    if (len < 0) return -1;
+    while (total < len)
+    {
+        ssize_t n = recv(fd, RECV_CAST(p + total), len - total, 0);
+        if (n == 0) return -1;
+        if (n < 0) {
+#ifdef TCMG_OS_WINDOWS
+            int e = WSAGetLastError();
+            if (e == WSAETIMEDOUT || e == WSAEWOULDBLOCK)
+                return total == 0 ? NET_RECV_TIMEOUT : -1;
+#else
+            if (errno == EINTR) continue;
+            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ETIMEDOUT)
+                return total == 0 ? NET_RECV_TIMEOUT : -1;
+#endif
+            return -1;
+        }
+        total += (int32_t)n;
+    }
+    return total;
 }
 
 int32_t net_send_all(int fd, const void *buf, int32_t len)
 {
-	const uint8_t *p = (const uint8_t *)buf;
-	int32_t total = 0;
-	while (total < len)
-	{
-		ssize_t n = send(fd, SO_CAST(p + total), len - total, 0);
-		if (n <= 0) return -1;
-		total += (int32_t)n;
-	}
-	return total;
+    const uint8_t *p = (const uint8_t *)buf;
+    int32_t total = 0;
+    if (len < 0) return -1;
+    while (total < len)
+    {
+        ssize_t n = send(fd, SO_CAST(p + total), len - total, 0);
+        if (n < 0) {
+#ifdef TCMG_OS_WINDOWS
+            int e = WSAGetLastError();
+            if (e == WSAEINTR) continue;
+#else
+            if (errno == EINTR) continue;
+#endif
+            return -1;
+        }
+        if (n == 0) return -1;
+        total += (int32_t)n;
+    }
+    return total;
+}
+
+
+int net_parse_host_port(const char *device, char *host, size_t host_len, uint16_t *port)
+{
+    if (!device || !*device || !host || host_len < 2 || !port) return -1;
+
+    const char *comma = strrchr(device, ',');
+    if (!comma || comma == device || !comma[1]) return -1;
+
+    size_t host_len_in = (size_t)(comma - device);
+    if (host_len_in >= host_len) return -1;
+
+    memcpy(host, device, host_len_in);
+    host[host_len_in] = '\0';
+
+    char *end = NULL;
+    errno = 0;
+    long value = strtol(comma + 1, &end, 10);
+    if (errno == ERANGE || !end || *end != '\0' || value < 1 || value > 65535)
+        return -1;
+
+    *port = (uint16_t)value;
+    return 0;
 }
 
 void net_set_timeout(int fd, int32_t seconds)
 {
 #ifdef TCMG_OS_WINDOWS
-	DWORD ms = (DWORD)(seconds * 1000);
-	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, SO_CAST(&ms), sizeof(ms));
-	setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, SO_CAST(&ms), sizeof(ms));
+    DWORD ms = (DWORD)(seconds * 1000);
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, SO_CAST(&ms), sizeof(ms));
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, SO_CAST(&ms), sizeof(ms));
 #else
-	struct timeval tv = { seconds, 0 };
-	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, SO_CAST(&tv), sizeof(tv));
-	setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, SO_CAST(&tv), sizeof(tv));
+    struct timeval tv = { seconds, 0 };
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, SO_CAST(&tv), sizeof(tv));
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, SO_CAST(&tv), sizeof(tv));
 #endif
 }
 
 void net_tune_socket(int fd)
 {
-	int one = 1;
+    int one = 1;
 #ifdef TCP_NODELAY
-	if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, SO_CAST(&one), sizeof(one)) < 0) {
-		tcmg_log_dbg(D_WIRE, "setsockopt(TCP_NODELAY) failed");
-	}
+    if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, SO_CAST(&one), sizeof(one)) < 0)
+        tcmg_log_dbg(D_WIRE, "setsockopt(TCP_NODELAY) failed");
 #endif
 #ifdef SO_KEEPALIVE
-	setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, SO_CAST(&one), sizeof(one));
+    setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, SO_CAST(&one), sizeof(one));
 #endif
 #ifdef TCP_KEEPIDLE
-	{ int idle=60, intvl=10, cnt=3;
-	  setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE,  SO_CAST(&idle),  sizeof(idle));
-	  setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, SO_CAST(&intvl), sizeof(intvl));
-	  setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT,   SO_CAST(&cnt),   sizeof(cnt));  }
+    { int idle = 60, intvl = 10, cnt = 3;
+      setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE,  SO_CAST(&idle),  sizeof(idle));
+      setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, SO_CAST(&intvl), sizeof(intvl));
+      setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT,   SO_CAST(&cnt),   sizeof(cnt)); }
 #endif
-	(void)one;
+    (void)one;
+}
+
+/* Newcamd has two closely related wire layouts. 525 is the normal modern
+ * layout and carries the 8-byte custom header; 524 has only 4 header bytes.
+ * We auto-detect the first received message and retain the mode for the
+ * lifetime of the connection, exactly as OSCam does. */
+#define NCD_PROTO_UNKNOWN 0
+#define NCD_PROTO_524     524
+#define NCD_PROTO_525     525
+
+static int ncd_header_size(uint16_t proto)
+{
+    return proto == NCD_PROTO_524 ? 8 : 12; /* incl. 2-byte outer length */
+}
+
+static int ncd_cmd_offset(uint16_t proto)
+{
+    return proto == NCD_PROTO_524 ? 8 : 12;
+}
+
+static bool ncd_valid_command(uint8_t cmd)
+{
+    return ((cmd & 0xF0) == 0x80) || ((cmd & 0xF0) == 0xE0) ||
+           cmd == MSG_GET_VERSION || cmd == MSG_ADDCARD || cmd == MSG_KEEPALIVE;
+}
+
+static int ncd_detect_proto(const uint8_t *buf, int total_len, uint16_t *proto_out)
+{
+    int off525 = ncd_cmd_offset(NCD_PROTO_525);
+    int off524 = ncd_cmd_offset(NCD_PROTO_524);
+    bool v525 = false, v524 = false;
+
+    if (total_len >= off525 + 3) {
+        uint32_t n = ((uint32_t)(buf[off525 + 1] & 0x0F) << 8) | buf[off525 + 2];
+        n += 3;
+        v525 = n <= (uint32_t)(total_len - off525) && ncd_valid_command(buf[off525]);
+    }
+    if (total_len >= off524 + 3) {
+        uint32_t n = ((uint32_t)(buf[off524 + 1] & 0x0F) << 8) | buf[off524 + 2];
+        n += 3;
+        v524 = n <= (uint32_t)(total_len - off524) && ncd_valid_command(buf[off524]);
+    }
+
+    /* Prefer 525 when both heuristics match.  Its extended command space and
+     * 8-byte custom header are what modern MGcamd/Newcamd peers expect. */
+    if (v525) { *proto_out = NCD_PROTO_525; return 0; }
+    if (v524) { *proto_out = NCD_PROTO_524; return 0; }
+    return -1;
+}
+
+static void ncd_build_header(uint8_t *buf, uint16_t proto, uint16_t sid,
+                             uint16_t caid, uint32_t pid, bool mg_ack,
+                             bool card_data, bool header_caid)
+{
+    if (proto == NCD_PROTO_524) {
+        memset(buf + 4, 0, 4);
+        if (sid)
+            wr_be16(buf + 6, sid);
+        return;
+    }
+
+    /* OSCam 525 header semantics:
+     *   4..5  = SID for normal addressed messages;
+     *   6..10 = CAID/provider only for custom ECM/card-data messages;
+     *   11    = MGcamd/card-data marker where required.
+     * Ordinary server responses keep the 8-byte header zeroed. */
+    memset(buf + 4, 0, 8);
+
+    if (mg_ack) {
+        buf[4] = 0x6E;
+        buf[5] = 0x73;
+        buf[11] = 0x14;
+        return;
+    }
+
+    if (sid)
+        wr_be16(buf + 4, sid);
+
+    if (card_data || header_caid) {
+        buf[6]  = (uint8_t)(caid >> 8);
+        buf[7]  = (uint8_t)caid;
+        buf[8]  = (uint8_t)(pid >> 16);
+        buf[9]  = (uint8_t)(pid >> 8);
+        buf[10] = (uint8_t)pid;
+    }
+
+    if (card_data)
+        buf[11] = 0x14;
+}
+
+static int32_t ncd_send_ex(S_CLIENT *cl, const uint8_t *data, int32_t dlen,
+                           uint16_t sid, uint16_t mid, uint16_t caid,
+                           uint32_t pid, bool header_caid,
+                           bool mg_ack, bool card_data)
+{
+    uint8_t *buf;
+    uint8_t key16[16];
+    uint16_t proto;
+    int head;
+    int32_t total;
+    int32_t enc_len;
+    int32_t cmd_len;
+
+    if (!cl || !data || dlen < 3 || dlen > NC_MSG_MAX - 32) return -1;
+    if ((dlen - 3) > 0x0FFF) return -1;
+    buf = cl->protocol.wire.newcamd.send_buf;
+    proto = cl->protocol.wire.newcamd.proto ? cl->protocol.wire.newcamd.proto : NCD_PROTO_525;
+    head = ncd_header_size(proto);
+
+    memset(buf, 0, sizeof(cl->protocol.wire.newcamd.send_buf));
+    cmd_len = dlen - 3;
+    memcpy(buf + head, data, (size_t)dlen);
+    buf[head + 1] = (uint8_t)((buf[head + 1] & 0xF0) | ((cmd_len >> 8) & 0x0F));
+    buf[head + 2] = (uint8_t)cmd_len;
+
+    wr_be16(buf + 2, mid);
+    ncd_build_header(buf, proto, sid,
+                     caid, pid, mg_ack, card_data, header_caid);
+
+    /* MGcamd login marker: OSCam identifies MGcamd on the 525 custom header
+     * (client id "mg" plus 0x11), not from the account's CAID list. */
+    if (!mg_ack && !card_data && cl->protocol.wire.newcamd.is_mgcamd && proto == NCD_PROTO_525 &&
+        data[0] == MSG_CLIENT_LOGIN) {
+        buf[4] = 0x6D;
+        buf[5] = 0x67;
+        buf[11] = 0x11;
+    }
+
+    /* The two-byte outer length is part of the EuroDES protected message. */
+    total = head + dlen;
+    if (total + 24 >= (int32_t)sizeof(cl->protocol.wire.newcamd.send_buf)) return -1;
+    wr_be16(buf, (uint16_t)(total - 2));
+
+    memcpy(key16, cl->protocol.wire.newcamd.key1, 8);
+    memcpy(key16 + 8, cl->protocol.wire.newcamd.key2, 8);
+    enc_len = tcmg_ncd_des_encrypt(buf, total, key16);
+    secure_zero(key16, sizeof(key16));
+    if (enc_len < 0 || enc_len > (int32_t)sizeof(cl->protocol.wire.newcamd.send_buf)) return -1;
+    wr_be16(buf, (uint16_t)(enc_len - 2));
+
+    tcmg_dump_dbg(D_WIRE, buf, enc_len,
+                  "%s [newcamd/mgcamd] send encrypted proto=%u cmd=0x%02X sid=%04X mid=%04X",
+                  cl->identity.ip, (unsigned)proto, data[0], sid, mid);
+    return net_send_all(cl->session.fd, buf, enc_len);
 }
 
 void nc_init(S_CLIENT *cl, const uint8_t *des_key14, int32_t timeout)
 {
-	uint8_t rnd[14], spread[16];
+    uint8_t rnd[14], key16[16];
 
-	net_set_timeout(cl->fd, timeout);
-	net_tune_socket(cl->fd);
+    net_set_timeout(cl->session.fd, timeout);
+    net_tune_socket(cl->session.fd);
+    cl->protocol.wire.newcamd.proto = NCD_PROTO_UNKNOWN;
+    cl->protocol.wire.newcamd.msgid = 0;
 
-	csprng(rnd, 14);
-	if (net_send_all(cl->fd, rnd, 14) != 14)
-	{
-		secure_zero(rnd, sizeof(rnd));
-		return;
-	}
+    csprng(rnd, sizeof(rnd));
+    if (net_send_all(cl->session.fd, rnd, (int32_t)sizeof(rnd)) != (int32_t)sizeof(rnd)) {
+        secure_zero(rnd, sizeof(rnd));
+        return;
+    }
 
-	memcpy(cl->session_key, des_key14, 14);
-	{
-		int i;
-		for (i = 0; i < 14; i++) rnd[i] ^= des_key14[i];
-	}
-	crypt_key_spread(rnd, spread);
-	memcpy(cl->key1, spread,     8);
-	memcpy(cl->key2, spread + 8, 8);
-
-	secure_zero(rnd,    sizeof(rnd));
-	secure_zero(spread, sizeof(spread));
+    memcpy(cl->protocol.wire.newcamd.session_key, des_key14, 14);
+    tcmg_ncd_des_login_key_get(rnd, des_key14, 14, key16);
+    memcpy(cl->protocol.wire.newcamd.key1, key16, 8);
+    memcpy(cl->protocol.wire.newcamd.key2, key16 + 8, 8);
+    secure_zero(rnd, sizeof(rnd));
+    secure_zero(key16, sizeof(key16));
 }
 
 int32_t nc_recv(S_CLIENT *cl, uint8_t *data,
                 uint16_t *sid, uint16_t *mid,
                 uint32_t *pid, uint16_t *caid_hdr)
 {
-	uint8_t  lenbuf[2];
-	uint8_t *buf = cl->recv_buf;
-	uint8_t  iv[8], key16[16];
-	uint16_t total_len, payload_len;
-	uint32_t rlen;
+    uint8_t lenbuf[2], key16[16];
+    uint16_t proto;
+    uint8_t *buf = cl->protocol.wire.newcamd.recv_buf;
+    int32_t wire_len, total, dec_len;
+    int off;
+    uint32_t rlen;
 
-	if (net_recv_all(cl->fd, lenbuf, 2) != 2) return -1;
-	total_len = be16(lenbuf);
-	if (total_len == 0 || total_len > NC_MSG_MAX) return -1;
-	if (net_recv_all(cl->fd, buf, total_len) != (int32_t)total_len) return -1;
-	if (total_len < 8) return -1;
+    if (!cl || !data || !sid || !mid || !pid || !caid_hdr) return -1;
+    if (net_recv_all(cl->session.fd, lenbuf, 2) != 2) return -1;
+    wire_len = (int32_t)be16(lenbuf);
+    if (wire_len < 16 || wire_len > NC_MSG_MAX - 2) return -1;
 
-	payload_len = total_len - 8;
+    buf[0] = lenbuf[0]; buf[1] = lenbuf[1];
+    if (net_recv_all(cl->session.fd, buf + 2, wire_len) != wire_len) return -1;
+    total = wire_len + 2;
 
-	tcmg_dump_dbg(D_WIRE, buf, (int32_t)(total_len),
-	              "%s [newcamd/mgcamd] recv raw encrypted", cl->ip);
+    memcpy(key16, cl->protocol.wire.newcamd.key1, 8);
+    memcpy(key16 + 8, cl->protocol.wire.newcamd.key2, 8);
+    dec_len = tcmg_ncd_des_decrypt(buf, total, key16);
+    secure_zero(key16, sizeof(key16));
+    if (dec_len < 0 || dec_len > NC_MSG_MAX) return -1;
+    if (dec_len < 11) return -1;
 
-	memcpy(iv, buf + payload_len, 8);
-	tcmg_dump_dbg(D_NEWCAMD, iv, 8, "%s [newcamd/mgcamd] recv IV", cl->ip);
+    if (!cl->protocol.wire.newcamd.proto) {
+        if (ncd_detect_proto(buf, dec_len, &proto) < 0) return -1;
+        cl->protocol.wire.newcamd.proto = proto;
+    }
+    proto = cl->protocol.wire.newcamd.proto;
+    if (proto != NCD_PROTO_524 && proto != NCD_PROTO_525) return -1;
 
-	memcpy(key16,     cl->key1, 8);
-	memcpy(key16 + 8, cl->key2, 8);
-	crypt_ede2_cbc(key16, iv, buf, buf, payload_len, false);
-	secure_zero(key16, sizeof(key16));
-	secure_zero(iv,    sizeof(iv));
+    off = ncd_cmd_offset(proto);
+    if (dec_len < off + 3) return -1;
 
-	if (nc_xor(buf, payload_len)) return -1;
+    *mid = be16(buf + 2);
+    *sid = proto == NCD_PROTO_525 ? be16(buf + 4) : be16(buf + 6);
+    *caid_hdr = proto == NCD_PROTO_525 ? be16(buf + 6) : 0;
+    *pid = proto == NCD_PROTO_525
+             ? (((uint32_t)buf[8] << 16) | ((uint32_t)buf[9] << 8) | buf[10])
+             : 0;
+    cl->protocol.wire.newcamd.msgid = *mid;
+    memcpy(cl->protocol.wire.newcamd.header, buf + 4, proto == NCD_PROTO_525 ? 8 : 4);
 
-	*mid      = be16(buf);
-	*sid      = be16(buf + 2);
-	*caid_hdr = be16(buf + 4);
-	*pid      = ((uint32_t)buf[6] << 16) |
-	            ((uint32_t)buf[7] <<  8) |
-	             (uint32_t)buf[8];
+    rlen = (((uint32_t)(buf[off + 1] & 0x0F) << 8) | buf[off + 2]) + 3;
+    if (rlen > (uint32_t)(dec_len - off) || rlen > NC_MSG_MAX) return -1;
+    memcpy(data, buf + off, rlen);
 
-	tcmg_dump_dbg(D_NEWCAMD, buf, (int32_t)payload_len,
-	              "%s [newcamd/mgcamd] recv payload mid=%04X sid=%04X caid=%04X",
-	              cl->ip, *mid, *sid, *caid_hdr);
+    if (data[0] == MSG_CLIENT_LOGIN && proto == NCD_PROTO_525 &&
+        buf[4] == 0x6D && buf[5] == 0x67 && buf[11] == 0x11) {
+        cl->protocol.wire.newcamd.is_mgcamd = 1;
+    }
 
-	if (payload_len < (uint16_t)(NC_HDR_LEN + 5)) return -1;
-
-	rlen = (((buf[3 + NC_HDR_LEN] << 8) | buf[4 + NC_HDR_LEN]) & 0x0FFF) + 3;
-	if (rlen + 2 + NC_HDR_LEN > (uint32_t)payload_len) return -1;
-
-	memcpy(data, buf + 2 + NC_HDR_LEN, rlen);
-
-	tcmg_dump_dbg(D_NEWCAMD, data, (int32_t)rlen,
-	              "%s [newcamd/mgcamd] recv cmd=0x%02X", cl->ip, data[0]);
-
-	return (int32_t)rlen;
-}
-
-static int32_t nc_finalize_send(S_CLIENT *cl, uint32_t blen)
-{
-	uint8_t *buf = cl->send_buf;
-	uint8_t  pad[8], iv[8], key16[16];
-	uint32_t plen;
-
-	plen = (8 - ((blen - 1) % 8)) % 8;
-	csprng(pad, plen);
-	memcpy(buf + blen, pad, plen);
-	blen += plen;
-
-	buf[blen] = nc_xor(buf + 2, blen - 2);
-	blen++;
-
-	csprng(iv, 8);
-	memcpy(buf + blen, iv, 8);
-
-	memcpy(key16,     cl->key1, 8);
-	memcpy(key16 + 8, cl->key2, 8);
-	crypt_ede2_cbc(key16, iv, buf + 2, buf + 2, blen - 2, true);
-	secure_zero(key16, sizeof(key16));
-	secure_zero(iv,    sizeof(iv));
-
-	blen += 8;
-	wr_be16(buf, (uint16_t)(blen - 2));
-	tcmg_dump_dbg(D_WIRE, buf, (int32_t)blen,
-	              "%s [newcamd/mgcamd] send raw encrypted", cl->ip);
-	return net_send_all(cl->fd, buf, (int32_t)blen);
+    tcmg_dump_dbg(D_NEWCAMD, data, (int32_t)rlen,
+                  "%s [newcamd/mgcamd] recv proto=%u cmd=0x%02X sid=%04X mid=%04X caid=%04X",
+                  cl->identity.ip, (unsigned)proto, data[0], *sid, *mid, *caid_hdr);
+    return (int32_t)rlen;
 }
 
 int32_t nc_send(S_CLIENT *cl, const uint8_t *data, int32_t dlen,
                 uint16_t sid, uint16_t mid, uint32_t pid)
 {
-	uint8_t *buf = cl->send_buf;
-	uint32_t blen;
-	uint16_t caid = cl->account ? cl->account->caid : cl->caid;
+    if (!cl || !data || dlen < 3) return -1;
+    uint16_t caid = cl->auth.account ? cl->auth.account->caid : cl->ecm.caid;
+    bool is_ecm = data[0] == MSG_ECM_0 || data[0] == MSG_ECM_1;
+    bool custom = cl->protocol.wire.newcamd.client_mode && is_ecm;
+    bool mg_ack = cl->protocol.wire.newcamd.is_mgcamd && data[0] == MSG_CLIENT_LOGIN_ACK;
+    bool addcard = data[0] == MSG_ADDCARD;
 
-	memset(buf + 2, 0, NC_HDR_LEN + 4);
-
-	wr_be16(buf + 2, mid);
-	wr_be16(buf + 4, sid);
-	buf[6]  = (uint8_t)(caid  >> 8);
-	buf[7]  = (uint8_t)(caid  & 0xFF);
-	buf[8]  = (uint8_t)(pid   >> 16);
-	buf[9]  = (uint8_t)(pid   >>  8);
-	buf[10] = (uint8_t)(pid);
-	buf[11] = 0x00;
-
-	memcpy(buf + 12, data, dlen);
-	buf[13] = (data[1] & 0xF0) | (((dlen - 3) >> 8) & 0x0F);
-	buf[14] = (dlen - 3) & 0xFF;
-
-	blen = (uint32_t)dlen + 12;
-
-	tcmg_dump_dbg(D_NEWCAMD, data, dlen,
-	              "%s [newcamd/mgcamd] send cmd=0x%02X sid=%04X mid=%04X",
-	              cl->ip, data[0], sid, mid);
-
-	return nc_finalize_send(cl, blen);
+    /* OSCam only puts SID/CAID/provider into the extended 525 header for
+     * client ECM requests and explicit ADDCARD reports. Ordinary server
+     * responses use a zeroed header (apart from the MG login ACK marker). */
+    return ncd_send_ex(cl, data, dlen, custom ? sid : (addcard ? 0 : 0), mid,
+                       caid, pid, custom, mg_ack, addcard);
 }
 
 int32_t nc_send_addcard(S_CLIENT *cl, uint16_t caid,
-                         uint32_t provid, uint16_t mid)
+                        uint32_t provid, uint16_t mid)
 {
-	uint8_t *buf = cl->send_buf;
-	static const uint8_t payload[3] = { MSG_ADDCARD, 0x00, 0x00 };
-
-	memset(buf + 2, 0, 12);
-	memcpy(buf + 12, payload, 3);
-	wr_be16(buf + 2, mid);
-	buf[6]  = (uint8_t)(caid   >> 8);
-	buf[7]  = (uint8_t)(caid   & 0xFF);
-	buf[8]  = (uint8_t)(provid >> 16);
-	buf[9]  = (uint8_t)(provid >>  8);
-	buf[10] = (uint8_t)(provid & 0xFF);
-	buf[11] = 0x00;
-
-	return nc_finalize_send(cl, 15);
+    static const uint8_t payload[3] = { MSG_ADDCARD, 0x00, 0x00 };
+    return ncd_send_ex(cl, payload, sizeof(payload), 0, mid, caid, provid,
+                       true, false, true);
 }
 
 int32_t nc_send_version(S_CLIENT *cl, uint16_t mid)
 {
-	static const char VER[] = "1.67";
-	uint8_t buf[7];
-	buf[0] = MSG_GET_VERSION;
-	buf[1] = 0;
-	buf[2] = (uint8_t)strlen(VER);
-	memcpy(buf + 3, VER, strlen(VER));
-	return nc_send(cl, buf, (int32_t)(3 + strlen(VER)), 0, mid, 0);
+    static const char VER[] = "1.67";
+    uint8_t buf[3 + sizeof(VER)];
+    memset(buf, 0, sizeof(buf));
+    buf[0] = MSG_GET_VERSION;
+    buf[1] = 0;
+    buf[2] = (uint8_t)(sizeof(VER) - 1);
+    memcpy(buf + 3, VER, sizeof(VER) - 1);
+    return nc_send(cl, buf, (int32_t)sizeof(buf), 0, mid, 0);
 }

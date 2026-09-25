@@ -1,6 +1,7 @@
 #ifndef TCMG_CRYPTO_H_
 #define TCMG_CRYPTO_H_
 
+#include "../core/compat.h"
 void crypt_init(void);
 void crypt_des_enc(const uint8_t *key8, const uint8_t *in8, uint8_t *out8);
 void crypt_des_dec(const uint8_t *key8, const uint8_t *in8, uint8_t *out8);

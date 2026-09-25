@@ -1,5 +1,8 @@
 #define MODULE_LOG_PREFIX "log"
-#include "../../globals.h"
+#include "log.h"
+#include "../core/constants.h"
+#include "../core/utils.h"
+#include "../srvid/srvid.h"
 #include <stdatomic.h>
 
 _Atomic uint16_t  g_dblevel = 0;
@@ -12,6 +15,7 @@ const S_DBLEVEL_NAME g_dblevel_names[MAX_DEBUG_LEVELS] = {
 	{ D_CCCAM,   "cccam"   },
 	{ D_HTTP,    "http"    },
 	{ D_CONN,    "conn"    },
+	{ D_READER,  "reader"  },
 };
 
 #define LOG_FILE_MAX_BYTES  (10u * 1024u * 1024u)
@@ -427,7 +431,7 @@ static void wq_push(const char *line, const char *usr, const char *usr_line)
 	pthread_mutex_unlock(&s_wq_mtx);
 }
 
-static void emit_line(const char *mod, const char *body)
+static void emit_line(const char *mod, const char *body, int dedupe)
 {
 	char     ts[24];
 	char     line[LOG_LINE_MAX];
@@ -445,7 +449,7 @@ static void emit_line(const char *mod, const char *body)
 		         ts, tid, t_log_type, body);
 	}
 
-	if (strcmp(line, t_last_line) == 0) {
+	if (dedupe && strcmp(line, t_last_line) == 0) {
 		t_dup_count++;
 		return;
 	}
@@ -518,7 +522,17 @@ void tcmg_log_txt(const char *mod, const char *fmt, ...)
 	va_start(ap, fmt);
 	vsnprintf(body, sizeof(body), fmt, ap);
 	va_end(ap);
-	emit_line(mod, body);
+	emit_line(mod, body, 1);
+}
+
+void tcmg_log_force_txt(const char *mod, const char *fmt, ...)
+{
+	char    body[LOG_BODY_MAX];
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(body, sizeof(body), fmt, ap);
+	va_end(ap);
+	emit_line(mod, body, 0);
 }
 
 static void hex_row(const uint8_t *buf, int32_t offset, int32_t count, char *row)
@@ -567,7 +581,7 @@ void tcmg_log_hex(const char *mod, const uint8_t *buf, int32_t n,
 		body[rp++] = 'm'; body[rp++] = 'p';
 		body[rp++] = 't'; body[rp++] = 'y';
 		body[rp++] = ')'; body[rp] = '\0';
-		emit_line(mod, body);
+		emit_line(mod, body, 1);
 		return;
 	}
 
@@ -595,13 +609,13 @@ void tcmg_log_hex(const char *mod, const uint8_t *buf, int32_t n,
 		firstline[rp++] = ':';
 		firstline[rp] = '\0';
 	}
-	emit_line(mod, firstline);
+	emit_line(mod, firstline, 1);
 
 	for (i = 0; i < n; i += 16) {
 		int32_t count = (i + 16 < n) ? 16 : (n - i);
 		char    row[56];
 		hex_row(buf, i, count, row);
-		emit_line(NULL, row);
+		emit_line(NULL, row, 1);
 	}
 }
 
@@ -615,7 +629,7 @@ void log_ecm_raw(uint16_t caid, uint16_t sid, const uint8_t *data, int32_t len)
 	{
 		char header[64];
 		snprintf(header, sizeof(header), "caid=%04X sid=%04X len=%d", caid, sid, len);
-		emit_line("ecm", header);
+		emit_line("ecm", header, 1);
 	}
 
 	cap = (len > 256) ? 256 : len;
@@ -623,13 +637,13 @@ void log_ecm_raw(uint16_t caid, uint16_t sid, const uint8_t *data, int32_t len)
 		int32_t count = (i + 16 < cap) ? 16 : (cap - i);
 		char    row[64];
 		hex_row(data, i, count, row);
-		emit_line(NULL, row);
+		emit_line(NULL, row, 1);
 	}
 
 	if (len > 256) {
 		char trunc[40];
 		snprintf(trunc, sizeof(trunc), "  ... (%d bytes truncated)", len - 256);
-		emit_line(NULL, trunc);
+		emit_line(NULL, trunc, 1);
 	}
 }
 

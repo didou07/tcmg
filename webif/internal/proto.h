@@ -1,11 +1,11 @@
 #ifndef TCMG_WEBIF_PROTO_H_
 #define TCMG_WEBIF_PROTO_H_
 
+#include "../../src/core/compat.h"
 #include "constants.h"
 #include "types.h"
 #include "../icons.h"
 
-extern const char CSS[];
 extern s_session       s_sessions[WEB_MAX_SESSIONS];
 extern pthread_mutex_t s_sess_lock;
 
@@ -23,6 +23,11 @@ int  buf_printf(char **dst, int *dstsz, int pos, const char *fmt, ...)
 void url_decode(char *s);
 void get_param(const char *qs, const char *key, char *out, int outsz);
 void form_get(const char *body, const char *key, char *out, int outsz);
+char *form_get_alloc(const char *body, const char *key);
+const char *web_header_get(const char *raw, const char *name, char *buf, int bufsz);
+int  write_file_atomic(const char *path, const char *data, size_t len);
+int  web_valid_text(const char *s);
+int  web_valid_ipv4_or_empty(const char *s);
 
 void send_headers_ex(int fd, int code, const char *reason,
                      const char *ctype, int length, const char *set_cookie);
@@ -53,7 +58,10 @@ int  emit_footer(char **buf, int *bsz, int pos);
 void send_login_page(int fd, int failed);
 void send_page_status(int fd);
 void send_page_users(int fd);
+void send_page_readers(int fd);
 void send_page_failban(int fd, const char *qs);
+void handle_api_failban_clear(int fd, const char *qs);
+void handle_api_failban_clearall(int fd);
 void send_page_config(int fd);
 void send_page_files(int fd);
 void send_page_livelog(int fd);
@@ -65,17 +73,24 @@ void send_page_tvcas(int fd);
 
 void handle_request(int fd, const char *client_ip);
 
-void send_api_status(int fd);
+void send_api_status(int fd, const char *qs);
+void send_api_userstats(int fd);
+void send_api_pcsc_readers(int fd);
 void handle_user_toggle(int fd, const char *qs);
 void send_api_user_get(int fd, const char *qs);
 void handle_user_save(int fd, const char *body);
 void handle_user_add(int fd, const char *body);
 void handle_user_delete(int fd, const char *qs);
 void handle_user_resetstats(int fd, const char *qs);
+void send_api_readers(int fd);
+void send_api_reader_get(int fd, const char *qs);
+void handle_api_reader_save(int fd, const char *body);
+void handle_api_reader_delete(int fd, const char *qs);
 
 void send_api_config_get(int fd);
 void handle_api_config_save(int fd, const char *body);
 void handle_api_file_save(int fd, const char *body);
+void send_api_file_get(int fd, const char *qs);
 
 void handle_api_reload(int fd);
 void handle_api_restart(int fd);

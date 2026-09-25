@@ -1,5 +1,6 @@
 #define MODULE_LOG_PREFIX "webif"
-#include "../../globals.h"
+#include "../../src/core/runtime_state.h"
+#include "../../src/log/log.h"
 #include "../internal/proto.h"
 
 void send_page_power(int fd, const char *qs)
@@ -12,11 +13,14 @@ void send_page_power(int fd, const char *qs)
 
 	pos = emit_header(&buf, &bsz, pos, "Power", "power");
 
-	if (strcmp(confirm, "yes") == 0 && action[0]) {
+	                                                                               
+	int valid_action = (strcmp(action, "restart") == 0 || strcmp(action, "shutdown") == 0);
+	int do_stop = 0, do_restart = 0;
+
+	if (strcmp(confirm, "yes") == 0 && valid_action) {
 		int is_restart = (strcmp(action, "restart") == 0);
 		tcmg_log("webif: %s requested", is_restart ? "restart" : "shutdown");
-		if (is_restart) g_restart = 1;
-		g_running = 0;
+		do_stop = 1; do_restart = is_restart;                                                
 
 		pos = buf_printf(&buf, &bsz, pos,
 			"<div class='pg-center'>"
@@ -52,7 +56,7 @@ void send_page_power(int fd, const char *qs)
 				: "");
 	}
 
-	else if (action[0]) {
+	else if (valid_action) {
 		int is_restart = (strcmp(action, "restart") == 0);
 		pos = buf_printf(&buf, &bsz, pos,
 			"<div class='pg-center'>"
@@ -93,10 +97,7 @@ void send_page_power(int fd, const char *qs)
 			"      <path d='M20.49 15a9 9 0 1 1-2.12-9.36L23 10'/>"
 			"    </svg>"
 			"  </div>"
-			"  <h3 style='font-size:16px;font-weight:700;margin-bottom:8px'>Restart</h3>"
-			"  <p style='font-size:12px;color:var(--t1);margin-bottom:18px;line-height:1.6'>"
-			"    Drops connections and reloads configuration."
-			"  </p>"
+			"  <h3 style='font-size:13px;font-weight:700;margin:0'>Restart <button type='button' class='qtip' title='Drops active connections and reloads configuration.' aria-label='Restart help'>?</button></h3>"
 			"  <a href='/power?action=restart' class='btn bp' style='width:100%%;justify-content:center'>"
 			"    <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' width='14' height='14'>"
 			"      <polyline points='23 4 23 10 17 10'/>"
@@ -112,10 +113,7 @@ void send_page_power(int fd, const char *qs)
 			"      <path d='M18.36 6.64a9 9 0 1 1-12.73 0'/><line x1='12' y1='2' x2='12' y2='12'/>"
 			"    </svg>"
 			"  </div>"
-			"  <h3 style='font-size:16px;font-weight:700;margin-bottom:8px'>Shutdown</h3>"
-			"  <p style='font-size:12px;color:var(--t1);margin-bottom:18px;line-height:1.6'>"
-			"    Stops all connections. Process will not restart."
-			"  </p>"
+			"  <h3 style='font-size:13px;font-weight:700;margin:0'>Shutdown <button type='button' class='qtip' title='Stops all connections; the process will not restart.' aria-label='Shutdown help'>?</button></h3>"
 			"  <a href='/power?action=shutdown' class='btn bd_' style='width:100%%;justify-content:center'>"
 			"    <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' width='14' height='14'>"
 			"      <path d='M18.36 6.64a9 9 0 1 1-12.73 0'/><line x1='12' y1='2' x2='12' y2='12'/>"
@@ -129,6 +127,12 @@ void send_page_power(int fd, const char *qs)
 
 	pos = emit_footer(&buf, &bsz, pos);
 	PAGE_SEND_AND_FREE(fd);
+
+	                                                                                      
+	if (do_stop) {
+		if (do_restart) g_restart = 1;
+		g_running = 0;
+	}
 }
 
 void send_page_shutdown(int fd, const char *qs) { (void)qs; send_redirect(fd, "/power?action=shutdown"); }

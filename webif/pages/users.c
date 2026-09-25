@@ -1,7 +1,72 @@
 #define MODULE_LOG_PREFIX "webif"
-#include "../../globals.h"
+#include "../service/service.h"
+#include "../../src/core/constants.h"
+#include "../../src/core/utils.h"
 #include "../internal/proto.h"
+#include "../assets/webif_assets.h"
 
+  
+              
+  
+                                                                             
+                                                                            
+                                                                        
+                                                  
+                                                                               
+                                                                            
+   
+
+                                                                              
+
+static void fmt_int(long long v, char *out, size_t sz)
+{
+	char tmp[32], o[48];
+	int  n = snprintf(tmp, sizeof(tmp), "%lld", v < 0 ? 0 : v), k = 0;
+	for (int i = 0; i < n; i++) {
+		if (i && (n - i) % 3 == 0) o[k++] = ',';
+		o[k++] = tmp[i];
+	}
+	o[k] = '\0';
+	tcmg_strlcpy(out, o, sz);
+}
+
+static void fmt_date(time_t t, char *out, size_t sz)
+{
+	struct tm tm_s;
+	localtime_r(&t, &tm_s);
+	strftime(out, sz, "%d-%m-%Y", &tm_s);
+}
+
+                                                                    
+static void fmt_ago(time_t t, time_t now, char *out, size_t sz)
+{
+	if (t <= 0) { tcmg_strlcpy(out, "never", sz); return; }
+	long d = (long)(now - t);
+	if (d < 0)            d = 0;
+	if (d < 10)           tcmg_strlcpy(out, "just now", sz);
+	else if (d < 60)      snprintf(out, sz, "%lds ago", d);
+	else if (d < 3600)    snprintf(out, sz, "%ldm ago", d / 60);
+	else if (d < 86400)   snprintf(out, sz, "%ldh ago", d / 3600);
+	else if (d < 86400L * 45)  snprintf(out, sz, "%ldd ago", d / 86400);
+	else if (d < 86400L * 365) snprintf(out, sz, "%ldmo ago", d / (86400L * 30));
+	else                  snprintf(out, sz, "%ldy ago", d / (86400L * 365));
+}
+
+                                                 
+static void fmt_dur(long s, char *out, size_t sz)
+{
+	if (s < 0) s = 0;
+	if (s < 60)         snprintf(out, sz, "%lds", s);
+	else if (s < 3600)  snprintf(out, sz, "%ldm %02lds", s / 60, s % 60);
+	else if (s < 86400) snprintf(out, sz, "%ldh %02ldm", s / 3600, (s % 3600) / 60);
+	else                snprintf(out, sz, "%ldd %ldh", s / 86400, (s % 86400) / 3600);
+}
+
+                                                                           
+                                                                    
+                                                            
+
+                                                                               
 
 void send_page_users(int fd)
 {
@@ -9,415 +74,381 @@ void send_page_users(int fd)
 
 	pos = emit_header(&buf, &bsz, pos, "Users", "users");
 
-	int total_u = 0, active_u = 0, disabled_u = 0, expired_u = 0, online_u = 0;
-	time_t now_u = time(NULL);
-	pthread_rwlock_rdlock(&g_cfg.acc_lock);
-	for (S_ACCOUNT *a = g_cfg.accounts; a; a = a->next) {
-		total_u++;
-		if (!a->enabled) disabled_u++;
-		else if (a->expirationdate > 0 && now_u > a->expirationdate) expired_u++;
-		else active_u++;
-		if (a->active > 0) online_u++;
+	time_t now = time(NULL);
+
+	                                                                           
+	int total_u = webif_account_count();
+	S_WEBIF_ACCOUNT_VIEW *accounts = total_u > 0 ? calloc((size_t)total_u, sizeof(*accounts)) : NULL;
+	int naccounts = accounts ? webif_account_snapshot_all(accounts, (size_t)total_u) : 0;
+	int active_u = 0, disabled_u = 0, expired_u = 0, online_u = 0;
+	for (int ai = 0; ai < naccounts; ai++) {
+		int expd = (accounts[ai].expirationdate > 0 && now > accounts[ai].expirationdate);
+		if (!accounts[ai].enabled) disabled_u++;
+		if (expd) expired_u++;
+		if (accounts[ai].enabled && !expd) active_u++;
+		if (accounts[ai].active > 0) online_u++;
 	}
-	pthread_rwlock_unlock(&g_cfg.acc_lock);
+	total_u = naccounts;
 
+	                                                           
+
+	                                                                           
 	pos = buf_printf(&buf, &bsz, pos,
-		"<div class='sbar'>"
-		"<div class='sbar-item'><div class='sbl'>Total</div>"
-		"  <div class='sbv tb'>%d</div></div>"
-		"<div class='sbar-item'><div class='sbl'>Active</div>"
-		"  <div class='sbv tg'>%d</div></div>"
-		"<div class='sbar-item'><div class='sbl'>Online</div>"
-		"  <div class='sbv%s'>%d</div></div>"
-		"<div class='sbar-item'><div class='sbl'>Disabled</div>"
-		"  <div class='sbv%s'>%d</div></div>"
-		"<div class='sbar-item'><div class='sbl'>Expired</div>"
-		"  <div class='sbv%s'>%d</div></div>"
-		"</div>",
-		total_u, active_u,
-		online_u   > 0 ? " tg" : "", online_u,
-		disabled_u > 0 ? " to" : "", disabled_u,
-		expired_u  > 0 ? " tr" : "", expired_u);
+		"<section class='utoolbar' aria-label='Users toolbar'>"
+		"<div class='tgrp' id='uStats'>"
+		"<button type='button' class='tool ust act' data-f='all' aria-pressed='true'>All <span class='n' id='cnt_all'>%d</span></button>"
+		"<button type='button' class='tool ust' data-f='active' aria-pressed='false'>Active <span class='n' id='cnt_active'>%d</span></button>"
+		"<button type='button' class='tool ust' data-f='online' aria-pressed='false'>Online <span class='n' id='cnt_online'>%d</span></button>"
+		"<button type='button' class='tool ust' data-f='disabled' aria-pressed='false'>Disabled <span class='n' id='cnt_disabled'>%d</span></button>"
+		"<button type='button' class='tool ust' data-f='expired' aria-pressed='false'>Expired <span class='n' id='cnt_expired'>%d</span></button>"
+		"</div>"
+		"<div class='usrch'>" ICON("i-search")
+		"<input id='usrSearch' type='search' placeholder='Search users&hellip;' title='Search user, CAID, IP or protocol (press / )'"
+		" autocomplete='off' spellcheck='false' aria-label='Search users'></div>"
+		"<div class='tgrp'>"
+		"<button type='button' class='tool' data-a='refresh'>" ICON("i-refresh") "Refresh</button>"
+		"<button type='button' class='tool pri' data-a='add'>" ICON("i-plus") "Add User</button>"
+		"</div></section>",
+		total_u, active_u, online_u, disabled_u, expired_u);
 
+	                                                                           
+#define TH(cls, key, label) "<th class='" cls "'><button type='button' class='table-sort' data-k='" key "' data-dir=''>" label "<span class='sort-arrow' aria-hidden='true'></span></button></th>"
 	pos = buf_printf(&buf, &bsz, pos,
-		"<div class='ttb' style='display:flex;align-items:center;gap:8px'>"
-		"<input class='tsrch' id='usrSearch' placeholder='Search users...' "
-		"oninput='filterUsers()' autocomplete='off'>"
-		"<button class='btn bg sm' onclick='location.reload()' style='flex-shrink:0'>"
-		ICO_RELOAD "&nbsp;Refresh</button>"
-		"<button class='btn bp sm' onclick=\"openAddUser()\" style='flex-shrink:0'>"
-		"Add User</button>"
-		"</div>");
-
-	S_SERVER_STATS st = collect_stats();
-	(void)st;
-
-	pos = buf_printf(&buf, &bsz, pos,
-		"<div class='tw'><table id='usrTable'>"
+		"<section class='tw cm' id='uTable'><table class='ut' id='usrTable'>"
 		"<thead><tr>"
-		"<th style='width:36px'></th>"
-		"<th class='sortable' onclick='sortTable(1)'>User</th>"
-		"<th class='sortable' onclick='sortTable(2)'>CAID</th>"
-		"<th class='sortable' onclick='sortTable(3)' title='Active connections'>Active</th>"
-		"<th>Max</th>"
-		"<th>CW OK / NOK</th>"
-		"<th class='sortable' onclick='sortTable(6)' title='Hit rate %%'>Rate</th>"
-		"<th class='sortable' onclick='sortTable(7)' title='Average ECM response ms'>Avg&nbsp;ms</th>"
-		"<th title='Min/Max ECM response ms'>Min/Max</th>"
-		"<th class='sortable' onclick='sortTable(9)'>Proto</th>"
-		"<th>IP</th>"
-		"<th class='sortable' onclick='sortTable(11)'>Idle</th>"
-		"<th class='sortable' onclick='sortTable(12)'>First Login</th>"
-		"<th class='sortable' onclick='sortTable(13)'>Last Seen</th>"
-		"<th>Expiry</th><th></th>"
+		TH("c-en",   "en",   "On")
+		TH("c-user", "user", "User")
+		TH("c-conn", "conn", "Conn")
+		TH("c-ip",   "ip",   "IP")
+		"<th class='c-country'>Country</th>"
+		TH("c-caid", "caid", "CAID")
+		TH("c-ok",   "ok",   "CW OK")
+		TH("c-nok",  "nok",  "CW NOK")
+		TH("c-proto","proto","Proto")
+		TH("c-idle", "idle", "Idle")
+		TH("c-first","first","First login")
+		TH("c-last", "last", "Last seen")
+		TH("c-exp",  "exp",  "Expiry")
+		"<th class='c-btn'>Actions</th>"
 		"</tr></thead><tbody id='usrBody'>");
+#undef TH
 
-	typedef struct { char user[64]; char ip[MAXIPLEN]; char proto[12]; time_t last_ecm; } cl_snap;
-	cl_snap *snaps = (cl_snap *)calloc(MAX_ACTIVE_CLIENTS, sizeof(cl_snap));
-	int nsnaps = 0;
-	if (snaps) {
-		pthread_mutex_lock(&g_clients_mtx);
-		for (int ci = 0; ci < MAX_ACTIVE_CLIENTS; ci++) {
-			S_CLIENT *cl = g_clients[ci];
-			if (!cl || !cl->account) continue;
-			tcmg_strlcpy(snaps[nsnaps].user,  cl->account->user, 64);
-			tcmg_strlcpy(snaps[nsnaps].ip,    cl->ip, MAXIPLEN);
-			tcmg_strlcpy(snaps[nsnaps].proto, cl->proto[0] ? cl->proto : "unknown", 12);
-			snaps[nsnaps].last_ecm = cl->last_ecm_time;
-			nsnaps++;
-		}
-		pthread_mutex_unlock(&g_clients_mtx);
-	}
+	                                                                           
+	S_WEBIF_CLIENT_VIEW *snaps = calloc(MAX_ACTIVE_CLIENTS, sizeof(*snaps));
+	int nsnaps = snaps ? webif_client_snapshot_all(snaps, MAX_ACTIVE_CLIENTS) : 0;
 
-	pthread_rwlock_rdlock(&g_cfg.acc_lock);
+	                                                                           
 	int row = 0;
-	int64_t tot_cw_ok = 0, tot_cw_nok = 0;
-	for (S_ACCOUNT *a = g_cfg.accounts; a; a = a->next, row++) {
-		char last[32], expiry[128];
-		format_time((time_t)a->last_seen, last, sizeof(last));
+	int64_t tot_ok = 0, tot_nok = 0;
 
-		if (a->expirationdate > 0) {
-			format_time(a->expirationdate, expiry, sizeof(expiry));
-			if (time(NULL) > a->expirationdate)
-				snprintf(expiry, sizeof(expiry),
-				         "<span class='badge bban'>EXPIRED</span>");
-		} else {
-			snprintf(expiry, sizeof(expiry), "<span class='tm'>&mdash;</span>");
-		}
+	for (int ai = 0; ai < naccounts; ai++, row++) {
+		S_WEBIF_ACCOUNT_VIEW *a = &accounts[ai];
+		int expired = (a->expirationdate > 0 && now > a->expirationdate);
+		const char *state = !a->enabled ? "disabled" : expired ? "expired" : "active";
 
-		int64_t tot = a->cw_found + a->cw_not;
-		double  hr  = tot > 0 ? (double)a->cw_found * 100.0 / (double)tot : -1.0;
-		char hrstr[16], avgstr[16], minmaxstr[32];
-		if (hr >= 0) snprintf(hrstr,  sizeof(hrstr),  "%.1f%%", hr);
-		else         tcmg_strlcpy(hrstr, "&mdash;", sizeof(hrstr));
-		if (a->cw_found > 0)
-			snprintf(avgstr, sizeof(avgstr), "%lld",
-			         (long long)(a->cw_time_total_ms / a->cw_found));
-		else
-			tcmg_strlcpy(avgstr, "&mdash;", sizeof(avgstr));
-		if (a->cw_found > 0 && a->cw_time_min_ms > 0)
-			snprintf(minmaxstr, sizeof(minmaxstr), "%lld / %lld",
-			         (long long)a->cw_time_min_ms,
-			         (long long)a->cw_time_max_ms);
-		else
-			tcmg_strlcpy(minmaxstr, "&mdash;", sizeof(minmaxstr));
+		int64_t ok = a->cw_found, nok = a->cw_not;
+		tot_ok += ok; tot_nok += nok;
+		long long avg = ok > 0 ? (long long)(a->cw_time_total_ms / ok) : -1;
 
-		const char *proto_str = "&mdash;";
-		char ip_str[MAXIPLEN] = "";
-		time_t last_ecm_t = 0;
-		char first_login_str[32];
-		format_time((time_t)a->first_login, first_login_str, sizeof(first_login_str));
-
-		if (snaps) {
-			for (int si = 0; si < nsnaps; si++) {
-				if (strcmp(snaps[si].user, a->user) != 0) continue;
-				proto_str = snaps[si].proto;
-				if (!ip_str[0]) tcmg_strlcpy(ip_str, snaps[si].ip, sizeof(ip_str));
-				if (snaps[si].last_ecm > last_ecm_t) last_ecm_t = snaps[si].last_ecm;
+		                                        
+		int    nsess = 0;
+		char   ip_str[MAXIPLEN] = "", proto_raw[12] = "", live_chan[80] = "";
+		time_t last_ecm_t = 0, live_t = 0;
+		unsigned live_caid = 0, live_sid = 0;
+		uint16_t live_all[16];
+		int      nlive = 0;
+		for (int si = 0; si < nsnaps; si++) {
+			if (strcmp(snaps[si].user, a->user) != 0) continue;
+			if (!nsess) {
+				tcmg_strlcpy(ip_str,    snaps[si].ip,    sizeof(ip_str));
+				tcmg_strlcpy(proto_raw, snaps[si].proto, sizeof(proto_raw));
+			}
+			nsess++;
+			if (snaps[si].last_activity > last_ecm_t) last_ecm_t = snaps[si].last_activity;
+			if (snaps[si].caid) {
+				int dup = 0;
+				for (int k = 0; k < nlive; k++) if (live_all[k] == snaps[si].caid) dup = 1;
+				if (!dup && nlive < 16) live_all[nlive++] = snaps[si].caid;
+				if (snaps[si].last_activity >= live_t) {
+					live_t    = snaps[si].last_activity;
+					live_caid = snaps[si].caid;
+					live_sid  = snaps[si].sid;
+					tcmg_strlcpy(live_chan, snaps[si].channel, sizeof(live_chan));
+				}
 			}
 		}
 
-		char idle_str[32];
-		if (a->active > 0 && last_ecm_t > 0) {
-			time_t idle_s = time(NULL) - last_ecm_t;
-			if (idle_s < 0) idle_s = 0;
-			format_uptime(idle_s, idle_str, sizeof(idle_str));
-		} else {
-			tcmg_strlcpy(idle_str, "&mdash;", sizeof(idle_str));
+		char allowed[128];
+		tcmg_strlcpy(allowed, a->caids, sizeof(allowed));
+		long idle_s = (nsess > 0 && last_ecm_t > 0) ? (long)(now - last_ecm_t) : -1;
+		if (nsess > 0 && idle_s < 0) idle_s = 0;
+
+		char last_ip[64];
+		tcmg_strlcpy(last_ip, a->last_ip, sizeof(last_ip));
+		const char *flag_ip = nsess > 0 ? ip_str : last_ip;
+
+		unsigned ipn = 0;
+		{ unsigned o[4]; if (sscanf(ip_str, "%u.%u.%u.%u", &o[0], &o[1], &o[2], &o[3]) == 4)
+			ipn = ((o[0] & 255u) << 24) | ((o[1] & 255u) << 16) | ((o[2] & 255u) << 8) | (o[3] & 255u); }
+
+		char esc_user[256], esc_ip[64], esc_flag_ip[64], esc_proto[32], q_raw[512], q_esc[1400];
+		html_escape(a->user, esc_user, sizeof(esc_user));
+		html_escape(ip_str, esc_ip, sizeof(esc_ip));
+		html_escape(flag_ip, esc_flag_ip, sizeof(esc_flag_ip));
+		html_escape(proto_raw, esc_proto, sizeof(esc_proto));
+		char live_s[16] = "";
+		if (live_caid) snprintf(live_s, sizeof(live_s), "%04X", live_caid);
+		snprintf(q_raw, sizeof(q_raw), "%s %s %s %s %s", a->user, live_s, allowed, ip_str, proto_raw);
+		html_escape(q_raw, q_esc, sizeof(q_esc));
+
+		char allowed_esc[256];
+		html_escape(allowed, allowed_esc, sizeof(allowed_esc));
+		char ok_s[32], nok_s[32];
+		fmt_int(ok,  ok_s,  sizeof(ok_s));
+		fmt_int(nok, nok_s, sizeof(nok_s));
+
+		                                                                    
+                                                                        
+                                                                  
+                                                                          
+		const char *vis = "";
+		if (expired) {
+			vis = "expired";
+		} else if (!a->enabled) {
+			vis = "disabled";
+		} else if (a->active > 0 && idle_s >= 30) {
+			vis = "stale";
+		} else if (a->active > 0) {
+			vis = "online";
 		}
 
-		const char *btn_cls = a->enabled ? "pw-btn on" : "pw-btn off";
-		char esc_user_attr[256], esc_user_html[256];
-		html_escape(a->user, esc_user_attr, sizeof(esc_user_attr));
-		tcmg_strlcpy(esc_user_html, esc_user_attr, sizeof(esc_user_html));
-		tot_cw_ok  += a->cw_found;
-		tot_cw_nok += a->cw_not;
+		                                       
+		pos = buf_printf(&buf, &bsz, pos,
+			"<tr class='urow' data-i='%d' data-user='%s' data-state='%s' data-vis='%s' data-en='%d' data-expd='%d'"
+			" data-online='%d' data-active='%d' data-caid='%u' data-ok='%lld' data-nok='%lld'"
+			" data-avg='%lld' data-proto='%s' data-ipn='%u' data-idle='%ld'"
+			" data-first='%lld' data-last='%lld' data-exp='%lld' data-allowed='%s' data-q='%s'>",
+			row, esc_user, state, vis, (int)a->enabled, expired,
+			a->active > 0 ? 1 : 0, (int)a->active, live_caid,
+			(long long)ok, (long long)nok, avg, esc_proto, ipn, idle_s,
+			(long long)a->first_login, (long long)a->last_seen, (long long)a->expirationdate, allowed_esc, q_esc);
 
-		double bar_w = hr >= 0 ? hr : 0.0;
+		pos = buf_printf(&buf, &bsz, pos,
+			"<td class='c-en'><input type='checkbox' class='en-box' data-a='tg'%s"
+			" title='Enable / disable' aria-label='Account enabled'></td>"
+			"<td class='c-user'><button type='button' class='ulink' data-a='edit' title='%s'>%s</button></td>",
+			a->enabled ? " checked" : "", esc_user, esc_user);
 
-		char maxconn_str[16];
-		if (a->max_connections <= 0)
-			tcmg_strlcpy(maxconn_str, "&infin;", sizeof(maxconn_str));
+		                        
+		char maxc[16];
+		if (a->max_connections <= 0) tcmg_strlcpy(maxc, "&infin;", sizeof(maxc));
+		else snprintf(maxc, sizeof(maxc), "%d", (int)a->max_connections);
+		int full = (a->max_connections > 0 && a->active >= a->max_connections);
+		pos = buf_printf(&buf, &bsz, pos,
+			"<td class='c-conn mono' title='Active / maximum connections'><span class='cn%s'>%d</span>"
+			"<span class='dim'>/%s</span></td>",
+			full ? " full" : a->active > 0 ? " on" : "", (int)a->active, maxc);
+
+		                                      
+		if (nsess > 0)
+			pos = buf_printf(&buf, &bsz, pos,
+				"<td class='c-ip mono'>%s</td>"
+				"<td class='c-country'><span class='flg uipflag' data-ip='%s' title=''></span></td>",
+				esc_ip, esc_flag_ip);
+		else if (esc_flag_ip[0])
+			pos = buf_printf(&buf, &bsz, pos,
+				"<td class='c-ip dim'>&mdash;</td><td class='c-country'><span class='flg uipflag' data-ip='%s' title='Last known country'></span></td>",
+				esc_flag_ip);
 		else
-			snprintf(maxconn_str, sizeof(maxconn_str), "%d", (int)a->max_connections);
+			pos = buf_printf(&buf, &bsz, pos,
+				"<td class='c-ip dim'>&mdash;</td><td class='c-country dim'>&mdash;</td>");
+
+		                               
+		{
+			char chan_esc[400], tip[700];
+			html_escape(live_chan, chan_esc, sizeof(chan_esc));
+			if (live_caid)
+				snprintf(tip, sizeof(tip), "Now watching: %s (SID %04X)&#10;Allowed CAIDs: %s",
+				         chan_esc[0] ? chan_esc : "unknown channel", live_sid, allowed[0] ? allowed : "none");
+			else
+				snprintf(tip, sizeof(tip), "%s&#10;Allowed CAIDs: %s",
+				         nsess > 0 ? "Online, no ECM received yet" : "Offline", allowed[0] ? allowed : "none");
+
+			if (live_caid) {
+				char more[48] = "";
+				if (nlive > 1) snprintf(more, sizeof(more), "<span class='more'>+%d</span>", nlive - 1);
+				pos = buf_printf(&buf, &bsz, pos,
+					"<td class='c-caid mono' title='%s'>%04X%s</td>", tip, live_caid, more);
+			} else {
+				pos = buf_printf(&buf, &bsz, pos,
+					"<td class='c-caid mono dim' title='%s'>&mdash;</td>", tip);
+			}
+		}
 
 		pos = buf_printf(&buf, &bsz, pos,
-			"<tr data-user='%s'>"
-			"<td><button class='%s' id='pw_%.32s' onclick='tgUser(this)' title='Toggle'>"
-			"<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>"
-			"<path d='M18.36 6.64a9 9 0 1 1-12.73 0'/><line x1='12' y1='2' x2='12' y2='12'/>"
-			"</svg></button></td>"
-			"<td><div class='flex gap8'>"
-			"  <span class='u-link bold' onclick='editUser(this)'>%s</span>"
-			"</div></td>"
-			"<td class='mono'><span class='badge bbl'>%04X</span></td>"
-			"<td class='mono%s'>%d</td>"
-			"<td class='mono tm'>%s</td>"
-			"<td>"
-			"  <div class='msr'>"
-			"    <span class='msr-kv'><span class='msr-k'>OK</span>"
-			"      <span class='msr-v tg'>%lld</span></span>"
-			"    <span class='msr-kv'><span class='msr-k'>NOK</span>"
-			"      <span class='msr-v%s'>%lld</span></span>"
-			"  </div>"
-			"  <div class='hbw' style='margin-top:4px'>"
-			"<div class='hbf' style='width:%.0f%%'></div></div>"
-			"</td>"
-			"<td class='mono'><span class='%s'>%s</span></td>"
-			"<td class='mono tm'>%s</td>"
-			"<td class='mono tm' style='font-size:11px'>%s</td>"
-			"<td class='mono'><span class='%s' style='font-size:11px'>%s</span></td>"
-			"<td class='mono' style='font-size:11px;color:var(--t1)'>%s</td>"
-			"<td class='mono tm' style='font-size:11px'>%s</td>"
-			"<td class='mono tm' style='font-size:11px'>%s</td>"
-			"<td class='mono tm' style='font-size:11px'>%s</td>"
-			"<td style='font-size:12px'>%s</td>"
-			"<td>"
-			"  <div style='display:flex;gap:4px'>"
-			"    <button class='btn bg sm' onclick='resetStats(this)' title='Reset stats' "
-			"      data-u='%s' style='padding:4px 7px;font-size:11px'>&#8635;</button>"
-			"    <button class='btn bd_ sm' onclick='delUser(this)' data-u='%s' title='Delete'>"
-			ICO_KILLBTN "</button>"
-			"  </div>"
-			"</td>"
-			"</tr>",
-			esc_user_attr,
-			btn_cls, esc_user_attr, esc_user_html,
-			(unsigned int)a->caid,
-			a->active > 0 ? " tg bold" : "", (int)a->active,
-			maxconn_str,
-			(long long)a->cw_found,
-			a->cw_not > 0 ? " tr" : "", (long long)a->cw_not,
-			bar_w,
-			hr > 80.0 ? "tg" : hr >= 0 ? (hr > 50.0 ? "to" : "tr") : "tm",
-			hrstr,
-			avgstr,
-			minmaxstr,
+			"<td class='c-ok mono tg'>%s</td>"
+			"<td class='c-nok mono %s'>%s</td>",
+			ok_s, nok > 0 ? "tr" : "dim", nok_s);
 
-			a->active > 0 ? "badge bcy" : "tm", proto_str,
+		                                  
+		if (nsess > 0) {
+			char idle_txt[24];
+			fmt_dur(idle_s, idle_txt, sizeof(idle_txt));
+			pos = buf_printf(&buf, &bsz, pos,
+				"<td class='c-proto'><span class='badge bcy'>%s</span></td>"
+				"<td class='c-idle mono'>%s</td>",
+				esc_proto, idle_txt);
+		} else {
+			pos = buf_printf(&buf, &bsz, pos,
+				"<td class='c-proto dim'>&mdash;</td><td class='c-idle dim'>&mdash;</td>");
+		}
 
-			ip_str[0] ? ip_str : "&mdash;",
+		                             
+		{
+			char seen[40], seen_full[32], first_d[32];
+			fmt_ago(a->last_seen, now, seen, sizeof(seen));
+			format_time((time_t)a->last_seen, seen_full, sizeof(seen_full));
+			if (a->first_login > 0) {
+				fmt_date((time_t)a->first_login, first_d, sizeof(first_d));
+				pos = buf_printf(&buf, &bsz, pos, "<td class='c-first mono'>%s</td>", first_d);
+			} else {
+				pos = buf_printf(&buf, &bsz, pos, "<td class='c-first dim'>&mdash;</td>");
+			}
+			if (a->last_seen > 0)
+				pos = buf_printf(&buf, &bsz, pos, "<td class='c-last' title='%s'>%s</td>", seen_full, seen);
+			else
+				pos = buf_printf(&buf, &bsz, pos, "<td class='c-last dim'>&mdash;</td>");
+		}
 
-			idle_str,
+		                                                                    
+		if (a->expirationdate > 0) {
+			char ed[16], sub[48];
+			const char *dot;
+			fmt_date(a->expirationdate, ed, sizeof(ed));
+			if (expired) {
+				char ago[24];
+				fmt_ago(a->expirationdate, now, ago, sizeof(ago));
+				snprintf(sub, sizeof(sub), "Expired %s", ago);
+				dot = "expired";
+			} else {
+				long days = (long)((a->expirationdate - now + 86399) / 86400);
+				if (days < 1) days = 1;
+				snprintf(sub, sizeof(sub), days == 1 ? "Expires in 1 day" : "Expires in %ld days", days);
+				dot = days <= 7 ? "expiring" : "valid";
+			}
+			pos = buf_printf(&buf, &bsz, pos,
+				"<td class='c-exp mono' title='%s'>%s<span class='sdot %s' aria-hidden='true'></span></td>",
+				sub, ed, dot);
+		} else {
+			pos = buf_printf(&buf, &bsz, pos, "<td class='c-exp dim' title='No expiry'>&mdash;</td>");
+		}
 
-			first_login_str,
-
-			last, expiry, a->user, a->user);
+		             
+		pos = buf_printf(&buf, &bsz, pos,
+			"<td class='c-btn'><div class='ba'>"
+			"<button type='button' class='act-b ed' data-a='edit' title='Edit' aria-label='Edit user'>" ICON("i-edit") "</button>"
+			"<button type='button' class='act-b rs' data-a='reset' title='Reset statistics' aria-label='Reset statistics'>" ICON("i-reset") "</button>"
+			"<button type='button' class='act-b dl' data-a='del' title='Delete' aria-label='Delete user'>" ICON("i-trash") "</button>"
+			"</div></td></tr>");
 	}
-	pthread_rwlock_unlock(&g_cfg.acc_lock);
 	free(snaps);
+	free(accounts);
 
-	if (!row)
-		pos = buf_printf(&buf, &bsz, pos,
-			"<tr class='erow'><td colspan='11'>"
-			"<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'"
-			" style='vertical-align:-3px;margin-right:6px;opacity:.35'>"
-			"<path d='M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2'/><circle cx='9' cy='7' r='4'/>"
-			"</svg>No accounts configured"
-			"</td></tr>");
-
+	                                                                            
 	{
-		int64_t tot_all = tot_cw_ok + tot_cw_nok;
-		double  tot_hr  = tot_all > 0 ? (double)tot_cw_ok * 100.0 / tot_all : 0.0;
+		char ok_s[32], nok_s[32];
+		fmt_int(tot_ok,  ok_s,  sizeof(ok_s));
+		fmt_int(tot_nok, nok_s, sizeof(nok_s));
+
 		pos = buf_printf(&buf, &bsz, pos,
-			"</tbody>"
-			"<tfoot><tr>"
-			"<td colspan='5'>"
-			"  <span class='tfl'>Totals &mdash; %d users</span>"
-			"</td>"
-			"<td>"
-			"  <span class='tg tfs'>%ld</span>"
-			"  <span style='color:var(--t2);margin:0 4px'>/</span>"
-			"  <span class='%s tfs'>%ld</span>"
-			"</td>"
-			"<td><span class='tfs %s'>%.1f%%</span></td>"
-			"<td colspan='9'></td>"
-			"</tr></tfoot>"
-			"</table></div>",
-			row,
-			(long)tot_cw_ok,
-			tot_cw_nok > 0 ? "tr" : "tm", (long)tot_cw_nok,
-			tot_hr > 80 ? "tg" : tot_hr > 50 ? "to" : "tr",
-			tot_hr);
+			"</tbody></table>"
+			"<div class='uempty' id='uEmpty' hidden>" ICON("i-users")
+			"<b id='ueT'>No users</b><span id='ueS'></span><br>"
+			"<button type='button' class='tool pri' id='ueB' data-a='add'>Add User</button></div>"
+			"</section>"
+			"<footer class='ufoot'>"
+			"<div class='ucount' id='uCount'>"
+			"<span><b>%d</b>%s</span>"
+			"<span><b class='tg'>%s</b>CW OK</span>"
+			"<span><b class='%s'>%s</b>CW NOK</span>"
+			"</div>"
+			"<div class='pager-wrap'><div class='pager' id='pager' aria-label='Pagination'></div>"
+			"<span class='pstat' id='pageStat' aria-live='polite'></span></div>"
+			"<label class='per-page'><select id='limit' aria-label='Users per page'>"
+			"<option>30</option><option>50</option><option>100</option><option>200</option></select>"
+			"<span>per page</span></label>"
+			"</footer>",
+			row, row == 1 ? "user" : "users",
+			ok_s,
+			tot_nok > 0 ? "tr" : "dim", nok_s);
 	}
 
+	                                                                           
 	pos = buf_printf(&buf, &bsz, pos,
+		"<div class='mo' id='uModal' hidden>"
+		"<div class='mc user-modal' role='dialog' aria-modal='true' aria-labelledby='umTitle'>"
+		"<div class='mh'><h2 id='umTitle'>Edit User</h2>"
+		"<button type='button' class='ib' data-a='close' aria-label='Close'>" ICON("i-x") "</button></div>"
+		"<div class='mb'>"
+		"<input type='hidden' id='em_user'>"
+		"<div class='fg' id='em_udisp_wrap'><label class='fld' for='em_udisp'>Username</label>"
+		"<input class='fi mono' id='em_udisp' disabled></div>"
+		"<div class='fg' id='em_unew_wrap' hidden><label class='fld' for='em_unew'>Username</label>"
+		"<input class='fi mono' id='em_unew' placeholder='new_user' autocomplete='off' spellcheck='false'></div>"
+		"<div class='fg'><label class='fld' for='em_pass'>Password</label>"
+		"<input class='fi mono' id='em_pass' type='text' autocomplete='off' spellcheck='false'></div>"
+		"<div class='fg'><label class='fld' for='em_caid'>CAIDs (hex, comma-separated)</label>"
+		"<input class='fi mono' id='em_caid' maxlength='64' placeholder='0B00,0B01,0604' autocomplete='off' spellcheck='false' style='text-transform:uppercase'>"
+		"<div class='fhint'>One or more CAIDs, up to 9. Empty = none.</div></div>"
+		"<div class='user-g3'>"
+		"<div class='fg'><label class='fld' for='em_groups'>Reader groups</label>"
+		"<input class='fi mono' id='em_groups' placeholder='1,5' autocomplete='off' spellcheck='false'></div>"
+		"<div class='fg'><label class='fld' for='em_maxconn'>Max connections</label>"
+		"<input class='fi mono' id='em_maxconn' type='number' min='0' value='0' placeholder='0 = unlimited'></div>"
+		"</div>"
 
-		"<div id='uModal' style='display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);"
-		"z-index:2000;align-items:center;justify-content:center'>"
-		"<div class='card' style='width:380px;max-width:95vw;padding:24px'>"
-		"  <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:16px'>"
-		"    <span id='umTitle' style='font-weight:700;font-size:15px'>Edit User</span>"
-		"    <button class='btn bg sm' onclick='closeUM()'>&#10005;</button>"
-		"  </div>"
-		"  <input type='hidden' id='em_user'>"
-		"  <div id='em_udisp_wrap' class='fg'><label class='fld'>USERNAME</label>"
-		"    <input class='fi mono' id='em_udisp' disabled style='opacity:.6'></div>"
-		"  <div id='em_unew_wrap' class='fg' style='display:none'><label class='fld'>USERNAME</label>"
-		"    <input class='fi mono' id='em_unew' placeholder='new_user' autocomplete='off'></div>"
-		"  <div class='fg'><label class='fld'>PASSWORD</label>"
-		"    <input class='fi mono' id='em_pass' type='text' autocomplete='off'></div>"
-		"  <div style='display:grid;grid-template-columns:1fr 1fr;gap:10px'>"
-		"    <div class='fg'><label class='fld'>CAID (hex)</label>"
-		"      <input class='fi mono' id='em_caid' maxlength='4' placeholder='09B5'></div>"
-		"    <div class='fg'><label class='fld'>MAX CONN (0=&infin;)</label>"
-		"      <input class='fi mono' id='em_maxconn' type='number' min='0' value='0'></div>"
-		"  </div>"
-		"  <div class='fg'><label class='fld'>EXPIRY DATE (YYYY-MM-DD, 0=never)</label>"
-		"    <input class='fi mono' id='em_expiry' placeholder='2030-12-31'></div>"
-		"  <div style='display:flex;align-items:center;gap:10px;margin:12px 0'>"
-		"    <label style='font-size:12px;font-weight:700;color:var(--t2);"
-		"text-transform:uppercase;letter-spacing:.08em'>Enabled</label>"
-		"    <input type='checkbox' id='em_enabled' checked>"
-		"  </div>"
-		"  <div id='em_err' style='display:none' class='le'>"
-		"    <svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>"
-		"<circle cx='12' cy='12' r='10'/><line x1='12' y1='8' x2='12' y2='12'/>"
-		"<line x1='12' y1='16' x2='12.01' y2='16'/></svg>"
-		"    <span id='em_err_msg'>Error</span>"
-		"  </div>"
-		"  <div style='display:flex;gap:8px;margin-top:16px'>"
-		"    <button class='btn bp sm' id='em_saveBtn' style='flex:1;justify-content:center'"
-		"     onclick='saveUM()'>Save</button>"
-		"    <button class='btn bg sm' style='flex:1;justify-content:center'"
-		"     onclick='closeUM()'>Cancel</button>"
-		"  </div>"
+		"<div class='fg' style='margin-top:2px'>"
+		"<label class='user-enable'><span>Anti-sharing protection</span>"
+		"<button type='button' class='sw' id='em_as_enabled' role='switch' aria-checked='false'"
+		" aria-label='Anti-sharing protection' data-a='sw-as'><i></i></button></label>"
+		"</div>"
+		"<div class='user-g3' id='em_as_fields' hidden>"
+		"<div class='fg'><label class='fld' for='em_as_sids'>Max active channels</label>"
+		"<input class='fi mono' id='em_as_sids' type='number' min='1' max='32' value='1'><div class='fhint'>Active client/channel entries kept by the protection timeout.</div></div>"
+		"<div class='fg'><label class='fld' for='em_as_ecm'>Max ECM requests</label>"
+		"<input class='fi mono' id='em_as_ecm' type='number' min='0' max='100000' value='0' placeholder='0 = no limit'><div class='fhint'>Incoming ECM requests allowed during the window.</div></div>"
+		"<div class='fg'><label class='fld' for='em_as_window'>ECM rate window (seconds)</label>"
+		"<input class='fi mono' id='em_as_window' type='number' min='1' max='3600' value='60'></div>"
+		"<div class='fg'><label class='fld' for='em_as_timeout'>Active channel timeout (seconds)</label>"
+		"<input class='fi mono' id='em_as_timeout' type='number' min='1' max='3600' value='15'></div>"
+		"<div class='fg'><label class='fld' for='em_as_delay'>Channel switch delay (seconds)</label>"
+		"<input class='fi mono' id='em_as_delay' type='number' min='0' max='30' value='1'></div>"
+		"<div class='fhint'>Optional delay applied to the CW returned after a channel switch. This is separate from the rate and channel limits.</div>"
+		"</div>"
+
+		"<div class='user-bottom-grid'>"
+		"<div class='fg'><label class='fld' for='em_expiry'>Expiry date</label>"
+		"<input class='fi mono' id='em_expiry' type='date'>"
+		"<div class='chips'>"
+		"<button type='button' class='chip2' data-a='exp' data-n='30'>+30 days</button>"
+		"<button type='button' class='chip2' data-a='exp' data-n='90'>+90 days</button>"
+		"<button type='button' class='chip2' data-a='exp' data-n='365'>+1 year</button>"
+		"<button type='button' class='chip2' data-a='exp' data-n='0'>Never</button>"
 		"</div></div>"
-		"<script>"
-		"function resetStats(btn){"
-		"  var u=btn.dataset.u||btn.closest('tr').dataset.user;"
-		"  if(!confirm('Reset stats for '+u+'?'))return;"
-		"  fetch('/api/user/resetstats?user='+encodeURIComponent(u))"
-		"    .then(r=>r.json())"
-		"    .then(d=>{if(d.ok)location.reload();else alert('Error: '+d.msg);});"
-		"}"
+		"<label class='user-enable'><span>Account enabled</span>"
+		"<button type='button' class='sw on' id='em_enabled' role='switch' aria-checked='true' aria-label='Account enabled' data-a='sw'><i></i></button>"
+		"</label></div>"
 
-		"function tgUser(btn){"
-		"  var u=btn.closest('tr').dataset.user;"
-		"  fetch('/api/user/toggle?user='+encodeURIComponent(u))"
-		"    .then(r=>r.json())"
-		"    .then(d=>{"
-		"      if(!d.ok)return;"
-		"      btn.className='pw-btn '+(d.enabled?'on':'off');"
-		"    });"
-		"}"
+		"<div id='em_err' class='le' hidden>" ICON("i-alert") "<span id='em_err_msg'>Error</span></div>"
+		"</div>"
+		"<div class='mf'>"
+		"<button type='button' class='btn bg' data-a='close'>Cancel</button>"
+		"<button type='button' class='btn bp' id='em_saveBtn' data-a='save'>Save</button>"
+		"</div></div></div>");
 
-		"function editUser(el){"
-		"  var u=el.closest('tr').dataset.user;"
-		"  fetch('/api/user/get?user='+encodeURIComponent(u))"
-		"    .then(r=>r.json())"
-		"    .then(d=>{"
-		"      document.getElementById('umTitle').textContent='Edit User';"
-		"      document.getElementById('em_unew_wrap').style.display='none';"
-		"      document.getElementById('em_udisp_wrap').style.display='';"
-		"      document.getElementById('em_user').value=d.user;"
-		"      document.getElementById('em_udisp').value=d.user;"
-		"      document.getElementById('em_pass').value=d.pass||'';"
-		"      document.getElementById('em_caid').value=d.caid;"
-		"      document.getElementById('em_maxconn').value=d.max_connections;"
-		"      document.getElementById('em_enabled').checked=!!d.enabled;"
-		"      document.getElementById('em_expiry').value=d.expiry||'';"
-		"      document.getElementById('em_err').style.display='none';"
-		"      document.getElementById('uModal').style.display='flex';"
-		"    });"
-		"}"
-
-		"function openAddUser(){"
-		"  document.getElementById('umTitle').textContent='Add User';"
-		"  document.getElementById('em_unew_wrap').style.display='';"
-		"  document.getElementById('em_udisp_wrap').style.display='none';"
-		"  document.getElementById('em_user').value='';"
-		"  document.getElementById('em_unew').value='';"
-		"  document.getElementById('em_pass').value='';"
-		"  document.getElementById('em_caid').value='';"
-		"  document.getElementById('em_maxconn').value='0';"
-		"  document.getElementById('em_enabled').checked=true;"
-		"  document.getElementById('em_expiry').value='';"
-		"  document.getElementById('em_err').style.display='none';"
-		"  document.getElementById('uModal').style.display='flex';"
-		"  setTimeout(()=>document.getElementById('em_unew').focus(),80);"
-		"}"
-		"function closeUM(){document.getElementById('uModal').style.display='none';}"
-		"function delUser(btn){"
-		"  var u=btn.dataset.u||btn.closest('tr').dataset.user;"
-		"  if(!confirm('Delete user '+u+'?\\nThis cannot be undone.'))return;"
-		"  fetch('/api/user/delete?user='+encodeURIComponent(u))"
-		"    .then(r=>r.json())"
-		"    .then(d=>{if(d.ok)location.reload();else alert('Error: '+d.msg);});"
-		"}"
-		"function saveUM(){"
-		"  var isAdd=!document.getElementById('em_user').value;"
-		"  var username=isAdd"
-		"    ?document.getElementById('em_unew').value.trim()"
-		"    :document.getElementById('em_user').value;"
-		"  if(!username){document.getElementById('em_err_msg').textContent='Username required';"
-		"    document.getElementById('em_err').style.display='flex';return;}"
-		"  var p=new URLSearchParams();"
-		"  p.set('user',username);"
-		"  p.set('pass',document.getElementById('em_pass').value);"
-		"  p.set('caid',document.getElementById('em_caid').value||'0');"
-		"  p.set('maxconn',document.getElementById('em_maxconn').value||'0');"
-		"  p.set('enabled',document.getElementById('em_enabled').checked?'1':'0');"
-		"  p.set('expiry',document.getElementById('em_expiry').value||'0');"
-		"  var url=isAdd?'/api/user/add':'/api/user/save';"
-		"  fetch(url,{method:'POST',body:p.toString(),"
-		"    headers:{'Content-Type':'application/x-www-form-urlencoded'}})"
-		"    .then(r=>r.json())"
-		"    .then(d=>{if(d.ok){closeUM();location.reload();}"
-		"      else{document.getElementById('em_err_msg').textContent=d.msg||'Error';"
-		"           document.getElementById('em_err').style.display='flex';}});"
-		"}"
-
-		"function filterUsers(){"
-		"  var q=document.getElementById('usrSearch').value.toLowerCase();"
-		"  var rows=document.getElementById('usrBody').rows;"
-		"  for(var i=0;i<rows.length;i++){"
-		"    var u=(rows[i].getAttribute('data-user')||'').toLowerCase();"
-		"    rows[i].style.display=(!q||u.includes(q))?'':'none';"
-		"  }"
-		"}"
-
-		"var _sortCol=-1,_sortDir=1;"
-		"function sortTable(col){"
-		"  var tb=document.getElementById('usrTable');"
-		"  var ths=tb.querySelectorAll('th');"
-		"  ths.forEach(function(t){t.classList.remove('sort-asc','sort-desc');});"
-		"  if(_sortCol===col){_sortDir*=-1;}else{_sortCol=col;_sortDir=1;}"
-		"  ths[col].classList.add(_sortDir===1?'sort-asc':'sort-desc');"
-		"  var body=document.getElementById('usrBody');"
-		"  var rows=Array.from(body.rows);"
-		"  rows.sort(function(a,b){"
-		"    var av=a.cells[col]?a.cells[col].textContent.trim():'';"
-		"    var bv=b.cells[col]?b.cells[col].textContent.trim():'';"
-		"    var an=parseFloat(av),bn=parseFloat(bv);"
-		"    var cmp=isNaN(an)||isNaN(bn)?av.localeCompare(bv):an-bn;"
-		"    return cmp*_sortDir;"
-		"  });"
-		"  rows.forEach(function(r){body.appendChild(r);});"
-		"}"
-		"</script>");
+	                                                                              
+	pos = buf_printf(&buf, &bsz, pos, "<script>%s</script>", TCMG_USERS_JS);
 
 	pos = emit_footer(&buf, &bsz, pos);
 	PAGE_SEND_AND_FREE(fd);
 }
-
