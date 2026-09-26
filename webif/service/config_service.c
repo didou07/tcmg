@@ -1,4 +1,4 @@
-#define MODULE_LOG_PREFIX "webif-service"
+#define MODULE_LOG_PREFIX "webif"
 #include "service.h"
 #include "../../src/config/config.h"
 #include "../../src/config/config_internal.h"
@@ -32,16 +32,16 @@ bool webif_config_snapshot(S_WEBIF_CONFIG_VIEW *out)
     out->server_keepalive = g_cfg.server_keepalive;
     out->server_keepalive_misses = g_cfg.server_keepalive_misses;
     out->ecm_log = g_cfg.ecm_log;
+    out->scheduled_restart_enabled = g_cfg.scheduled_restart_enabled;
+    unsigned restart_minutes = (g_cfg.scheduled_restart_minutes >= 0 && g_cfg.scheduled_restart_minutes < 1440)
+        ? (unsigned)g_cfg.scheduled_restart_minutes : 240u;
+    snprintf(out->scheduled_restart_time, sizeof(out->scheduled_restart_time), "%02u:%02u", restart_minutes / 60u, restart_minutes % 60u);
     tcmg_strlcpy(out->logfile, g_cfg.logfile, sizeof(out->logfile));
     out->webif_port = g_cfg.webif_port;
     out->webif_refresh = g_cfg.webif_refresh;
     tcmg_strlcpy(out->webif_user, g_cfg.webif_user, sizeof(out->webif_user));
     tcmg_strlcpy(out->webif_pass, g_cfg.webif_pass, sizeof(out->webif_pass));
     tcmg_strlcpy(out->webif_bindaddr, g_cfg.webif_bindaddr, sizeof(out->webif_bindaddr));
-    out->pcsc_enabled = g_cfg.pcsc_enabled;
-    out->pcsc_fast_reset = g_cfg.pcsc_fast_reset;
-    out->pcsc_poll_ms = g_cfg.pcsc_poll_ms;
-    tcmg_strlcpy(out->pcsc_reader, g_cfg.pcsc_reader, sizeof(out->pcsc_reader));
     out->failban_enabled = g_cfg.failban_enabled;
     tcmg_strlcpy(out->failban_allowlist, g_cfg.failban_allowlist, sizeof(out->failban_allowlist));
     out->failban_max_fails = g_cfg.failban_max_fails;
@@ -83,16 +83,14 @@ bool webif_config_apply(const S_WEBIF_CONFIG_PATCH *p, bool *restart_required)
     if (p->has_server_keepalive) g_cfg.server_keepalive = p->server_keepalive;
     if (p->has_server_keepalive_misses) g_cfg.server_keepalive_misses = p->server_keepalive_misses;
     if (p->has_ecm_log) g_cfg.ecm_log = p->ecm_log;
+    if (p->has_scheduled_restart) g_cfg.scheduled_restart_enabled = p->scheduled_restart_enabled;
+    if (p->has_scheduled_restart_time) { int hh = (p->scheduled_restart_time[0]-'0')*10 + (p->scheduled_restart_time[1]-'0'); int mm = (p->scheduled_restart_time[3]-'0')*10 + (p->scheduled_restart_time[4]-'0'); g_cfg.scheduled_restart_minutes = hh*60 + mm; }
     if (p->has_logfile) tcmg_strlcpy(g_cfg.logfile, p->logfile, sizeof(g_cfg.logfile));
     if (p->has_webif_port) g_cfg.webif_port = p->webif_port;
     if (p->has_webif_refresh) g_cfg.webif_refresh = p->webif_refresh;
     if (p->has_webif_user) tcmg_strlcpy(g_cfg.webif_user, p->webif_user, sizeof(g_cfg.webif_user));
     if (p->has_webif_pass) tcmg_strlcpy(g_cfg.webif_pass, p->webif_pass, sizeof(g_cfg.webif_pass));
     if (p->has_webif_bindaddr) tcmg_strlcpy(g_cfg.webif_bindaddr, p->webif_bindaddr, sizeof(g_cfg.webif_bindaddr));
-    if (p->has_pcsc_enabled) g_cfg.pcsc_enabled = p->pcsc_enabled;
-    if (p->has_pcsc_fast_reset) g_cfg.pcsc_fast_reset = p->pcsc_fast_reset;
-    if (p->has_pcsc_poll_ms) g_cfg.pcsc_poll_ms = p->pcsc_poll_ms;
-    if (p->has_pcsc_reader) tcmg_strlcpy(g_cfg.pcsc_reader, p->pcsc_reader, sizeof(g_cfg.pcsc_reader));
     if (p->has_failban_enabled) g_cfg.failban_enabled = p->failban_enabled;
     if (p->has_failban_allowlist) tcmg_strlcpy(g_cfg.failban_allowlist, p->failban_allowlist, sizeof(g_cfg.failban_allowlist));
     if (p->has_failban_max_fails) g_cfg.failban_max_fails = p->failban_max_fails;
@@ -110,7 +108,7 @@ bool webif_config_apply(const S_WEBIF_CONFIG_PATCH *p, bool *restart_required)
     if (ok) {
         if (restart_required) *restart_required = restart;
         if (!restart) g_reload_cfg = 1;
-        else tcmg_log("webif: listener settings saved; restart required to apply them");
+        else tcmg_log("listener settings saved; restart required to apply them");
     }
     return ok;
 }

@@ -4,7 +4,7 @@
 
 int main(void)
 {
-    static const char *required[] = { "cccam", "newcamd", "cs378x", "emu", "pcsc", "internal" };
+    static const char *required[] = { "cccam", "newcamd", "cs378x", "emu", "pcsc", "internal", "serial" };
     size_t count = reader_protocol_count();
 
     if (count != sizeof(required) / sizeof(required[0])) {
@@ -24,10 +24,16 @@ int main(void)
         }
     }
 
-    if (reader_protocol_find("CCCAm") != reader_protocol_find("cccam")) return 4;
-    if (reader_protocol_find("MGcamd") != reader_protocol_find("newcamd")) return 5;
-    if (reader_protocol_find("unknown") != NULL) return 6;
-    if (reader_protocol_at(count) != NULL) return 7;
+    if (reader_protocol_kind("cccam") != READER_PROTOCOL_NETWORK) return 4;
+    if (reader_protocol_kind("pcsc") != READER_PROTOCOL_CARD) return 5;
+    if (reader_protocol_kind("serial") != READER_PROTOCOL_CARD) return 6;
+    if (reader_protocol_kind("emu") != READER_PROTOCOL_EMU) return 7;
+    if (reader_protocol_kind("MGcamd") != READER_PROTOCOL_NETWORK) return 8;
+    if (reader_protocol_kind("unknown") != READER_PROTOCOL_UNKNOWN) return 9;
+    if (reader_protocol_find("CCCAm") != reader_protocol_find("cccam")) return 10;
+    if (reader_protocol_find("MGcamd") != reader_protocol_find("newcamd")) return 11;
+    if (reader_protocol_find("unknown") != NULL) return 12;
+    if (reader_protocol_at(count) != NULL) return 13;
 
     puts("READER_REGISTRY: PASS");
     return 0;

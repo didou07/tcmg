@@ -1,5 +1,6 @@
 #define MODULE_LOG_PREFIX "conf"
 #include "config_internal.h"
+#include "../reader/protocol.h"
 
 void cfg_path_sibling(char *out,size_t outsz,const char *global,const char *name)
 {
@@ -68,13 +69,19 @@ bool cfg_validate(S_CONFIG *c, char *err, size_t esz)
             return false;
         }
 
-        if (!strcasecmp(r->protocol, "emu")) {
+        const S_READER_PROTOCOL *protocol = reader_protocol_find(r->protocol);
+        if (!protocol) {
+            snprintf(err, esz, "reader[%d] '%s': unsupported protocol '%s'", i, r->label, r->protocol);
+            return false;
+        }
+
+        if (!strcasecmp(protocol->name, "emu")) {
             if (r->enabled && r->nkeys == 0) {
                 snprintf(err, esz, "reader[%d] '%s': enabled emu reader requires ecmkey", i, r->label);
                 return false;
             }
         }
-        else if (!strcasecmp(r->protocol, "pcsc")) {
+        else if (!strcasecmp(protocol->name, "pcsc")) {
             if (r->enabled && !r->device[0]) {
                 snprintf(err, esz, "reader[%d] '%s': PCSC reader requires a device/reader selector", i, r->label);
                 return false;
@@ -85,21 +92,29 @@ bool cfg_validate(S_CONFIG *c, char *err, size_t esz)
                 return false;
             }
         }
-        else if (!strcasecmp(r->protocol, "internal")) {
+        else if (!strcasecmp(protocol->name, "internal")) {
             if (r->enabled && !r->device[0]) {
                 snprintf(err, esz, "reader[%d] '%s': device is required", i, r->label);
                 return false;
             }
             if (r->fast_reset < 0 || r->fast_reset > 86400 ||
                 r->poll_ms < 25 || r->poll_ms > 10000) {
-                snprintf(err, esz, "reader[%d] '%s': invalid internal timing", i, r->label);
+                snprintf(err, esz, "reader[%d] '%s': invalid internal reader settings", i, r->label);
                 return false;
             }
         }
-        else if (!strcasecmp(r->protocol, "cccam") ||
-                 !strcasecmp(r->protocol, "cs378x") ||
-                 !strcasecmp(r->protocol, "newcamd") ||
-                 !strcasecmp(r->protocol, "mgcamd")) {
+        else if (!strcasecmp(protocol->name, "serial")) {
+            if (r->enabled && !r->device[0]) {
+                snprintf(err, esz, "reader[%d] '%s': serial port is required", i, r->label);
+                return false;
+            }
+            if (r->fast_reset < 0 || r->fast_reset > 86400 ||
+                r->poll_ms < 25 || r->poll_ms > 10000) {
+                snprintf(err, esz, "reader[%d] '%s': invalid serial timing", i, r->label);
+                return false;
+            }
+        }
+        else if (reader_protocol_kind(r->protocol) == READER_PROTOCOL_NETWORK) {
             const char *comma;
             long port;
 
@@ -137,10 +152,6 @@ bool cfg_validate(S_CONFIG *c, char *err, size_t esz)
                     return false;
                 }
             }
-        }
-        else {
-            snprintf(err, esz, "reader[%d] '%s': unsupported protocol '%s'", i, r->label, r->protocol);
-            return false;
         }
     }
 

@@ -278,7 +278,7 @@ static void cc_handle_ecm(S_CCCAM_CLIENT *cc, S_CLIENT *cl,
     ecm_len = p[12];
 
     if (ecm_len == 0 || plen < (uint16_t)(13 + ecm_len)) {
-        tcmg_log_dbg(D_CCCAM, "%s [cccam] ECM bad ecm_len=%u plen=%u",
+        tcmg_log_dbg(D_CCCAM, "%s ECM bad ecm_len=%u plen=%u",
                      cl->identity.ip, ecm_len, plen);
         cc_send_msg(cc, CCCAM_CMD_ECM_NOK1, NULL, 0);
         return;
@@ -288,19 +288,19 @@ static void cc_handle_ecm(S_CCCAM_CLIENT *cc, S_CLIENT *cl,
     if (access != ECM_ACCESS_OK) {
         switch (access) {
         case ECM_ACCESS_CAID_DENIED:
-            tcmg_log("%s [cccam] ECM denied: caid=%04X not permitted for user='%s'",
+            tcmg_log("%s ECM denied: caid=%04X not permitted for user='%s'",
                      cl->identity.ip, caid, cl->identity.user);
             break;
         case ECM_ACCESS_ANTISHARE:
-            tcmg_log("%s [cccam] ECM denied: anti-sharing limit triggered for user='%s' sid=%04X",
+            tcmg_log("%s ECM denied: anti-sharing limit triggered for user='%s' sid=%04X",
                      cl->identity.ip, cl->identity.user, sid);
             break;
         case ECM_ACCESS_DISABLED:
-            tcmg_log("%s [cccam] ECM denied: account disabled mid-session user='%s'",
+            tcmg_log("%s ECM denied: account disabled mid-session user='%s'",
                      cl->identity.ip, cl->identity.user);
             break;
         case ECM_ACCESS_EXPIRED:
-            tcmg_log("%s [cccam] ECM denied: account expired mid-session user='%s' expired=%ld",
+            tcmg_log("%s ECM denied: account expired mid-session user='%s' expired=%ld",
                      cl->identity.ip, cl->identity.user, (long)cl->auth.account->expirationdate);
             break;
         default:
@@ -311,7 +311,7 @@ static void cc_handle_ecm(S_CCCAM_CLIENT *cc, S_CLIENT *cl,
     }
 
     tcmg_log_dbg(D_CCCAM,
-                 "%s [cccam] ECM request user='%s' caid=%04X sid=%04X provid=%06X card_id=%08X ecm_len=%u channel='%s'",
+                 "%s ECM request user='%s' caid=%04X sid=%04X provid=%06X card_id=%08X ecm_len=%u channel='%s'",
                  cl->identity.ip, cl->identity.user, caid, sid, provid, card_id, ecm_len,
                  cl->ecm.last_channel[0] ? cl->ecm.last_channel : "unknown");
 
@@ -326,12 +326,12 @@ static void cc_handle_ecm(S_CCCAM_CLIENT *cc, S_CLIENT *cl,
     cc_send_msg(cc, CCCAM_CMD_ECM_REQ, resp, CW_LEN);
     cc_encrypt(&cc->send_block, resp, CW_LEN);
     tcmg_dump_dbg(D_CCCAM, cc->peer_node_id, 8,
-                  "%s [cccam] cw peer node card_id=%08X node", cl->identity.ip, card_id);
+                  "%s cw peer node card_id=%08X node", cl->identity.ip, card_id);
     tcmg_dump_dbg(D_CCCAM, cw, CW_LEN,
-                  "%s [cccam] CW sent to user='%s' caid=%04X sid=%04X",
+                  "%s CW sent to user='%s' caid=%04X sid=%04X",
                   cl->identity.ip, cl->identity.user, caid, sid);
     tcmg_log_dbg(D_CCCAM,
-                 "%s [cccam] ECM result=FOUND user='%s' caid=%04X sid=%04X time=%ldms cache=%d",
+                 "%s ECM result=FOUND user='%s' caid=%04X sid=%04X time=%ldms cache=%d",
                  cl->identity.ip, cl->identity.user, caid, sid, (long)result.elapsed_ms,
                  result.cache_hit ? 1 : 0);
     secure_zero(cw, sizeof(cw));
@@ -361,7 +361,7 @@ void *handle_cccam_client(void *arg)
     }
     cc.fd = cl.session.fd;
         free(args);
-    tcmg_log_dbg(D_CONN,"%s [cccam] new connection fd=%d tid=%u",
+    tcmg_log_dbg(D_CONN,"%s new connection fd=%d tid=%u",
                  cl.identity.ip, cl.session.fd, cl.identity.thread_id);
 
     {
@@ -373,27 +373,27 @@ void *handle_cccam_client(void *arg)
     net_tune_socket(cc.fd);
 
     if(ban_is_banned(cl.identity.ip)){
-        tcmg_log("%s [cccam] LOGIN failed: IP is banned", cl.identity.ip);
+        tcmg_log("%s LOGIN failed: IP is banned", cl.identity.ip);
         goto cleanup;
     }
 
     csprng(seed,CCCAM_SEED_LEN);
-    tcmg_log_dbg(D_CCCAM, "%s [cccam] sending %d-byte seed", cl.identity.ip, CCCAM_SEED_LEN);
+    tcmg_log_dbg(D_CCCAM, "%s sending %d-byte seed", cl.identity.ip, CCCAM_SEED_LEN);
     if(net_send_all(cc.fd,seed,CCCAM_SEED_LEN)!=CCCAM_SEED_LEN) goto cleanup;
 
     cc_derive_keys(&cc,seed);
     secure_zero(seed,sizeof(seed));
-    tcmg_log_dbg(D_CCCAM, "%s [cccam] session keys derived", cl.identity.ip);
+    tcmg_log_dbg(D_CCCAM, "%s session keys derived", cl.identity.ip);
 
     if(net_recv_all(cc.fd,cli_hash,CCCAM_HASH_LEN)!=CCCAM_HASH_LEN) {
-        tcmg_log_dbg(D_CCCAM, "%s [cccam] failed to receive client hash", cl.identity.ip);
+        tcmg_log_dbg(D_CCCAM, "%s failed to receive client hash", cl.identity.ip);
         goto cleanup;
     }
     cc_decrypt(&cc.recv_block,cli_hash,CCCAM_HASH_LEN);
     secure_zero(cli_hash,sizeof(cli_hash));
 
     if(net_recv_all(cc.fd,username,20)!=20) {
-        tcmg_log_dbg(D_CCCAM, "%s [cccam] failed to receive username", cl.identity.ip);
+        tcmg_log_dbg(D_CCCAM, "%s failed to receive username", cl.identity.ip);
         goto cleanup;
     }
     cc_decrypt(&cc.recv_block,username,20);
@@ -401,10 +401,10 @@ void *handle_cccam_client(void *arg)
     memcpy(user, username, sizeof(username));
     user[sizeof(user) - 1] = '\0';
 
-    tcmg_log_dbg(D_CCCAM, "%s [cccam] LOGIN attempt user='%s'", cl.identity.ip, user);
+    tcmg_log_dbg(D_CCCAM, "%s LOGIN attempt user='%s'", cl.identity.ip, user);
 
     if(net_recv_all(cc.fd,ccstr_recv,6)!=6) {
-        tcmg_log_dbg(D_CCCAM, "%s [cccam] failed to receive CCcam password proof user='%s'",
+        tcmg_log_dbg(D_CCCAM, "%s failed to receive CCcam password proof user='%s'",
                      cl.identity.ip, user);
         goto cleanup;
     }
@@ -415,7 +415,7 @@ void *handle_cccam_client(void *arg)
     secure_zero(username,sizeof(username));
 
     if(!acc){
-        tcmg_log("%s [cccam] LOGIN failed: unknown user or invalid password user='%s'", cl.identity.ip, user);
+        tcmg_log("%s LOGIN failed: unknown user or invalid password user='%s'", cl.identity.ip, user);
         ban_record_fail(cl.identity.ip); goto cleanup;
     }
 
@@ -423,12 +423,12 @@ void *handle_cccam_client(void *arg)
         T_ACCOUNT_STATUS status = account_validate(acc, cl.identity.ip);
         if (status != ACCOUNT_OK) {
             if (status == ACCOUNT_DISABLED)
-                tcmg_log("%s [cccam] LOGIN failed: account disabled user='%s'", cl.identity.ip, acc->user);
+                tcmg_log("%s LOGIN failed: account disabled user='%s'", cl.identity.ip, acc->user);
             else if (status == ACCOUNT_EXPIRED)
-                tcmg_log("%s [cccam] LOGIN failed: account expired user='%s' expired=%ld",
+                tcmg_log("%s LOGIN failed: account expired user='%s' expired=%ld",
                          cl.identity.ip, acc->user, (long)acc->expirationdate);
             else if (status == ACCOUNT_IP_DENIED)
-                tcmg_log("%s [cccam] LOGIN failed: IP not whitelisted user='%s'", cl.identity.ip, acc->user);
+                tcmg_log("%s LOGIN failed: IP not whitelisted user='%s'", cl.identity.ip, acc->user);
             goto cleanup;
         }
     }
@@ -440,7 +440,7 @@ void *handle_cccam_client(void *arg)
     secure_zero(ack,sizeof(ack));
 
     if (account_session_open(&cl, acc) < 0) {
-        tcmg_log("%s [cccam] LOGIN failed: max_connections=%d reached for user='%s' active=%d",
+        tcmg_log("%s LOGIN failed: max_connections=%d reached for user='%s' active=%d",
                  cl.identity.ip, acc->max_connections, acc->user, (int)acc->active);
         goto cleanup;
     }
@@ -454,14 +454,14 @@ void *handle_cccam_client(void *arg)
 
     {
         int card_count = acc->ncaids + (acc->caid ? 1 : 0);
-        tcmg_log("%s [cccam] LOGIN ok user='%s' cards=%d max_conn=%d",
+        tcmg_log("%s LOGIN ok user='%s' cards=%d max_conn=%d",
                  cl.identity.ip, acc->user, card_count, acc->max_connections);
     }
 
     if (cc_send_msg(&cc,CCCAM_CMD_CLI_DATA,NULL,0) < 0) goto done;
-    tcmg_log_dbg(D_CCCAM, "%s [cccam] CLI_DATA ack sent to user='%s'", cl.identity.ip, acc->user);
+    tcmg_log_dbg(D_CCCAM, "%s CLI_DATA ack sent to user='%s'", cl.identity.ip, acc->user);
     if (cc_send_srv_data(&cc) < 0) goto done;
-    tcmg_log_dbg(D_CCCAM, "%s [cccam] SRV_DATA sent to user='%s'", cl.identity.ip, acc->user);
+    tcmg_log_dbg(D_CCCAM, "%s SRV_DATA sent to user='%s'", cl.identity.ip, acc->user);
 
     /* OSCam waits for the client's post-SRV_DATA CLI_DATA before publishing
      * the card list. This makes the handshake deterministic and prevents card
@@ -494,7 +494,7 @@ void *handle_cccam_client(void *arg)
     while(g_running&&!cl.session.kill_flag){
         if (session_idle_expired(&cl, time(NULL))) {
             time_t idle=time(NULL)-(cl.session.last_activity ? cl.session.last_activity : cl.ecm.last_ecm_time);
-            tcmg_log("%s [cccam] idle timeout %lds >= max_idle=%ds disconnecting user='%s'",
+            tcmg_log("%s idle timeout %lds >= max_idle=%ds disconnecting user='%s'",
                      cl.identity.ip, (long)idle, cl.auth.account->max_idle, cl.identity.user);
             break;
         }
@@ -515,45 +515,45 @@ void *handle_cccam_client(void *arg)
             if (cl.identity.user[0]) {
                 S_ACCOUNT_STATS_SNAPSHOT stats;
                 account_stats_snapshot(cl.auth.account, &stats);
-                tcmg_log("%s [cccam] disconnected user='%s' ecm_total=%llu cw_found=%lld",
+                tcmg_log("%s disconnected user='%s' ecm_total=%llu cw_found=%lld",
                          cl.identity.ip, cl.identity.user,
                          (unsigned long long)stats.ecm_total,
                          (long long)stats.cw_found);
             }
             else
-                tcmg_log_dbg(D_CONN, "%s [cccam] disconnected (no user)", cl.identity.ip);
+                tcmg_log_dbg(D_CONN, "%s disconnected (no user)", cl.identity.ip);
             break;
         }
 
         ka_misses = 0;
         cl.session.last_activity = time(NULL);
-        tcmg_log_dbg(D_CCCAM, "%s [cccam] recv cmd=0x%02X plen=%u seq=%u",
+        tcmg_log_dbg(D_CCCAM, "%s recv cmd=0x%02X plen=%u seq=%u",
                      cl.identity.ip, cmd, plen, req_seq);
 
         if(cmd==CCCAM_CMD_ECM_REQ){
             cc_handle_ecm(&cc,&cl,req_seq,payload,plen);
         } else if(cmd==CCCAM_CMD_KEEPALIVE){
-            tcmg_log_dbg(D_CCCAM, "%s [cccam] KEEPALIVE user='%s'", cl.identity.ip, cl.identity.user);
+            tcmg_log_dbg(D_CCCAM, "%s KEEPALIVE user='%s'", cl.identity.ip, cl.identity.user);
             cc_send_msg(&cc,CCCAM_CMD_KEEPALIVE,NULL,0);
         } else if(cmd==CCCAM_CMD_CLI_DATA){
-            tcmg_log_dbg(D_CCCAM, "%s [cccam] CLI_DATA user='%s' plen=%u", cl.identity.ip, cl.identity.user, plen);
+            tcmg_log_dbg(D_CCCAM, "%s CLI_DATA user='%s' plen=%u", cl.identity.ip, cl.identity.user, plen);
             if(plen>=28) memcpy(cc.peer_node_id, payload+20, 8);
             cc_send_msg(&cc,CCCAM_CMD_CLI_DATA,NULL,0);
         } else if(cmd==CCCAM_CMD_EMM_REQ){
-            tcmg_log_dbg(D_CCCAM, "%s [cccam] EMM_REQ user='%s' plen=%u (ignored)", cl.identity.ip, cl.identity.user, plen);
+            tcmg_log_dbg(D_CCCAM, "%s EMM_REQ user='%s' plen=%u (ignored)", cl.identity.ip, cl.identity.user, plen);
             cc_send_msg(&cc,CCCAM_CMD_EMM_REQ,NULL,0);
         } else if(cmd==0x0C||cmd==0x0D||cmd==0x0E){
-            tcmg_log_dbg(D_CCCAM, "%s [cccam] cmd=0x%02X user='%s' plen=%u (echo)", cl.identity.ip, cmd, cl.identity.user, plen);
+            tcmg_log_dbg(D_CCCAM, "%s cmd=0x%02X user='%s' plen=%u (echo)", cl.identity.ip, cmd, cl.identity.user, plen);
             cc_send_msg(&cc,cmd,NULL,0);
         } else {
-            tcmg_log_dbg(D_CCCAM, "%s [cccam] unknown cmd=0x%02X plen=%u -- ignored",
+            tcmg_log_dbg(D_CCCAM, "%s unknown cmd=0x%02X plen=%u -- ignored",
                          cl.identity.ip, cmd, plen);
         }
     }
 
 done:
 cleanup:
-    tcmg_log_dbg(D_CONN, "%s [cccam] connection closed fd=%d tid=%u", cl.identity.ip, cl.session.fd, cl.identity.thread_id);
+    tcmg_log_dbg(D_CONN, "%s connection closed fd=%d tid=%u", cl.identity.ip, cl.session.fd, cl.identity.thread_id);
     session_cleanup(&cl);
     return NULL;
 }

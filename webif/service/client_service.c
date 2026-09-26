@@ -1,4 +1,4 @@
-#define MODULE_LOG_PREFIX "webif-service"
+#define MODULE_LOG_PREFIX "webif"
 #include "service.h"
 #include "../../src/client/client.h"
 #include "../../src/core/runtime_state.h"

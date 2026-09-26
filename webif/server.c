@@ -54,7 +54,7 @@ static int request_is_authed(const char *raw, const char *client_ip, char *sess_
 		if (ban_is_banned(client_ip)) return 0;
 		if (check_auth(auth_hdr)) return 1;
 		ban_record_fail(client_ip);
-		tcmg_log("webif BASIC auth failed: from=%s", client_ip);
+		tcmg_log("BASIC auth failed: from=%s", client_ip);
 	}
 
 	return 0;
@@ -74,7 +74,6 @@ static int is_state_changing(const char *method, const char *path, const char *q
 	    strcmp(path, "/shutdown")       == 0) return 1;
 	if (strcmp(path, "/power")   == 0 && strstr(qs, "confirm="))  return 1;
 	if (strcmp(path, "/failban") == 0 && strstr(qs, "action="))   return 1;
-	if (strcmp(path, "/status")  == 0 && strstr(qs, "kill="))     return 1;
 	if (strcmp(path, "/logpoll") == 0 && strstr(qs, "debug="))    return 1;
 	return 0;
 }
@@ -164,11 +163,11 @@ void handle_request(int fd, const char *client_ip)
 			ban_record_ok(client_ip);
 			char token[WEB_SESSION_LEN + 1];
 			session_create(token);
-			tcmg_log_dbg(D_HTTP, "webif LOGIN ok user='%s' from=%s", u, client_ip);
+			tcmg_log_dbg(D_HTTP, "LOGIN ok user='%s' from=%s", u, client_ip);
 			send_redirect_with_cookie(fd, "/status", token);
 		} else {
 			ban_record_fail(client_ip);
-			tcmg_log("webif LOGIN failed: user='%s' from=%s", u, client_ip);
+			tcmg_log("LOGIN failed: user='%s' from=%s", u, client_ip);
 			send_login_page(fd, 1);
 		}
 		req_free(&req);
@@ -201,7 +200,7 @@ void handle_request(int fd, const char *client_ip)
 		{ send_redirect(fd, "/status"); req_free(&req); return; }
 
 	if (csrf) {
-		tcmg_log("webif: cross-site request blocked: %s %s from=%s", req.method, p, client_ip);
+		tcmg_log("cross-site request blocked: %s %s from=%s", req.method, p, client_ip);
 		send_json_error(fd, 403, "Forbidden", "cross-site request blocked");
 		req_free(&req);
 		return;
@@ -210,23 +209,7 @@ void handle_request(int fd, const char *client_ip)
 	if (strcmp(p, "/") == 0)
 		send_redirect(fd, "/status");
 
-	else if (strcmp(p, "/status") == 0) {
-		char killstr[16] = "", kill_user[CFGKEY_LEN] = "";
-		get_param(qs, "kill", killstr, sizeof(killstr));
-		if (killstr[0]) {
-			char *end = NULL;
-			errno = 0;
-			unsigned long tid_u = strtoul(killstr, &end, 10);
-			if (errno == 0 && end && *end == '\0' && tid_u <= UINT32_MAX) {
-				uint32_t tid = (uint32_t)tid_u;
-				get_param(qs, "user", kill_user, sizeof(kill_user));
-				webif_client_kill_by_tid(tid);
-				tcmg_log("webif: disconnect user='%s' tid=%u (requested via webif)",
-				         kill_user[0] ? kill_user : "?", tid);
-			}
-		}
-		send_page_status(fd);
-	}
+	else if (strcmp(p, "/status") == 0) send_page_status(fd);
 
 	else if (strcmp(p, "/users")   == 0) send_page_users(fd);
 	else if (strcmp(p, "/readers") == 0) send_page_readers(fd);
@@ -240,18 +223,33 @@ void handle_request(int fd, const char *client_ip)
 	else if (strcmp(p, "/shutdown")== 0) send_page_shutdown(fd, qs);
 	else if (strcmp(p, "/tvcas")   == 0) send_page_tvcas(fd);
 
+	else if (strcmp(p, "/assets/app.css")   == 0) send_webif_asset(fd, p);
+	else if (strcmp(p, "/assets/app.js")     == 0) send_webif_asset(fd, p);
+	else if (strcmp(p, "/assets/livelog.js")  == 0) send_webif_asset(fd, p);
+	else if (strcmp(p, "/assets/users.js")   == 0) send_webif_asset(fd, p);
+	else if (strcmp(p, "/assets/readers.js")  == 0) send_webif_asset(fd, p);
+
 	else if (strcmp(p, "/api/status")               == 0) send_api_status(fd, qs);
+	else if (strcmp(p, "/api/client/kill") == 0 && strcmp(req.method, "POST") == 0)
+		handle_api_client_kill(fd, qs);
 	else if (strcmp(p, "/api/pcsc/readers")         == 0) send_api_pcsc_readers(fd);
+	else if (strcmp(p, "/api/serial/ports")         == 0) send_api_serial_ports(fd);
 	else if (strcmp(p, "/api/readers")             == 0) send_api_readers(fd);
 	else if (strcmp(p, "/api/reader/get")           == 0) send_api_reader_get(fd, qs);
 	else if (strcmp(p, "/api/reader/save") == 0 && strcmp(req.method, "POST") == 0)
 		handle_api_reader_save(fd, req.body ? req.body : "");
-	else if (strcmp(p, "/api/reader/delete")        == 0) handle_api_reader_delete(fd, qs);
+	else if (strcmp(p, "/api/reader/delete") == 0 && strcmp(req.method, "POST") == 0)
+		handle_api_reader_delete(fd, qs);
+	else if (strcmp(p, "/api/reader/toggle") == 0 && strcmp(req.method, "POST") == 0)
+		handle_api_reader_toggle(fd, qs);
 	else if (strcmp(p, "/api/userstats")              == 0) send_api_userstats(fd);
-	else if (strcmp(p, "/api/user/toggle")           == 0) handle_user_toggle(fd, qs);
+	else if (strcmp(p, "/api/user/toggle") == 0 && strcmp(req.method, "POST") == 0)
+		handle_user_toggle(fd, qs);
 	else if (strcmp(p, "/api/user/get")              == 0) send_api_user_get(fd, qs);
-	else if (strcmp(p, "/api/user/resetstats")       == 0) handle_user_resetstats(fd, qs);
-	else if (strcmp(p, "/api/user/delete")           == 0) handle_user_delete(fd, qs);
+	else if (strcmp(p, "/api/user/resetstats") == 0 && strcmp(req.method, "POST") == 0)
+		handle_user_resetstats(fd, qs);
+	else if (strcmp(p, "/api/user/delete") == 0 && strcmp(req.method, "POST") == 0)
+		handle_user_delete(fd, qs);
 	else if (strcmp(p, "/api/user/save")  == 0 && strcmp(req.method, "POST") == 0)
 		handle_user_save(fd, req.body ? req.body : "");
 	else if (strcmp(p, "/api/user/add")   == 0 && strcmp(req.method, "POST") == 0)
@@ -264,12 +262,17 @@ void handle_request(int fd, const char *client_ip)
 	else if (strcmp(p, "/api/config/file/save") == 0 && strcmp(req.method, "POST") == 0)
 		handle_api_file_save(fd, req.body ? req.body : "");
 
-	else if (strcmp(p, "/api/failban/clear")    == 0) handle_api_failban_clear(fd, qs);
-	else if (strcmp(p, "/api/failban/clearall") == 0) handle_api_failban_clearall(fd);
+	else if (strcmp(p, "/api/failban/clear") == 0 && strcmp(req.method, "POST") == 0)
+		handle_api_failban_clear(fd, qs);
+	else if (strcmp(p, "/api/failban/clearall") == 0 && strcmp(req.method, "POST") == 0)
+		handle_api_failban_clearall(fd);
 
-	else if (strcmp(p, "/api/reload")     == 0) handle_api_reload(fd);
-	else if (strcmp(p, "/api/restart")    == 0) handle_api_restart(fd);
-	else if (strcmp(p, "/api/resetstats") == 0) handle_api_resetstats(fd);
+	else if (strcmp(p, "/api/reload") == 0 && strcmp(req.method, "POST") == 0)
+		handle_api_reload(fd);
+	else if (strcmp(p, "/api/restart") == 0 && strcmp(req.method, "POST") == 0)
+		handle_api_restart(fd);
+	else if (strcmp(p, "/api/resetstats") == 0 && strcmp(req.method, "POST") == 0)
+		handle_api_resetstats(fd);
 
 	else {
 		static const char not_found[] =
@@ -317,7 +320,7 @@ static void *http_server_thread(void *arg)
 		int nodelay = 1;
 		setsockopt(cfd, IPPROTO_TCP, TCP_NODELAY, SO_CAST(&nodelay), sizeof(nodelay));
 
-		tcmg_log_dbg(D_HTTP, "webif HTTP connection from=%s fd=%d", client_ip, cfd);
+		tcmg_log_dbg(D_HTTP, "HTTP connection from=%s fd=%d", client_ip, cfd);
 
 		s_conn_arg *ca2 = (s_conn_arg *)malloc(sizeof(s_conn_arg));
 		if (ca2 && sem_trywait(&s_webif_sem) == 0) {

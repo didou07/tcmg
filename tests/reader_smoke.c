@@ -1,4 +1,11 @@
-#include "globals.h"
+#include "core/config_state.h"
+#include "core/runtime_state.h"
+#include "config/config.h"
+#include "log/log.h"
+#include "emu/emu.h"
+#include "reader/reader.h"
+#include "reader/result.h"
+#include "reader/stats.h"
 #include "account/account.h"
 #include <stdio.h>
 #include <string.h>
@@ -10,6 +17,22 @@ static void dump16(const char *p, const unsigned char *b) {
 }
 
 int main(int argc, char **argv) {
+    reader_stats_reset(0);
+    S_READER_STATS_SNAPSHOT initial_stats;
+    reader_stats_snapshot(0, &initial_stats);
+    if (initial_stats.cw_ok != 0 || initial_stats.cw_nok != 0 || initial_stats.active) {
+        fprintf(stderr,"FAIL initial reader stats\n");
+        return 6;
+    }
+    reader_stats_record(0, true);
+    reader_stats_record(0, false);
+    S_READER_STATS_SNAPSHOT sample_stats;
+    reader_stats_snapshot(0, &sample_stats);
+    if (sample_stats.cw_ok != 1 || sample_stats.cw_nok != 1 || !sample_stats.active) {
+        fprintf(stderr,"FAIL reader runtime stats\n");
+        return 7;
+    }
+    reader_stats_reset(0);
     bool expect_login_fail = false;
     if (argc == 3 && strcmp(argv[2], "expect-login-fail") == 0) expect_login_fail = true;
     if (argc != 2 && !expect_login_fail) {

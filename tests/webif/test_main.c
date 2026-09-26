@@ -1,8 +1,16 @@
 /* Test harness: real webif server + synthetic stats and fake clients. */
 #define MODULE_LOG_PREFIX "test"
-#include "../../globals.h"
+#include "../../src/core/config_state.h"
+#include "../../src/core/runtime_state.h"
+#include "../../src/core/utils.h"
+#include "../../src/client/client.h"
+#include "../../src/config/config.h"
+#include "../../src/log/log.h"
+#include "../../webif/server.h"
 #include <signal.h>
 #include "../../src/stats/account_stats.h"
+#include "../../src/crypto/crypto.h"
+#include "../../src/platform/platform.h"
 
 static void set_stats(S_ACCOUNT *a, long ok, long nok, long avg, long mn, long mx,
                       int active, long first_ago, long last_ago)

@@ -91,8 +91,8 @@ ifeq ($(PLATFORM),linux)
     endif
   endif
   ifeq ($(TCMG_PCSC),1)
-    # Native builds follow TCMG 5.7 behavior: explicit PCSC=on may fall back
-    # to the standard system linker name when pkg-config is unavailable.
+    # Explicit native PC/SC builds use pkg-config when available and fall back
+    # to the standard system linker name when it is not.
     ifeq ($(strip $(PCSC_LIBS)),)
       PCSC_LIBS := -lpcsclite
     endif
@@ -241,7 +241,11 @@ test-internal: $(TARGET)
 	$(CC) $(TEST_COMMON_CFLAGS) tests/internal_smoke.c $(filter-out $(OBJ_DIR)/src/main.o,$(OBJS)) -o $(BUILD_DIR)/test_internal $(LDFLAGS)
 	$(BUILD_DIR)/test_internal
 
-test: test-config test-network test-reader-registry test-proto-registry test-account-core test-session test-ecm-pipeline test-cache test-webif-service test-config-runtime-access test-account-state test-antishare test-internal
+test-serial: $(TARGET)
+	$(CC) $(TEST_COMMON_CFLAGS) tests/serial_smoke.c $(filter-out $(OBJ_DIR)/src/main.o,$(OBJS)) -o $(BUILD_DIR)/test_serial $(LDFLAGS)
+	$(BUILD_DIR)/test_serial
+
+test: test-config test-network test-reader-registry test-proto-registry test-account-core test-session test-ecm-pipeline test-cache test-webif-service test-config-runtime-access test-account-state test-antishare test-internal test-serial
 
 check: $(ASSET_HDRS)
 	@set -e; \
@@ -254,7 +258,9 @@ check: $(ASSET_HDRS)
 	if grep -nE '^#include "../core/config_state.h"|\bg_cfg\.(pcsc_)' src/pcsc/pcsc.c; then echo 'PCSC runtime config boundary violation detected' >&2; exit 1; fi; \
 	if grep -nE '\bg_cfg\.(failban_)' src/security/failban.c; then echo 'Fail-Ban runtime config boundary violation detected' >&2; exit 1; fi; \
 	if grep -RInE 'g_cfg\.(acc_lock|accounts|naccounts)' src/account src/client src/proto/cccam.c src/proto/camd35_server.c --exclude='account_state.c'; then echo 'ACCOUNT STATE boundary violation detected' >&2; exit 1; fi; \
+	if grep -RInE '\bfetch\(' webif/pages webif/core.c | grep -v 'js_common.h'; then echo 'DIRECT FETCH IN PAGE DETECTED' >&2; exit 1; fi; \
 	if grep -RInE '"../../src/(core/config_state|core/client_state|config/config|client/client|security/failban)' webif/api webif/pages webif/core.c webif/server.c; then echo 'WEBIF internal include detected' >&2; exit 1; fi; \
+	if grep -RIn 'globals.h' src webif tests --include='*.c' --include='*.h' >/tmp/tcmg-globals.$$ 2>/dev/null && [ -s /tmp/tcmg-globals.$$ ]; then echo 'Umbrella globals.h include detected' >&2; rm -f /tmp/tcmg-globals.$$; exit 1; fi; rm -f /tmp/tcmg-globals.$$; \
 	./build.sh check >/dev/null; \
 	./build.sh self-test >/dev/null; \
 	echo "CHECK: PASS"

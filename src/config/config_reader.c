@@ -1,5 +1,6 @@
 #define MODULE_LOG_PREFIX "conf"
 #include "config_internal.h"
+#include "../reader/protocol.h"
 
 S_READER *cfg_reader_new(S_CONFIG *cfg, int index)
 {
@@ -113,10 +114,7 @@ bool cfg_parse_readers(const char *path, S_CONFIG *c, char *err, size_t esz)
                 tcmg_strlcpy(reader->label, value, sizeof(reader->label));
             }
             else if (!strcasecmp(key, "protocol")) {
-                if (strcasecmp(value, "emu") && strcasecmp(value, "pcsc") &&
-                    strcasecmp(value, "cccam") && strcasecmp(value, "cs378x") &&
-                    strcasecmp(value, "newcamd") && strcasecmp(value, "mgcamd") &&
-                    strcasecmp(value, "internal")) goto badval;
+                if (!reader_protocol_find(value)) goto badval;
                 tcmg_strlcpy(reader->protocol, value, sizeof(reader->protocol));
             }
             else if (!strcasecmp(key, "enabled")) {
@@ -160,6 +158,7 @@ bool cfg_parse_readers(const char *path, S_CONFIG *c, char *err, size_t esz)
             }
             else if (!strcasecmp(key, "fast_reset")) {
                 if (!cfg_parse_long_range(value, 0, 86400, &v)) goto badval;
+                if (!strcasecmp(reader->protocol, "internal") && v == 1) v = 60;
                 reader->fast_reset = (int32_t)v;
             }
             else if (!strcasecmp(key, "poll_ms")) {

@@ -1,4 +1,4 @@
-#define MODULE_LOG_PREFIX "account-session"
+#define MODULE_LOG_PREFIX "account"
 #include "account.h"
 #include "config/config.h"
 #include "security/antishare.h"

@@ -3,7 +3,6 @@
 #include "../../src/core/constants.h"
 #include "../../src/core/utils.h"
 #include "../internal/proto.h"
-#include "../assets/webif_assets.h"
 
   
               
@@ -447,7 +446,8 @@ void send_page_users(int fd)
 		"</div></div></div>");
 
 	                                                                              
-	pos = buf_printf(&buf, &bsz, pos, "<script>%s</script>", TCMG_USERS_JS);
+	pos = buf_printf(&buf, &bsz, pos,
+		"<script src='/assets/users.js?v='" TCMG_VERSION " defer></script>");
 
 	pos = emit_footer(&buf, &bsz, pos);
 	PAGE_SEND_AND_FREE(fd);

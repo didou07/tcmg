@@ -1,4 +1,4 @@
-#define MODULE_LOG_PREFIX "newcamd-reader"
+#define MODULE_LOG_PREFIX "newcamd"
 #include "net/net.h"
 #include "crypto/crypto.h"
 #include "crypto/newcamd_des.h"

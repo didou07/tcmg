@@ -1,6 +1,7 @@
 #define MODULE_LOG_PREFIX "webif"
 #include "../service/service.h"
 #include "../internal/proto.h"
+#include "../internal/form.h"
 #include "../../src/core/constants.h"
 #include "../../src/core/utils.h"
 #include "../../src/log/log.h"
@@ -25,17 +26,6 @@ typedef struct {
 	int32_t ngroups;
 	time_t exp;                                   
 } acct_form;
-
-static int get_field(const char *body, const char *key, char *out, size_t outsz)
-{
-	out[0] = '\0';
-	char *v = form_get_alloc(body, key);
-	if (!v) return 0;
-	int too_long = (strlen(v) >= outsz);
-	if (!too_long) tcmg_strlcpy(out, v, outsz);
-	free(v);
-	return too_long ? -1 : 0;
-}
 
 static int all_digits(const char *s, size_t maxlen)
 {
@@ -74,15 +64,6 @@ static int parse_date(const char *s, time_t *out)
 }
 
                                                                 
-static void api_trim(char *s)
-{
-	size_t n = strlen(s);
-	while (n && isspace((unsigned char)s[n - 1])) s[--n] = 0;
-	char *p = s;
-	while (*p && isspace((unsigned char)*p)) p++;
-	if (p != s) memmove(s, p, strlen(p) + 1);
-}
-
 static int parse_groups(const char *s, int32_t out[MAX_GROUPS_PER_ACC], int32_t *n)
 {
 	char buf[256];
@@ -91,7 +72,7 @@ static int parse_groups(const char *s, int32_t out[MAX_GROUPS_PER_ACC], int32_t 
 	tcmg_strlcpy(buf, s, sizeof(buf));
 	char *save = NULL, *tok = strtok_r(buf, ",", &save);
 	while (tok) {
-		api_trim(tok);
+		webif_trim(tok);
 		if (!tok[0] || *n >= MAX_GROUPS_PER_ACC) return -1;
 		char *e = NULL;
 		long v = strtol(tok, &e, 10);
@@ -136,19 +117,19 @@ static const char *parse_account_form(const char *body, acct_form *f)
 	char caid_s[128], max_s[16], en_s[8], exp_s[24];
 	char as_en_s[8], as_sids_s[8], as_ecm_s[16], as_ecm_window_s[8], as_channel_timeout_s[8], as_switch_delay_s[8];
 	memset(f, 0, sizeof(*f));
-	if (get_field(body, "user",    f->user, sizeof(f->user))    < 0) return "username too long (max 63 characters)";
-	if (get_field(body, "pass",    f->pass, sizeof(f->pass))    < 0) return "password too long (max 63 characters)";
-	if (get_field(body, "groups",  f->groups, sizeof(f->groups)) < 0) return "groups too long";
-	if (get_field(body, "caid",    caid_s,  sizeof(caid_s))     < 0 ||
-	    get_field(body, "maxconn", max_s,   sizeof(max_s))      < 0 ||
-	    get_field(body, "enabled", en_s,    sizeof(en_s))       < 0 ||
-	    get_field(body, "expiry",  exp_s,   sizeof(exp_s))      < 0 ||
-	    get_field(body, "anti_share",    as_en_s,   sizeof(as_en_s))   < 0 ||
-	    get_field(body, "as_max_sids",   as_sids_s, sizeof(as_sids_s)) < 0 ||
-	    get_field(body, "as_max_ecm",as_ecm_s, sizeof(as_ecm_s)) < 0 ||
-	    get_field(body, "as_ecm_window_s",as_ecm_window_s, sizeof(as_ecm_window_s)) < 0 ||
-	    get_field(body, "as_channel_timeout_s",as_channel_timeout_s, sizeof(as_channel_timeout_s)) < 0 ||
-	    get_field(body, "as_switch_delay_s",as_switch_delay_s, sizeof(as_switch_delay_s)) < 0) return "invalid field length";
+	if (webif_form_copy(body, "user",    f->user, sizeof(f->user))    < 0) return "username too long (max 63 characters)";
+	if (webif_form_copy(body, "pass",    f->pass, sizeof(f->pass))    < 0) return "password too long (max 63 characters)";
+	if (webif_form_copy(body, "groups",  f->groups, sizeof(f->groups)) < 0) return "groups too long";
+	if (webif_form_copy(body, "caid",    caid_s,  sizeof(caid_s))     < 0 ||
+	    webif_form_copy(body, "maxconn", max_s,   sizeof(max_s))      < 0 ||
+	    webif_form_copy(body, "enabled", en_s,    sizeof(en_s))       < 0 ||
+	    webif_form_copy(body, "expiry",  exp_s,   sizeof(exp_s))      < 0 ||
+	    webif_form_copy(body, "anti_share",    as_en_s,   sizeof(as_en_s))   < 0 ||
+	    webif_form_copy(body, "as_max_sids",   as_sids_s, sizeof(as_sids_s)) < 0 ||
+	    webif_form_copy(body, "as_max_ecm",as_ecm_s, sizeof(as_ecm_s)) < 0 ||
+	    webif_form_copy(body, "as_ecm_window_s",as_ecm_window_s, sizeof(as_ecm_window_s)) < 0 ||
+	    webif_form_copy(body, "as_channel_timeout_s",as_channel_timeout_s, sizeof(as_channel_timeout_s)) < 0 ||
+	    webif_form_copy(body, "as_switch_delay_s",as_switch_delay_s, sizeof(as_switch_delay_s)) < 0) return "invalid field length";
 
 	if (!f->user[0]) return "username required";
 	if (!web_valid_text(f->user))
@@ -289,7 +270,7 @@ void handle_user_toggle(int fd, const char *qs)
 	get_param(qs, "user", uname, sizeof(uname));
 	int enabled = -1;
 	if (uname[0] && webif_account_toggle(uname, &enabled)) {
-		tcmg_log("webif: user='%s' %s", uname, enabled ? "enabled" : "disabled");
+		tcmg_log("user='%s' %s", uname, enabled ? "enabled" : "disabled");
 		char j[64]; snprintf(j, sizeof(j), "{\"ok\":true,\"enabled\":%d}", enabled);
 		send_json_ok_raw(fd, j); return;
 	}
@@ -320,14 +301,14 @@ void handle_user_save(int fd, const char *post_body)
 	acct_form f; const char *err=parse_account_form(post_body,&f); if(err){send_json_error(fd,400,"Bad Request",err);return;}
 	S_WEBIF_ACCOUNT_EDIT e; account_form_to_edit(&f,&e);
 	if(!webif_account_save(&e)){ if(!webif_account_get(f.user,&(S_WEBIF_ACCOUNT_VIEW){0})) send_json_error(fd,404,"Not Found","user not found"); else send_json_error(fd,500,"Internal Error","failed to save config"); return; }
-	 tcmg_log("webif: user='%s' updated",f.user); send_json_ok(fd,"ok");
+	 tcmg_log("user='%s' updated",f.user); send_json_ok(fd,"ok");
 }
 
 void handle_user_delete(int fd, const char *qs)
 {
 	char uname[CFGKEY_LEN]=""; get_param(qs,"user",uname,sizeof(uname)); if(!uname[0]){send_json_error(fd,400,"Bad Request","missing user");return;}
 	if(!webif_account_delete(uname)){ if(!webif_account_get(uname,&(S_WEBIF_ACCOUNT_VIEW){0})) send_json_error(fd,404,"Not Found","user not found"); else send_json_error(fd,500,"Internal Error","failed to save config"); return; }
-	tcmg_log("webif: user='%s' deleted",uname); send_json_ok(fd,"ok");
+	tcmg_log("user='%s' deleted",uname); send_json_ok(fd,"ok");
 }
 
 void handle_user_add(int fd, const char *post_body)
@@ -335,12 +316,12 @@ void handle_user_add(int fd, const char *post_body)
 	acct_form f; const char *err=parse_account_form(post_body,&f); if(err){send_json_error(fd,400,"Bad Request",err);return;}
 	S_WEBIF_ACCOUNT_EDIT e; account_form_to_edit(&f,&e); int status=500;
 	if(!webif_account_add(&e,&status)){send_json_error(fd,status==409?409:500,status==409?"Conflict":"Internal Error",status==409?"username already exists":"failed to save config");return;}
-	tcmg_log("webif: user='%s' added",f.user); send_json_ok(fd,"ok");
+	tcmg_log("user='%s' added",f.user); send_json_ok(fd,"ok");
 }
 
 void handle_user_resetstats(int fd, const char *qs)
 {
 	char uname[CFGKEY_LEN]=""; get_param(qs,"user",uname,sizeof(uname)); if(!uname[0]){send_json_error(fd,400,"Bad Request","missing user");return;}
 	if(!webif_account_reset_stats(uname)){send_json_error(fd,404,"Not Found","user not found");return;}
-	tcmg_log("webif: stats reset for user='%s'",uname); send_json_ok(fd,"ok");
+	tcmg_log("stats reset for user='%s'",uname); send_json_ok(fd,"ok");
 }

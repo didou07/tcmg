@@ -1,4 +1,4 @@
-#define MODULE_LOG_PREFIX "ecm-request"
+#define MODULE_LOG_PREFIX "ecm"
 #include "request.h"
 #include "core/utils.h"
 #include <string.h>

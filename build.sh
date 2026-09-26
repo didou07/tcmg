@@ -399,10 +399,6 @@ materialize_toolchain(){
   IFS='|' read -r name desc arch url sha prefix sysrel cflags ldflags <<< "$row"
   cache="$(toolchain_cache_root "$tc")"
   archive="$cache/toolchain.archive"
-  # Backward compatibility with previously cached SimpleBuild4 .tar.xz files.
-  if [[ ! -f "$archive" && -f "$cache/toolchain.tar.xz" ]]; then
-    archive="$cache/toolchain.tar.xz"
-  fi
   root="$(toolchain_runtime_root "$tc")"
   [[ -f "$archive" ]] || { err "Cached toolchain archive missing: $archive"; return 1; }
   need sha256sum || return 1
@@ -505,34 +501,21 @@ prepare_cross_pcsc(){
   if [[ -f "$archive" ]] && tar -tzf "$archive" >/dev/null 2>&1; then
     ok "PC/SC source cache: PCSC 1.9.5"
   else
-    # Migrate a previously cached xz toolchain before downloading again.
-    legacy_archive="$cache/toolchain.tar.xz"
-    if [[ "$url" == *.tar.xz && -f "$legacy_archive" ]] && printf '%s  %s\n' "$sha" "$legacy_archive" | sha256sum -c - >/dev/null 2>&1; then
-      mv -f "$legacy_archive" "$archive"
-      ok "Using verified legacy toolchain archive: $tc"
-    else
-      rm -f "$archive"
-      say "  Downloading: $tc"
-      say "  URL: $url"
-      curl -fL --retry 3 --connect-timeout 20 --max-time 1800 -o "$archive" "$url" || { rm -f "$archive"; err "Download failed: $tc"; return 1; }
-      printf '%s  %s\n' "$sha" "$archive" | sha256sum -c - || { rm -f "$archive"; err "SHA-256 mismatch: $tc"; return 1; }
-    fi
-  fi
-  if [[ ! -f "$archive" ]]; then
-    err "Toolchain archive not available: $tc"
-    return 1
-  fi
-  if false; then
-    echo "PC/SC: downloading SimpleBuild4 source PCSC 1.9.5"
+    rm -f "$archive"
+    say "  Downloading PC/SC source: PCSC 1.9.5"
     curl -fL --retry 3 --connect-timeout 20 --max-time 1800 \
       -o "$archive" \
       "https://github.com/LudovicRousseau/PCSC/archive/refs/tags/1.9.5.tar.gz" || {
+        rm -f "$archive"
         err "PCSC source download failed"
         return 1
       }
-    tar -tzf "$archive" >/dev/null 2>&1 || { err "downloaded PCSC source archive is invalid"; return 1; }
+    tar -tzf "$archive" >/dev/null 2>&1 || {
+      rm -f "$archive"
+      err "downloaded PCSC source archive is invalid"
+      return 1
+    }
   fi
-
   rm -rf "$src_root"
   mkdir -p "$src_root"
   tar -xzf "$archive" -C "$src_root" --strip-components=1 || { err "cannot extract pcsc-lite source"; return 1; }
@@ -680,7 +663,7 @@ find_installed_toolchain(){
 }
 
 fetch_toolchain(){
-  local tc="$1" row name desc arch url sha prefix sysrel cflags ldflags cache archive
+  local tc="$1" row name desc arch url sha prefix sysrel cflags ldflags cache archive tmp_archive
   row="$(find_toolchain "$tc" || true)"; [[ -n "$row" ]] || { err "No managed toolchain for $tc"; return 1; }
   IFS='|' read -r name desc arch url sha prefix sysrel cflags ldflags <<< "$row"
   [[ -n "$url" && -n "$sha" ]] || { err "$tc has no managed download. Use --toolchain-dir for this device."; return 1; }
@@ -690,11 +673,29 @@ fetch_toolchain(){
   cache="$(toolchain_cache_root "$tc")"
   mkdir -p "$cache"
   archive="$cache/toolchain.archive"
+
   if [[ -f "$archive" ]] && printf '%s  %s\n' "$sha" "$archive" | sha256sum -c - >/dev/null 2>&1; then
     ok "Using verified toolchain archive: $tc"
   else
     rm -f "$archive"
+    tmp_archive="$archive.part.$$"
+    rm -f "$tmp_archive"
+    echo "  Downloading: $tc" >&2
+    echo "  URL: $url" >&2
+    if ! curl -fL --retry 3 --retry-delay 2 --connect-timeout 15 --max-time 0 --progress-bar -o "$tmp_archive" "$url"; then
+      rm -f "$tmp_archive"
+      err "Toolchain download failed: $tc"
+      return 1
+    fi
+    if ! printf '%s  %s\n' "$sha" "$tmp_archive" | sha256sum -c - >/dev/null 2>&1; then
+      rm -f "$tmp_archive"
+      err "Downloaded toolchain SHA-256 mismatch: $tc"
+      return 1
+    fi
+    mv -f "$tmp_archive" "$archive"
+    ok "Toolchain archive ready: $tc"
   fi
+
   materialize_toolchain "$tc" || return 1
   local info cc
   info="$(find_installed_toolchain "$tc")" || return 1
@@ -870,6 +871,14 @@ pcsc_flag(){
   esac
 }
 
+normalize_menu_choice(){
+  local value="$1"
+  value="${value//$'\r'/}"
+  value="${value#${value%%[![:space:]]*}}"
+  value="${value%${value##*[![:space:]]}}"
+  printf '%s' "$value"
+}
+
 interactive(){
   local ans
   echo
@@ -893,28 +902,33 @@ interactive(){
 }
 
 interactive_menu(){
-  local row="$1" action
+  local row="$1" action normalized
   show_defaults "$row"
-  read -r -p '1) Build   2) Edit config   [1]: ' action
-  case "${action:-1}" in
-    1)
-      load_defaults "$row"
-      save_state
-      build_device
-      ;;
-    2)
-      load_defaults "$row"
-      interactive
-      save_state
-      echo
-      ok "Configuration saved for $(device_label "$TARGET")"
-      show_config
-      ;;
-    *)
-      err 'Invalid selection (choose 1 or 2)'
-      return 1
-      ;;
-  esac
+  while :; do
+    read -r -p '1) Build   2) Edit config   [1]: ' action
+    # Be tolerant of terminal/clipboard CRLF and accidental surrounding spaces.
+    normalized="$(normalize_menu_choice "$action")"
+    case "${normalized:-1}" in
+      1)
+        load_defaults "$row"
+        save_state
+        build_device
+        return $?
+        ;;
+      2)
+        load_defaults "$row"
+        interactive
+        save_state
+        echo
+        ok "Configuration saved for $(device_label "$TARGET")"
+        show_config
+        return 0
+        ;;
+      *)
+        err 'Invalid selection (choose 1 or 2)'
+        ;;
+    esac
+  done
 }
 
 build_device(){
@@ -1014,6 +1028,7 @@ self_test(){
   [[ "$(find_toolchain bootlin_armv7_2018)" == bootlin_armv7_2018\|* ]] || { err 'Bootlin ARMv7 toolchain catalog failed'; return 1; }
   [[ "$(find_toolchain bootlin_mipsel_2018)" == bootlin_mipsel_2018\|* ]] || { err 'Bootlin MIPSel toolchain catalog failed'; return 1; }
   [[ "$(find_toolchain bootlin_powerpc_2018)" == bootlin_powerpc_2018\|* ]] || { err 'Bootlin PowerPC toolchain catalog failed'; return 1; }
+  [[ "$(normalize_menu_choice $' 2\r ')" == 2 ]] || { err 'Interactive menu choice normalization failed'; return 1; }
   local tcrow tcname tcdesc tcarch tcurl tcsha tcpfx tcsys tccf tcaf
   for tcname in bootlin_aarch64_2018 bootlin_armv7_2018 bootlin_mipsel_2018 bootlin_powerpc_2018; do
     tcrow="$(find_toolchain "$tcname")"

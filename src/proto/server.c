@@ -1,4 +1,4 @@
-#define MODULE_LOG_PREFIX "proto-server"
+#define MODULE_LOG_PREFIX "proto"
 #include "server.h"
 #include "core/runtime_state.h"
 #include "core/utils.h"

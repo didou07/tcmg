@@ -17,13 +17,6 @@
 	"\n" \
 	"  \n" \
 	"\n" \
-	"  function api(url, opt) {\n" \
-	"    return fetch(url, opt).then(function (r) {\n" \
-	"      if (r.status === 401) { location.href = '/login'; throw new Error('unauthorized'); }\n" \
-	"      return r.json();\n" \
-	"    });\n" \
-	"  }\n" \
-	"\n" \
 	"  function netErr(e) {\n" \
 	"    if (e && e.message === 'unauthorized') return;\n" \
 	"    toast('Request failed \\u2014 check the connection', 'err');\n" \
@@ -423,8 +416,6 @@
 	"    if (!d) return;\n" \
 	"    _upd_topbar(d);\n" \
 	"    if (!Array.isArray(d.users)) return;\n" \
-	"    rebuildRowMap();\n" \
-	"\n" \
 	"    var seen = Object.create(null), structural = (d.users.length !== rowsAll().length);\n" \
 	"    for (var i = 0; i < d.users.length; i++) {\n" \
 	"      var u = d.users[i];\n" \
@@ -438,15 +429,12 @@
 	"      return softRefresh().then(function () { rebuildRowMap(); });\n" \
 	"    }\n" \
 	"    recount();\n" \
-	"    applyFilter();\n" \
+	"    if (view.k && view.k !== 'user') sortRows();\n" \
+	"    if (view.f !== 'all' || view.q) applyFilter();\n" \
 	"  };\n" \
 	"\n" \
 	"  function softRefresh() {\n" \
-	"    return fetch(location.pathname + location.search, { credentials: 'same-origin', cache: 'no-store' })\n" \
-	"      .then(function (r) {\n" \
-	"        if (r.status === 401) { location.href = '/login'; return null; }\n" \
-	"        return r.text();\n" \
-	"      })\n" \
+	"    return tcmg_html(location.pathname + location.search)\n" \
 	"      .then(function (html) {\n" \
 	"        if (!html) return;\n" \
 	"        var doc = new DOMParser().parseFromString(html, 'text/html');\n" \
@@ -478,7 +466,7 @@
 	"  function toggleUser(tr, cb) {\n" \
 	"    var want = cb.checked;\n" \
 	"    cb.disabled = true;\n" \
-	"    api('/api/user/toggle?user=' + encodeURIComponent(tr.dataset.user)).then(function (d) {\n" \
+	"    tcmg_api('/api/user/toggle?user=' + encodeURIComponent(tr.dataset.user), {method: 'POST'}).then(function (d) {\n" \
 	"      cb.disabled = false;\n" \
 	"      if (!d.ok) { cb.checked = !want; toast(d.msg || 'Could not change the account state', 'err'); return; }\n" \
 	"      setEnabled(tr, !!d.enabled);\n" \
@@ -495,8 +483,9 @@
 	"      ok: 'Delete', danger: true\n" \
 	"    }).then(function (yes) {\n" \
 	"      if (!yes) return;\n" \
-	"      api('/api/user/delete?user=' + encodeURIComponent(u)).then(function (d) {\n" \
+	"      tcmg_api('/api/user/delete?user=' + encodeURIComponent(u), {method: 'POST'}).then(function (d) {\n" \
 	"        if (!d.ok) { toast(d.msg || 'Delete failed', 'err'); return; }\n" \
+	"        delete rowMap[u];\n" \
 	"        tr.classList.add('gone');\n" \
 	"        setTimeout(function () { if (tr.parentNode) tr.parentNode.removeChild(tr); refreshAll(); }, 290);\n" \
 	"        toast('Deleted ' + u, 'ok');\n" \
@@ -512,7 +501,7 @@
 	"      ok: 'Reset', danger: false\n" \
 	"    }).then(function (yes) {\n" \
 	"      if (!yes) return;\n" \
-	"      api('/api/user/resetstats?user=' + encodeURIComponent(u)).then(function (d) {\n" \
+	"      tcmg_api('/api/user/resetstats?user=' + encodeURIComponent(u), {method: 'POST'}).then(function (d) {\n" \
 	"        if (!d.ok) { toast(d.msg || 'Reset failed', 'err'); return; }\n" \
 	"        flash('Statistics reset for ' + u);\n" \
 	"        softRefresh();\n" \
@@ -577,7 +566,7 @@
 	"  }\n" \
 	"\n" \
 	"  function editUser(tr, opener) {\n" \
-	"    api('/api/user/get?user=' + encodeURIComponent(tr.dataset.user)).then(function (d) {\n" \
+	"    tcmg_api('/api/user/get?user=' + encodeURIComponent(tr.dataset.user)).then(function (d) {\n" \
 	"      if (!d.ok) { toast(d.msg || 'User not found', 'err'); return; }\n" \
 	"      openUM(false, d, opener);\n" \
 	"    }).catch(netErr);\n" \
@@ -652,7 +641,7 @@
 	"    var sb = $('em_saveBtn');\n" \
 	"    sb.disabled = true;\n" \
 	"    sb.textContent = 'Saving\\u2026';\n" \
-	"    api(isAdd ? '/api/user/add' : '/api/user/save', {\n" \
+	"    tcmg_api(isAdd ? '/api/user/add' : '/api/user/save', {\n" \
 	"      method: 'POST',\n" \
 	"      body: p.toString(),\n" \
 	"      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }\n" \

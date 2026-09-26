@@ -11,7 +11,7 @@ void handle_api_reload(int fd)
 
 void handle_api_restart(int fd)
 {
-	tcmg_log("%s", "webif: restart requested via API");
+	tcmg_log("%s", "restart requested via API");
 	g_restart = 1;
 	g_running = 0;
 	send_json_ok(fd, "restart initiated");

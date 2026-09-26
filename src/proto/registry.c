@@ -1,4 +1,4 @@
-#define MODULE_LOG_PREFIX "proto-registry"
+#define MODULE_LOG_PREFIX "proto"
 #include "registry.h"
 #include "cccam.h"
 #include "newcamd.h"

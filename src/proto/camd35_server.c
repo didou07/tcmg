@@ -59,10 +59,10 @@ static int cs378x_handle_ecm(S_CLIENT *cl, const uint8_t *plain, size_t plain_le
     access = ecm_access(cl, caid, sid, false, true, false);
     if (access != ECM_ACCESS_OK) {
         if (access == ECM_ACCESS_CAID_DENIED)
-            tcmg_log_dbg(D_READER, "%s [cs378x] ECM denied: CAID %04X not allowed user='%s'",
+            tcmg_log_dbg(D_READER, "%s ECM denied: CAID %04X not allowed user='%s'",
                          cl->identity.ip, caid, cl->identity.user);
         else if (access == ECM_ACCESS_ANTISHARE)
-            tcmg_log_dbg(D_READER, "%s [cs378x] ECM denied: anti-share user='%s' sid=%04X",
+            tcmg_log_dbg(D_READER, "%s ECM denied: anti-share user='%s' sid=%04X",
                          cl->identity.ip, cl->identity.user, sid);
         return 1;
     }
@@ -118,7 +118,7 @@ void *handle_cs378x_client(void *arg)
     }
 
     if (ban_is_banned(cl.identity.ip)) {
-        tcmg_log("%s [cs378x] connection rejected: IP is banned", cl.identity.ip);
+        tcmg_log("%s connection rejected: IP is banned", cl.identity.ip);
         goto cleanup;
     }
     int urc = cs378x_recv_ucrc(cl.session.fd, ucrc);
@@ -126,21 +126,21 @@ void *handle_cs378x_client(void *arg)
     acc = find_account_by_ucrc(ucrc);
     cl.auth.account = acc;
     if (!acc) {
-        tcmg_log("%s [cs378x] authentication failed: unknown account", cl.identity.ip);
+        tcmg_log("%s authentication failed: unknown account", cl.identity.ip);
         ban_record_fail(cl.identity.ip);
         goto cleanup;
     }
     {
         T_ACCOUNT_STATUS status = account_validate(acc, cl.identity.ip);
         if (status != ACCOUNT_OK) {
-            tcmg_log("%s [cs378x] authentication failed: account access rejected user='%s' status=%d",
+            tcmg_log("%s authentication failed: account access rejected user='%s' status=%d",
                      cl.identity.ip, acc->user, status);
             if (status != ACCOUNT_IP_DENIED) ban_record_fail(cl.identity.ip);
             goto cleanup;
         }
     }
     if (account_session_open(&cl, acc) < 0) {
-        tcmg_log("%s [cs378x] login denied: max_connections=%d user='%s' active=%d",
+        tcmg_log("%s login denied: max_connections=%d user='%s' active=%d",
                  cl.identity.ip, acc->max_connections, acc->user, (int)acc->active);
         goto cleanup;
     }
@@ -152,7 +152,7 @@ void *handle_cs378x_client(void *arg)
     tcmg_strlcpy(cl.identity.client_name, "CS378X", sizeof(cl.identity.client_name));
     account_mark_login(acc, cl.identity.ip);
     ban_record_ok(cl.identity.ip);
-    tcmg_log("%s [cs378x] LOGIN ok user='%s'", cl.identity.ip, cl.identity.user);
+    tcmg_log("%s LOGIN ok user='%s'", cl.identity.ip, cl.identity.user);
 
     int ka_misses = 0;
     bool first_frame = true;
@@ -175,11 +175,11 @@ void *handle_cs378x_client(void *arg)
             break;
         }
         if (urc_frame < 0) {
-            tcmg_log_dbg(D_CONN, "%s [cs378x] client disconnected/read error", cl.identity.ip);
+            tcmg_log_dbg(D_CONN, "%s client disconnected/read error", cl.identity.ip);
             break;
         }
         if (memcmp(frame_ucrc, cl.protocol.wire.cs378x.ucrc, CS378X_UCRC_LEN) != 0) {
-            tcmg_log_dbg(D_WIRE, "%s [cs378x] invalid per-frame UCRC", cl.identity.ip);
+            tcmg_log_dbg(D_WIRE, "%s invalid per-frame UCRC", cl.identity.ip);
             break;
         }
         first_frame = false;

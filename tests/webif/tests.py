@@ -28,6 +28,8 @@ def rawsock(payload,read=True):
 # ---- T1 pages
 for pg in ["/status","/users","/readers","/livelog","/config","/failban","/files","/tvcas","/power?action=restart"]:
     st,hd,b=req("GET",pg); ok("page "+pg,st==200 and len(b)>500,st)
+for asset,ctype in [("/assets/app.css","text/css"),("/assets/app.js","application/javascript"),("/assets/users.js","application/javascript")]:
+    st,hd,b=req("GET",asset,raw=True); ok("asset "+asset,st==200 and ctype in hd.get("content-type","") and "max-age=86400" in hd.get("cache-control","") and len(b)>100,(st,hd,len(b)))
 st,hd,b=req("GET","/users")
 ok("security headers",hd.get("x-frame-options")=="DENY" and hd.get("x-content-type-options")=="nosniff" and "frame-ancestors" in hd.get("content-security-policy",""),hd)
 ok("users page has rows",b.count("class='urow'")>0,b.count("class='urow'"))
@@ -48,12 +50,12 @@ st,_,j=req("POST","/api/user/add",{"user":test_user,"pass":"x"}); ok("duplicate 
 # save without 'enabled' must NOT disable the account
 st,_,j=req("POST","/api/user/save",{"user":test_user,"pass":"pw2","caid":"0604","maxconn":"3","expiry":"0","anti_share":"1","as_max_sids":"2","as_max_ecm":"60","as_ecm_window_s":"90","as_channel_timeout_s":"20","as_switch_delay_s":"0"}); ok("save w/o enabled ok",st==200,j)
 st,_,j=req("GET","/api/user/get?user="+urllib.parse.quote(test_user)); ok("save w/o enabled keeps enabled=1 and antishare settings",j.get("enabled")==1 and j.get("caid")=="0604" and j.get("expiry")=="0" and j.get("as_max_sids")==2 and j.get("as_max_ecm")==60 and j.get("as_ecm_window_s")==90 and j.get("as_channel_timeout_s")==20 and j.get("as_switch_delay_s")==0,j)
-st,_,j=req("GET","/api/user/toggle?user="+urllib.parse.quote(test_user)); ok("toggle off",j.get("enabled")==0,j)
+st,_,j=req("POST","/api/user/toggle?user="+urllib.parse.quote(test_user)); ok("toggle off",j.get("enabled")==0,j)
 for _ in range(10):
     time.sleep(0.15)
     st,_,j=req("GET","/api/user/get?user="+urllib.parse.quote(test_user))
     if st==200 and j.get("enabled")==0: break
-st,_,j=req("GET","/api/user/toggle?user="+urllib.parse.quote(test_user)); ok("toggle on",st==200 and j.get("ok") is True,j)
+st,_,j=req("POST","/api/user/toggle?user="+urllib.parse.quote(test_user)); ok("toggle on",st==200 and j.get("ok") is True,j)
 for _ in range(10):
     time.sleep(0.15)
     st,_,j=req("GET","/api/user/get?user="+urllib.parse.quote(test_user))
@@ -61,10 +63,23 @@ for _ in range(10):
 ok("toggle on applied",st==200 and j.get("enabled")==1,j)
 # JSON escaping of odd (but valid) names comes from config file: tested via file save below
 # reset stats on an ONLINE user, then idle must be sane
-st,_,j=req("GET","/api/user/resetstats?user=client"); ok("resetstats",st==200 and j.get("ok"),j)
-st,_,rj=req("GET","/api/readers"); ok("readers API returns JSON",st==200 and rj.get("ok") is True and isinstance(rj.get("readers"),list),rj)
+st,_,j=req("POST","/api/user/resetstats?user=client"); ok("resetstats",st==200 and j.get("ok"),j)
+st,_,rj=req("GET","/api/readers"); ok("readers API returns JSON",st==200 and rj.get("ok") is True and isinstance(rj.get("readers"),list) and all("cw_ok" in r and "cw_nok" in r and "active" in r for r in rj.get("readers",[])),rj)
 # reader CRUD: add, edit, validate, and delete through the same endpoints used by the WebIf modal
 reader_base={"index":"-1","label":"Test EMU","protocol":"emu","enabled":"1","device":"","user":"","password":"","key":"","inactivitytimeout":"30","caid":"","sid_whitelist":"","ecmwhitelist":"37","group":"1","ecmkeys":"0B00="+"A"*64,"DO_ECM":"1","FAST_RESET":"0","POLL_MS":"250"}
+large_keys=";".join("%04X="%(0x1000+i)+"A"*64 for i in range(8))
+large_reader=dict(reader_base)
+large_reader.update(label="Large JSON Reader",ecmkeys=large_keys)
+st,_,j=req("POST","/api/reader/save",large_reader); ok("large reader JSON save",st==200 and j.get("ok"),j)
+st,_,rj=req("GET","/api/readers")
+large_row=next((r for r in rj.get("readers",[]) if r.get("label")=="Large JSON Reader"),None)
+expected_keys="\n".join(large_keys.split(";"))
+large_detail = {}
+if large_row:
+    st,_,large_detail=req("GET",f"/api/reader/get?index={large_row.get('index')}")
+ok("large reader JSON preserved",large_row is not None and st==200 and large_detail.get("ecmkeys")==expected_keys,(len(large_detail.get("ecmkeys","")) if isinstance(large_detail,dict) else -1))
+if large_row:
+    st,_,j=req("POST","/api/reader/delete?index="+str(large_row.get("index"))); ok("large reader JSON cleanup",st==200 and j.get("ok"),j)
 st,_,j=req("POST","/api/reader/save",reader_base); ok("add reader",st==200 and j.get("ok"),j)
 st,_,_rl=req("GET","/api/readers")
 reader_test_index=next((r.get("index") for r in _rl.get("readers",[]) if r.get("label")=="Test EMU"), -1) if isinstance(_rl,dict) else -1
@@ -74,13 +89,13 @@ st,_,j=req("GET",f"/api/reader/get?index={reader_test_index}"); ok("reader add r
 reader_edit=dict(reader_base); reader_edit.update(index=str(reader_test_index),label="Edited EMU",enabled="0",group="2,3",ecmkeys="0B00="+"B"*64)
 st,_,j=req("POST","/api/reader/save",reader_edit); ok("edit reader",st==200 and j.get("ok"),j)
 st,_,j=req("GET",f"/api/reader/get?index={reader_test_index}"); ok("reader edit roundtrip",st==200 and j.get("label")=="Edited EMU" and j.get("enabled")==0 and j.get("group")=="2,3",j)
-for k,bad in [("label",dict(reader_base, label="")), ("protocol",dict(reader_base, protocol="bogus")), ("group",dict(reader_base, group="0")), ("ecmwl",dict(reader_base, ecmwhitelist="FF")), ("ecmkey",dict(reader_base, ecmkeys="0B00="+"C"*63))]:
+for k,bad in [("label",dict(reader_base, label="")), ("protocol",dict(reader_base, protocol="bogus")), ("group",dict(reader_base, group="0")), ("ecmwl",dict(reader_base, ecmwhitelist="100")), ("ecmkey",dict(reader_base, ecmkeys="0B00="+"C"*63))]:
     st,_,j=req("POST","/api/reader/save",bad); ok("reject reader "+k,st==400 and j.get("ok") is False,(st,j))
-st,_,j=req("GET",f"/api/reader/delete?index={reader_test_index}"); ok("delete reader",st==200 and j.get("ok"),j)
+st,_,j=req("POST",f"/api/reader/delete?index={reader_test_index}"); ok("delete reader",st==200 and j.get("ok"),j)
 st,_,j=req("GET",f"/api/reader/get?index={reader_test_index}"); ok("deleted reader -> 404",st==404 and j.get("ok") is False,j)
 # exercise every reader protocol exposed by the WebIf modal
 reader_protocol_base={"index":"-1","enabled":"1","device":"host:10000","user":"u","password":"p","key":"","inactivitytimeout":"30","caid":"0B00","sid_whitelist":"","ecmwhitelist":"37","group":"1","ecmkeys":"","DO_ECM":"1","FAST_RESET":"10","POLL_MS":"400"}
-for _proto in ["cccam","mgcamd","newcamd","cs378x","pcsc"]:
+for _proto in ["cccam","mgcamd","newcamd","cs378x","pcsc","serial"]:
     _d=dict(reader_protocol_base)
     _d.update(label="Matrix "+_proto,protocol=_proto)
     if _proto in ("mgcamd","newcamd"):
@@ -88,42 +103,45 @@ for _proto in ["cccam","mgcamd","newcamd","cs378x","pcsc"]:
     elif _proto == "pcsc":
         _d.update(device="Test PCSC Reader",user="",password="",key="")
     st,_,_j=req("POST","/api/reader/save",_d); ok("add reader protocol "+_proto,st==200 and _j.get("ok"),_j)
-st,_,rj=req("GET","/api/readers"); ok("all reader protocols visible",st==200 and {r.get("protocol") for r in rj.get("readers",[])} >= {"cccam","mgcamd","newcamd","cs378x","pcsc"},rj)
-st,_,page=req("GET","/readers"); ok("reader matrix appears in page",st==200 and all(("Matrix "+_p) in page for _p in ["cccam","mgcamd","newcamd","cs378x","pcsc"]),len(page) if isinstance(page,str) else page)
+st,_,rj=req("GET","/api/readers"); ok("all reader protocols visible",st==200 and {r.get("protocol") for r in rj.get("readers",[])} >= {"cccam","mgcamd","newcamd","cs378x","pcsc","serial"},rj)
+st,_,page=req("GET","/readers"); ok("reader matrix appears in page",st==200 and all(("Matrix "+_p) in page for _p in ["cccam","mgcamd","newcamd","cs378x","pcsc","serial"]),len(page) if isinstance(page,str) else page)
 st,_,rj=req("GET","/api/readers")
 for _r in list(rj.get("readers",[])) if isinstance(rj,dict) else []:
     if str(_r.get("label","")).startswith("Matrix "):
         _i=_r.get("index")
-        st2,_,_j=req("GET",f"/api/reader/delete?index={_i}"); ok("delete matrix reader %s"%_r.get("label"),st2==200 and _j.get("ok"),_j)
+        st2,_,_j=req("POST",f"/api/reader/delete?index={_i}"); ok("delete matrix reader %s"%_r.get("label"),st2==200 and _j.get("ok"),_j)
 st,_,rj=req("GET","/api/readers"); ok("reader matrix cleanup",st==200 and all(not str(r.get("label","")).startswith("Matrix ") for r in rj.get("readers",[])),rj)
 st,_,s=req("GET","/api/status")
 cl=s.get("clients",[]) if isinstance(s,dict) else []
 ok("status clients response sane",isinstance(cl,list),cl[:1])
+if cl:
+    tid=cl[0].get("thread_id"); uname=cl[0].get("user","")
+    st,_,j=req("POST","/api/client/kill?tid="+urllib.parse.quote(str(tid))+"&user="+urllib.parse.quote(uname)); ok("client kill API",st==200 and j.get("ok"),j)
+else:
+    ok("client kill API",True,"no active client fixture")
 # delete an active user when one exists; otherwise verify the endpoint remains stable.
 online_user=cl[0].get("user") if cl else ""
 if online_user:
-    st,_,j=req("GET","/api/user/delete?user="+urllib.parse.quote(online_user)); ok("delete active user",st==200,j)
+    st,_,j=req("POST","/api/user/delete?user="+urllib.parse.quote(online_user)); ok("delete active user",st==200,j)
 else:
     ok("delete active user",True,"no active client fixture")
 for i in range(3):
     st1,_,_=req("GET","/api/status"); st2,_,_=req("GET","/users"); st3,_,_=req("GET","/status")
 ok("no crash after deleting active user",st1==200 and st2==200 and st3==200)
-st,_,j=req("GET","/api/user/delete?user=nobody"); ok("delete unknown -> 404",st==404,j)
+st,_,j=req("POST","/api/user/delete?user=nobody"); ok("delete unknown -> 404",st==404,j)
 
 # ---- T3 config
-st,_,c=req("GET","/api/config/get"); ok("config get has pcsc_poll_ms","pcsc_poll_ms" in c,list(c)[:5] if isinstance(c,dict) else c)
+st,_,c=req("GET","/api/config/get"); ok("config get omits reader-only pcsc settings","pcsc_poll_ms" not in c and "pcsc_reader" not in c,c)
+c2=dict(c)
+d=dict((k, str(v)) for k,v in c.items() if isinstance(v, (int, str)))
 def cfgbody(**kw):
-    d={"newcamd_port":"0","newcamd_bindaddr":"","newcamd_key":c["newcamd_key"],"newcamd_keepalive":"0","newcamd_mgclient":"0","cccam_port":"0","sock_timeout":"30","ecm_log":"1","logfile":"","webif_port":"18080","webif_bindaddr":"","webif_user":c["webif_user"],"webif_pass":"","webif_refresh":"5","pcsc_enabled":"0","pcsc_fast_reset":"0","pcsc_poll_ms":"400","pcsc_reader":"",}
-    d.update(kw); return d
+    x=dict(d); x.update(kw); return x
 st,_,j=req("POST","/api/config/save",cfgbody()); ok("config save ok",st==200 and j.get("ok"),(st,j))
-st,_,c2=req("GET","/api/config/get"); ok("pcsc_poll_ms is now stored",c2.get("pcsc_poll_ms")==400,c2.get("pcsc_poll_ms"))
 # Partial config update must not erase fields that were not submitted.
 orig_cccam=c2.get("cccam_port"); orig_webif_user=c2.get("webif_user"); orig_logfile=c2.get("logfile")
-st,_,jp=req("POST","/api/config/save",{"pcsc_poll_ms":"401"}); ok("partial config save",st==200 and jp.get("ok"),jp)
-st,_,c_partial=req("GET","/api/config/get"); ok("partial config preserves omitted fields",c_partial.get("pcsc_poll_ms")==401 and c_partial.get("cccam_port")==orig_cccam and c_partial.get("webif_user")==orig_webif_user and c_partial.get("logfile")==orig_logfile,c_partial)
 # Listener changes are saved but must explicitly request a process restart rather than a rejected live reload.
 st,_,jr=req("POST","/api/config/save",{"cccam_port":str((orig_cccam or 0)+1)}); ok("listener config reports restart required",st==200 and jr.get("ok") and jr.get("restart_required") is True,jr)
-for k,v in {"bad port":{"cccam_port":"70000"},"bad key":{"newcamd_key":"XYZ"},"bad ip":{"webif_bindaddr":"not-an-ip"},"bad poll":{"pcsc_poll_ms":"5"},"hash in logfile":{"logfile":"/tmp/a#b"},"bad flag":{"ecm_log":"7"}}.items():
+for k,v in {"bad port":{"cccam_port":"70000"},"bad key":{"newcamd_key":"XYZ"},"bad ip":{"webif_bindaddr":"not-an-ip"},"hash in logfile":{"logfile":"/tmp/a#b"},"bad flag":{"ecm_log":"7"}}.items():
     st,_,j=req("POST","/api/config/save",cfgbody(**v)); ok("config reject: "+k,st==400 and "invalid" in str(j.get("msg","")),(st,j))
 st,_,j=req("POST","/api/config/save",cfgbody(logfile="/tmp/tcmg_test.log")); st,_,j=req("POST","/api/config/save",cfgbody(logfile=""))
 st,_,c3=req("GET","/api/config/get"); ok("logfile can be cleared",c3.get("logfile")=="",c3.get("logfile"))
@@ -181,16 +199,17 @@ out=rawsock(b"GET /users HTTP/1.1\r\nX-Junk: "+b"j"*20000+b"\r\n\r\n"); ok("over
 st,_,b=req("GET","/users"); ok("server still alive after abuse",st==200)
 
 # ---- T7 CSRF guard
-st,_,j=req("GET","/api/user/toggle?user="+urllib.parse.quote(test_user),headers={"Sec-Fetch-Site":"cross-site"}); ok("cross-site state change blocked",st==403,(st,j))
-st,_,j=req("GET","/api/user/toggle?user="+urllib.parse.quote(test_user),headers={"Sec-Fetch-Site":"same-origin"}); ok("same-origin allowed",st==200,(st,j))
+st,_,j=req("POST","/api/user/toggle?user="+urllib.parse.quote(test_user),headers={"Sec-Fetch-Site":"cross-site"}); ok("cross-site state change blocked",st==403,(st,j))
+st,_,j=req("POST","/api/user/toggle?user="+urllib.parse.quote(test_user),headers={"Sec-Fetch-Site":"same-origin"}); ok("same-origin allowed",st==200,(st,j))
 time.sleep(0.2)
-st,_,j=req("GET","/api/user/toggle?user="+urllib.parse.quote(test_user)); ok("no Sec-Fetch header (curl/bookmark) allowed",st==200,(st,j))
+st,_,j=req("POST","/api/user/toggle?user="+urllib.parse.quote(test_user)); ok("no Sec-Fetch header (curl/bookmark) allowed",st==200,(st,j))
+st,_,j=req("GET","/api/user/toggle?user="+urllib.parse.quote(test_user)); ok("GET mutation rejected",st in (404,405),(st,j))
 csrf_foreign="csrf1_"+uuid.uuid4().hex[:6]
 st,_,j=req("POST","/api/user/add",{"user":csrf_foreign,"pass":"x"},headers={"Origin":"http://evil.example","Host":"127.0.0.1:18080"}); ok("foreign Origin POST blocked",st==403,(st,j))
 csrf_same="csrf2_"+uuid.uuid4().hex[:6]
 st,_,j=req("POST","/api/user/add",{"user":csrf_same,"pass":"x"},headers={"Origin":"http://127.0.0.1:18080","Host":"127.0.0.1:18080"}); ok("same Origin POST allowed",st==200,(st,j))
 st,_,j=req("GET","/api/status",headers={"Sec-Fetch-Site":"cross-site"}); ok("read-only GET not blocked",st==200)
-st,_,j=req("GET","/api/user/delete?user="+urllib.parse.quote(test_user)); ok("cleanup test user",st in (200,404),j)
+st,_,j=req("POST","/api/user/delete?user="+urllib.parse.quote(test_user)); ok("cleanup test user",st in (200,404),j)
 
 # ---- T8 power
 st,_,b=req("GET","/power?action=bogus&confirm=yes"); time.sleep(0.6)

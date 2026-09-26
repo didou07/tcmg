@@ -19,7 +19,7 @@ void send_page_power(int fd, const char *qs)
 
 	if (strcmp(confirm, "yes") == 0 && valid_action) {
 		int is_restart = (strcmp(action, "restart") == 0);
-		tcmg_log("webif: %s requested", is_restart ? "restart" : "shutdown");
+		tcmg_log("%s requested", is_restart ? "restart" : "shutdown");
 		do_stop = 1; do_restart = is_restart;                                                
 
 		pos = buf_printf(&buf, &bsz, pos,
@@ -47,11 +47,11 @@ void send_page_power(int fd, const char *qs)
 				  "<div class='spill'><div class='pulse sm'></div>&nbsp;Waiting for server&hellip;</div>"
 				  "</div>"
 				  "<script>setTimeout(function(){"
-				  "  var t=setInterval(function(){"
-				  "    fetch('/api/status',{cache:'no-store'})"
-				  "      .then(function(){clearInterval(t);location.href='/status';})"
-				  "      .catch(function(){});"
-				  "  },1500);"
+				  "  function wait(){"
+				  "    tcmg_api('/api/status')"
+				  "      .then(function(){location.href='/status';},function(){setTimeout(wait,1500);});"
+				  "  }"
+				  "  wait();"
 				  "},3500);</script>"
 				: "");
 	}

@@ -1,4 +1,4 @@
-#define MODULE_LOG_PREFIX "account-stats"
+#define MODULE_LOG_PREFIX "stats"
 #include "account_stats.h"
 #include "core/utils.h"
 #include "log/log.h"

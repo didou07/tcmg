@@ -1,6 +1,6 @@
 #define MODULE_LOG_PREFIX "webif"
 #include "../internal/proto.h"
-#include "../assets/webif_assets.h"
+#include "../assets/css.h"
 
 #pragma GCC diagnostic ignored "-Wformat"
 #pragma GCC diagnostic ignored "-Wformat-extra-args"

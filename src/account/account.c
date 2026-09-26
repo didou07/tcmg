@@ -95,7 +95,7 @@ void account_release(S_ACCOUNT *account)
     prev = atomic_fetch_sub(&account->refs, 1);
     if (prev == 0) {
         atomic_store(&account->refs, 0);
-        tcmg_log("account reference underflow for user='%s'", account->user);
+        tcmg_log("reference underflow for user='%s'", account->user);
         return;
     }
     if (prev == 1) account_reap_retired();

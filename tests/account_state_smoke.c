@@ -1,4 +1,6 @@
-#include "globals.h"
+#include "core/config_state.h"
+#include "core/account_types.h"
+#include <pthread.h>
 #include "account/account_state.h"
 #include "core/config_state.h"
 #include <stdio.h>

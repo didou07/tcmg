@@ -88,3 +88,25 @@ void send_api_status(int fd, const char *qs)
     send_response(fd, 200, "OK", "application/json", buf, pos);
     free(buf);
 }
+
+void handle_api_client_kill(int fd, const char *qs)
+{
+    char tid_s[32] = "", user[CFGKEY_LEN] = "";
+    get_param(qs, "tid", tid_s, sizeof(tid_s));
+    get_param(qs, "user", user, sizeof(user));
+    if (!tid_s[0]) { send_json_error(fd, 400, "Bad Request", "tid is required"); return; }
+
+    char *end = NULL;
+    errno = 0;
+    unsigned long tid_u = strtoul(tid_s, &end, 10);
+    if (errno != 0 || !end || *end != '\0' || tid_u > UINT32_MAX) {
+        send_json_error(fd, 400, "Bad Request", "invalid tid");
+        return;
+    }
+
+    uint32_t tid = (uint32_t)tid_u;
+    webif_client_kill_by_tid(tid);
+    tcmg_log("disconnect user='%s' tid=%u (requested via api)",
+              user[0] ? user : "?", tid);
+    send_json_ok(fd, "ok");
+}

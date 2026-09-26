@@ -1,4 +1,4 @@
-#define MODULE_LOG_PREFIX "csreader"
+#define MODULE_LOG_PREFIX "cs378x"
 #include "net/net.h"
 #include "crypto/crypto.h"
 #include "log/log.h"
@@ -106,7 +106,7 @@ static int cs_connect_locked(S_CS378X_READER_STATE *s, const S_READER *r, int in
     tcmg_strlcpy(s->signature, sig, sizeof(s->signature));
     s->connected = 1;
     s->msg_id = 0;
-    tcmg_log_dbg(D_READER, "cs378x reader[%d] connected label='%s' server=%s user='%s'",
+    tcmg_log_dbg(D_READER, "reader[%d] connected label='%s' server=%s user='%s'",
                  index, r->label, r->device, r->user);
     return 0;
 }
@@ -198,7 +198,7 @@ int32_t cs378x_reader_do_ecm(int index, const S_READER *reader,
             }
             memcpy(cw, rsp + CS378X_HEADER_LEN, CW_LEN);
             pthread_mutex_unlock(&s->mtx);
-            tcmg_log_dbg(D_READER, "cs378x reader[%d] ECM success label='%s' caid=%04X sid=%04X",
+            tcmg_log_dbg(D_READER, "reader[%d] ECM success label='%s' caid=%04X sid=%04X",
                          index, reader->label, caid, sid);
             return 0;
         }

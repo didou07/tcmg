@@ -8,6 +8,8 @@
 
 typedef struct {
     char device[256];
+    int owned;
+    int exclusive;
     int present;
     int ready;
     uint8_t atr[TCMG_INTERNAL_MAX_ATR];

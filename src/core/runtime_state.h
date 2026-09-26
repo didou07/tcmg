@@ -7,6 +7,7 @@
 extern _Atomic int32_t g_running;
 extern _Atomic int32_t g_reload_cfg;
 extern _Atomic int32_t g_restart;
+extern _Atomic int32_t g_restart_immediate;
 extern _Atomic int32_t g_active_conns;
 extern time_t g_start_time;
 extern char g_cfgdir[CFGPATH_LEN];

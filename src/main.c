@@ -10,6 +10,7 @@
 #include "emu/emu.h"
 #include "pcsc/pcsc.h"
 #include "internal/internal.h"
+#include "serial/serial.h"
 #include "reader/reader.h"
 #include "proto/registry.h"
 #include "webif/server.h"
@@ -17,6 +18,35 @@
 #include "security/failban.h"
 
 static char **g_argv_saved = NULL;
+
+static void scheduled_restart_key(const struct tm *tm, char *out, size_t out_len)
+{
+    if (!tm || !out || out_len == 0)
+        return;
+    snprintf(out, out_len, "%04d:%03d:%04d",
+             tm->tm_year + 1900, tm->tm_yday, tm->tm_hour * 60 + tm->tm_min);
+}
+
+static int scheduled_restart_was_already_done(const struct tm *tm)
+{
+    const char *env = getenv("TCMG_SCHEDULED_RESTART_KEY");
+    char key[32] = "";
+    if (!env || !*env)
+        return 0;
+    scheduled_restart_key(tm, key, sizeof(key));
+    return strcmp(env, key) == 0;
+}
+
+static void mark_scheduled_restart_done(const struct tm *tm)
+{
+    char key[32] = "";
+    scheduled_restart_key(tm, key, sizeof(key));
+#ifdef TCMG_OS_WINDOWS
+    _putenv_s("TCMG_SCHEDULED_RESTART_KEY", key);
+#else
+    (void)setenv("TCMG_SCHEDULED_RESTART_KEY", key, 1);
+#endif
+}
 
 static void print_usage(const char *prog)
 {
@@ -152,11 +182,38 @@ int main(int argc, char *argv[])
 	emu_init();
 	pcsc_start();
 	internal_start();
+	serial_start();
 	webif_start();
 	proto_start_all();
 
+	int scheduled_restart_day = -1;
 	while (g_running)
 	{
+		time_t now = time(NULL);
+		struct tm local_tm;
+		int scheduled_restart_enabled = 0;
+		int scheduled_restart_minutes = 240;
+		pthread_rwlock_rdlock(&g_cfg.acc_lock);
+		scheduled_restart_enabled = g_cfg.scheduled_restart_enabled;
+		scheduled_restart_minutes = g_cfg.scheduled_restart_minutes;
+		pthread_rwlock_unlock(&g_cfg.acc_lock);
+		if (localtime_r(&now, &local_tm) &&
+			scheduled_restart_enabled &&
+			local_tm.tm_hour * 60 + local_tm.tm_min == scheduled_restart_minutes)
+		{
+			int day = local_tm.tm_year * 366 + local_tm.tm_yday;
+			if (day != scheduled_restart_day && !scheduled_restart_was_already_done(&local_tm))
+			{
+				scheduled_restart_day = day;
+				mark_scheduled_restart_done(&local_tm);
+				tcmg_log("scheduled restart: 04:00 immediate");
+				atomic_store(&g_restart_immediate, 1);
+				atomic_store(&g_restart, 1);
+				atomic_store(&g_running, 0);
+				break;
+			}
+		}
+
 		if (g_reload_cfg)
 		{
 			g_reload_cfg = 0;
@@ -182,7 +239,19 @@ int main(int argc, char *argv[])
 	webif_stop();
 	pcsc_stop();
 	internal_stop();
+	serial_stop();
 	proto_stop_all();
+
+	if (atomic_load(&g_restart_immediate))
+	{
+		tcmg_log("scheduled restart: dropping active connections and restarting now");
+		reader_shutdown();
+		tcmg_winsock_cleanup();
+		log_flush();
+		tcmg_exec_restart(g_argv_saved);
+		tcmg_log("scheduled restart: exec failed");
+		return 1;
+	}
 
 	for (int w = 0; w < 50 && g_active_conns > 0; w++)
 	{

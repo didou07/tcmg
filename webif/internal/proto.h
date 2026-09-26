@@ -20,6 +20,7 @@ void req_free(s_http_req *req);
 
 int  buf_printf(char **dst, int *dstsz, int pos, const char *fmt, ...)
      __attribute__((format(printf, 4, 5)));
+int  buf_json_string(char **dst, int *dstsz, int pos, const char *src);
 void url_decode(char *s);
 void get_param(const char *qs, const char *key, char *out, int outsz);
 void form_get(const char *body, const char *key, char *out, int outsz);
@@ -39,6 +40,7 @@ void send_response(int fd, int code, const char *reason,
 void send_redirect(int fd, const char *location);
 void send_redirect_with_cookie(int fd, const char *location, const char *token);
 void send_redirect_clear_cookie(int fd, const char *location);
+void send_webif_asset(int fd, const char *path);
 
 void b64_encode(const char *in, int ilen, char *out, int outsz);
 int  check_auth(const char *auth_header);
@@ -74,8 +76,10 @@ void send_page_tvcas(int fd);
 void handle_request(int fd, const char *client_ip);
 
 void send_api_status(int fd, const char *qs);
+void handle_api_client_kill(int fd, const char *qs);
 void send_api_userstats(int fd);
 void send_api_pcsc_readers(int fd);
+void send_api_serial_ports(int fd);
 void handle_user_toggle(int fd, const char *qs);
 void send_api_user_get(int fd, const char *qs);
 void handle_user_save(int fd, const char *body);
@@ -86,6 +90,7 @@ void send_api_readers(int fd);
 void send_api_reader_get(int fd, const char *qs);
 void handle_api_reader_save(int fd, const char *body);
 void handle_api_reader_delete(int fd, const char *qs);
+void handle_api_reader_toggle(int fd, const char *qs);
 
 void send_api_config_get(int fd);
 void handle_api_config_save(int fd, const char *body);

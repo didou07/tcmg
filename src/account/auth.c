@@ -1,4 +1,4 @@
-#define MODULE_LOG_PREFIX "account-auth"
+#define MODULE_LOG_PREFIX "account"
 #include "account.h"
 #include "core/constants.h"
 #include "core/config_state.h"

@@ -9,6 +9,7 @@
 
 #ifndef TCMG_OS_WINDOWS
 #include <sys/resource.h>
+#include <limits.h>
 #endif
 
 
@@ -289,6 +290,26 @@ int buf_printf(char **dst, int *dstsz, int pos, const char *fmt, ...)
 	return pos + needed;
 }
 
+int buf_json_string(char **dst, int *dstsz, int pos, const char *src)
+{
+    if (!src) src = "";
+    size_t n = strlen(src);
+    if (n > (SIZE_MAX - 8) / 6) return -1;
+    size_t need = n * 6 + 1;
+    if (need > (size_t)INT_MAX || pos < 0 || (size_t)pos > (size_t)INT_MAX - need) return -1;
+    int required = pos + (int)need + 1;
+    if (required >= *dstsz) {
+        int newsz = *dstsz > 0 ? *dstsz * 2 : 8192;
+        if (newsz < required) newsz = required;
+        char *nb = (char *)realloc(*dst, (size_t)newsz);
+        if (!nb) return -1;
+        *dst = nb;
+        *dstsz = newsz;
+    }
+    int wrote = json_escape(src, *dst + pos, *dstsz - pos);
+    return pos + wrote;
+}
+
 void get_param(const char *qs, const char *key, char *out, int outsz)
 {
 	if (!out || outsz <= 0) return;
@@ -512,7 +533,7 @@ void send_headers_ex(int fd, int code, const char *reason,
 	         code, reason, WEB_SERVER_NAME, date_str,
 	         ctype, length, cookie_line);
 	if (hdr_n >= (int)sizeof(hdr)) {
-		tcmg_log("webif: HTTP header truncated (needed %d bytes)", hdr_n);
+		tcmg_log("HTTP header truncated (needed %d bytes)", hdr_n);
 		hdr_n = (int)sizeof(hdr) - 1;
 	}
 	send_all(fd, hdr, hdr_n);
@@ -573,6 +594,46 @@ void send_redirect_clear_cookie(int fd, const char *location)
 	send_all(fd, hdr, n);
 }
 
+void send_webif_asset(int fd, const char *path)
+{
+	const char *body = NULL, *ctype = NULL;
+	if (!strcmp(path, "/assets/app.css")) {
+		body = TCMG_CSS;
+		ctype = "text/css; charset=utf-8";
+	} else if (!strcmp(path, "/assets/app.js")) {
+		body = TCMG_JS;
+		ctype = "application/javascript; charset=utf-8";
+	} else if (!strcmp(path, "/assets/users.js")) {
+		body = TCMG_USERS_JS;
+		ctype = "application/javascript; charset=utf-8";
+	} else if (!strcmp(path, "/assets/readers.js")) {
+		body = TCMG_READERS_JS;
+		ctype = "application/javascript; charset=utf-8";
+	} else if (!strcmp(path, "/assets/livelog.js")) {
+		body = TCMG_LIVELOG_JS;
+		ctype = "application/javascript; charset=utf-8";
+	} else {
+		send_response(fd, 404, "Not Found", "text/plain", "not found", 9);
+		return;
+	}
+
+	int len = (int)strlen(body);
+	char hdr[512];
+	int n = snprintf(hdr, sizeof(hdr),
+	                 "HTTP/1.1 200 OK\r\n"
+	                 "Server: %s\r\n"
+	                 "Content-Type: %s\r\n"
+	                 "Content-Length: %d\r\n"
+	                 "Cache-Control: private, max-age=86400\r\n"
+	                 "X-Content-Type-Options: nosniff\r\n"
+	                 "Connection: close\r\n\r\n",
+	                 WEB_SERVER_NAME, ctype, len);
+	if (n < 0) return;
+	if (n >= (int)sizeof(hdr)) n = (int)sizeof(hdr) - 1;
+	send_all(fd, hdr, n);
+	send_all(fd, body, len);
+}
+
 
 S_SERVER_STATS collect_stats(void)
 {
@@ -594,7 +655,7 @@ S_SERVER_STATS collect_stats(void)
 void handle_reset_stats(void)
 {
 	webif_account_reset_all_stats();
-	tcmg_log("%s", "webif: all user stats reset");
+	tcmg_log("%s", "all user stats reset");
 }
 
 
@@ -624,24 +685,6 @@ void handle_reset_stats(void)
  "<line x1='3' y1='12' x2='21' y2='12'/>" \
  "<line x1='3' y1='18' x2='21' y2='18'/></svg>"
 
-#define TCMG_COMPACT_UI_JS \
- "(function(){" \
- "function mkq(text){" \
- "var q=document.createElement('button');q.type='button';q.className='qtip';q.textContent='?';" \
- "q.title=text;q.setAttribute('aria-label',text);return q;}" \
- "function run(){" \
- "document.querySelectorAll('.cfg-sub').forEach(function(el){" \
- "var t=(el.textContent||'').replace(/\\s+/g,' ').trim();if(!t)return;" \
- "var q=mkq(t),p=el.parentNode,ttl=el.previousElementSibling;" \
- "if(ttl)ttl.appendChild(q);else p.insertBefore(q,el);el.remove();});" \
- "document.querySelectorAll('.cfg-help,.fhint').forEach(function(el){" \
- "var t=(el.textContent||'').replace(/\\s+/g,' ').trim();if(!t){el.remove();return;}" \
- "var q=mkq(t);if(el.id)q.id=el.id;el.replaceWith(q);});" \
- "document.querySelectorAll('.cfg-intro').forEach(function(el){el.remove();});" \
- "}" \
- "if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run);else run();" \
- "})();"
-
 int emit_header(char **buf, int *bsz, int pos,
                 const char *title, const char *active)
 {
@@ -650,17 +693,19 @@ int emit_header(char **buf, int *bsz, int pos,
     if (strcmp(active, "restart")  == 0 ||
         strcmp(active, "shutdown") == 0)
         nav_active = "power";
+    int refresh = webif_max_refresh();
 
     pos = buf_printf(buf, bsz, pos,
         "<!DOCTYPE html><html lang='en' data-theme='dark' data-tpref='dark'><head>"
         "<meta charset='UTF-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
         "<title>TCMG &mdash; %s</title>"
-        "<style>%s</style>"
-        "<script>" WEB_THEME_INIT_JS WEB_ACCENT_INIT_JS TCMG_COMPACT_UI_JS "</script>"
+        "<link rel='stylesheet' href='/assets/app.css?v=%s-20260926'>"
+        "<script>" WEB_THEME_INIT_JS WEB_ACCENT_INIT_JS "window.TCMG_WEB_POLL=%d;</script>"
+        "<script src='/assets/app.js?v=%s-20260926' defer></script>"
         "</head><body class='pg-%s'>"
         GLOBAL_ICON_SPRITE,
-        title, TCMG_CSS, active);
+        title, TCMG_VERSION, refresh, TCMG_VERSION, active);
 
     pos = buf_printf(buf, bsz, pos,
         "<nav id='tb'>"
@@ -739,7 +784,6 @@ int emit_header(char **buf, int *bsz, int pos,
             nav[i].href, cls, nav[i].icon, nav[i].label);
     }
 
-    int refresh = webif_max_refresh();
     S_WEBIF_SERVER_STATS header_stats = webif_server_stats();
 
     pos = buf_printf(buf, bsz, pos,
@@ -776,10 +820,6 @@ int emit_header(char **buf, int *bsz, int pos,
         header_stats.active_conns,
         refresh <= 0 ? " pc-off" : "",
         refresh > 0 ? refresh : 5);
-
-    pos = buf_printf(buf, bsz, pos,
-        "<script>" TCMG_JS "</script>",
-        refresh);
 
     return pos;
 }

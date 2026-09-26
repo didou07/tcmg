@@ -7,6 +7,7 @@
 #include "protocol.h"
 #include "rules.h"
 #include "result.h"
+#include "stats.h"
 
 int32_t reader_dispatch_ecm(const S_ECM_REQUEST *request, S_READER_RESULT *result)
 {
@@ -34,7 +35,7 @@ int32_t reader_dispatch_ecm(const S_ECM_REQUEST *request, S_READER_RESULT *resul
 
         const S_READER_PROTOCOL *protocol = reader_protocol_find(readers[i].protocol);
         if (!protocol || !protocol->do_ecm) {
-            tcmg_log_dbg(D_READER, "reader index=%d label='%s' unknown protocol=%s",
+            tcmg_log_dbg(D_READER, "index=%d label='%s' unknown protocol=%s",
                          indices[i], readers[i].label, readers[i].protocol);
             continue;
         }
@@ -45,6 +46,7 @@ int32_t reader_dispatch_ecm(const S_ECM_REQUEST *request, S_READER_RESULT *resul
             .request = request,
         };
         int rc = protocol->do_ecm(&call);
+        reader_stats_record(indices[i], rc == EMU_OK);
         if (rc == EMU_OK) {
             if (result) {
                 int ngrp = readers[i].ngroups;
@@ -64,7 +66,7 @@ int32_t reader_dispatch_ecm(const S_ECM_REQUEST *request, S_READER_RESULT *resul
         }
 
         tcmg_log_dbg(D_READER,
-                     "reader skip/failed index=%d label='%s' protocol=%s caid=%04X sid=%04X rc=%d",
+                     "skip/failed index=%d label='%s' protocol=%s caid=%04X sid=%04X rc=%d",
                      indices[i], readers[i].label, readers[i].protocol,
                      request->caid, request->sid, rc);
     }

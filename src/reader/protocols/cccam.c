@@ -1,4 +1,4 @@
-#define MODULE_LOG_PREFIX "ccreader"
+#define MODULE_LOG_PREFIX "cccam"
 #include "net/net.h"
 #include "crypto/crypto.h"
 #include "log/log.h"
@@ -352,9 +352,9 @@ static int cc_connect_locked(S_CC_READER_STATE *s, const S_READER *r, int index)
 
     (void)pump_cards(s, 150);
     tcmg_strlcpy(s->signature, sig, sizeof(s->signature));
-    tcmg_dump_dbg(D_READER, s->node_id, 8, "cccam reader[%d] local node", index);
-    tcmg_dump_dbg(D_READER, s->peer_node_id, 8, "cccam reader[%d] server node", index);
-    tcmg_log_dbg(D_READER, "cccam reader[%d] connected label='%s' server=%s", index, r->label, r->device);
+    tcmg_dump_dbg(D_READER, s->node_id, 8, "reader[%d] local node", index);
+    tcmg_dump_dbg(D_READER, s->peer_node_id, 8, "reader[%d] server node", index);
+    tcmg_log_dbg(D_READER, "reader[%d] connected label='%s' server=%s", index, r->label, r->device);
     secure_zero(seed, sizeof(seed)); secure_zero(xseed, sizeof(xseed)); secure_zero(hash, sizeof(hash));
     secure_zero(dec_seed, sizeof(dec_seed)); secure_zero(hash_buf, sizeof(hash_buf)); secure_zero(user, sizeof(user));
     secure_zero(ack, sizeof(ack)); secure_zero(cli, sizeof(cli));
@@ -436,10 +436,10 @@ int32_t cccam_reader_do_ecm(int index, const S_READER *reader,
         pthread_mutex_unlock(&s->mtx);
         return -8;
     }
-    tcmg_dump_dbg(D_READER, rsp, CW_LEN, "cccam reader[%d] wire-decoded CW card=%08X", index, card_id);
+    tcmg_dump_dbg(D_READER, rsp, CW_LEN, "reader[%d] wire-decoded CW card=%08X", index, card_id);
     memcpy(cw, rsp, CW_LEN);
     cc_cw_crypt(s, cw, card_id);
-    tcmg_dump_dbg(D_READER, cw, CW_LEN, "cccam reader[%d] after cw_crypt card=%08X", index, card_id);
+    tcmg_dump_dbg(D_READER, cw, CW_LEN, "reader[%d] after cw_crypt card=%08X", index, card_id);
     /* OSCam advances the DECRYPT stream once more with ENCRYPT direction
      * after a CW frame, but that operation is only a stream-state update.
      * Do it on a throw-away copy so the caller receives the actual CW. */
@@ -448,7 +448,7 @@ int32_t cccam_reader_do_ecm(int index, const S_READER *reader,
     cc_crypt(&s->recv_block, state_step, CW_LEN, 1);
     secure_zero(state_step, sizeof(state_step));
     pthread_mutex_unlock(&s->mtx);
-    tcmg_log_dbg(D_READER, "cccam reader[%d] ECM success label='%s' caid=%04X sid=%04X", index, reader->label, caid, sid);
+    tcmg_log_dbg(D_READER, "reader[%d] ECM success label='%s' caid=%04X sid=%04X", index, reader->label, caid, sid);
     return 0;
 }
 

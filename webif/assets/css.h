@@ -480,13 +480,14 @@
 	".sdot.online{margin:0 7px 0 0;background:var(--gr);animation:pa 2s ease-in-out infinite}" \
 	".urow{transition:background-color .16s ease,box-shadow .16s ease}" \
 		".urow[data-vis='online'],.urow[data-vis='stale'],.urow[data-vis='expired'],.urow[data-vis='disabled']{background:transparent}" \
-		".urow[data-vis='online']{box-shadow:inset 3px 0 0 0 var(--gr)}" \
+		".urow[data-active='1'] td{background:rgba(74,222,128,.14);color:var(--t0)}" \
+	".urow[data-active='1']{box-shadow:inset 4px 0 0 var(--gr),0 0 0 1px rgba(74,222,128,.10)}" \
 		".urow[data-vis='stale']{box-shadow:inset 3px 0 0 0 var(--or)}" \
 		".urow[data-vis='expired']{box-shadow:inset 3px 0 0 0 var(--re)}" \
 		".urow[data-vis='disabled']{box-shadow:inset 3px 0 0 0 var(--bd2)}" \
 		"@media (hover:hover) and (pointer:fine){" \
-		".urow[data-vis='online']:hover{background:linear-gradient(90deg,rgba(34,197,94,.12),rgba(34,197,94,.03) 60%)}" \
-		":root[data-theme=light] .urow[data-vis='online']:hover{background:linear-gradient(90deg,rgba(20,122,58,.10),rgba(20,122,58,.03) 60%)}" \
+		".urow[data-active='1']:hover td{background:rgba(74,222,128,.18)}" \
+		":root[data-theme=light] .urow[data-active='1']:hover{background:linear-gradient(90deg,rgba(20,122,58,.10),rgba(20,122,58,.03) 60%)}" \
 		".urow[data-vis='stale']:hover{background:linear-gradient(90deg,rgba(249,115,22,.12),rgba(249,115,22,.03) 60%)}" \
 		".urow[data-vis='expired']:hover{background:linear-gradient(90deg,rgba(239,68,68,.12),rgba(239,68,68,.03) 60%)}" \
 		".urow[data-vis='disabled']:hover{background:linear-gradient(90deg,rgba(127,140,150,.10),rgba(127,140,150,.025) 60%)}" \
@@ -504,6 +505,42 @@
 	".tool .pu{color:var(--vi)}" \
 	\
 	                                                             \
+	"body.pg-readers{height:100vh;overflow:hidden;padding-top:var(--tbh)}" \
+	"body.pg-readers footer:not(.ufoot){display:none!important}" \
+	"body.pg-readers #mn{height:100%;min-height:0;margin-top:0}" \
+	"body.pg-readers #ct{display:flex;flex-direction:column;gap:8px;max-width:none;height:100%;padding:10px 12px 8px}" \
+	".rtoolbar{grid-template-columns:minmax(0,1fr) 260px auto}" \
+	".rtoolbar #rStats{overflow-x:auto;scrollbar-width:thin;padding-bottom:1px}" \
+	"#rTable{flex:1;min-height:0;margin:0;overflow:auto;position:relative}" \
+	"#rTable table{min-width:940px}" \
+	".rt th[data-k]{padding:0}" \
+	".rt .c-rstate{width:92px;white-space:nowrap}" \
+	".rt .c-rlabel{width:160px}" \
+	".rt .c-rproto{width:95px}" \
+	".rt .c-rdev{min-width:220px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" \
+	".rt .c-rgroup{width:100px}" \
+	".rt .c-rcaid{width:110px}" \
+	".rt .c-rstat-ok{width:72px;text-align:right}" \
+	".rt .c-rstat-nok{width:72px;text-align:right}" \
+	".rt .c-btn{width:108px}" \
+	".rlink{max-width:100%;padding:4px 2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--t1);font-family:var(--mono);font-size:13px;font-weight:700;border-radius:4px;transition:background .15s}" \
+	".rdot{display:inline-block;width:8px;height:8px;margin-right:6px;border-radius:50%;vertical-align:middle;background:var(--t2);box-shadow:0 0 0 3px rgba(148,163,184,.08)}" \
+	".rdot.on{background:var(--gr);box-shadow:0 0 0 3px rgba(74,222,128,.10)}" \
+	".rdot.off{background:var(--t2)}" \
+	".rstate{font-size:11px;color:var(--t2)}" \
+	".rrow[data-active='1'] td{background:rgba(74,222,128,.14);color:var(--t0)}" \
+	".rrow[data-active='1']{box-shadow:inset 4px 0 0 var(--gr),0 0 0 1px rgba(74,222,128,.10)}" \
+	".rrow[data-enabled='0'] td:not(.c-rstate):not(.c-btn):not(.c-rlabel){opacity:.5}" \
+	".rrow[data-enabled='0'] .rlink{opacity:.65}" \
+	".act-b.on{color:var(--gr);background:rgba(74,222,128,.10);border-color:rgba(74,222,128,.28)}" \
+	".act-b.off{color:var(--t2);background:var(--s2)}" \
+	"#rEmpty{position:absolute;inset:48px 0 0;display:flex;flex-direction:column;align-items:center;justify-content:center}" \
+	"#rEmpty[hidden]{display:none}" \
+	"#rEmpty svg{width:34px;height:34px;margin-bottom:8px;color:var(--t2)}" \
+	"#rEmpty b{display:block;margin-bottom:4px;font-size:15px;color:var(--t0)}" \
+	"#rEmpty span{color:var(--t2);font-size:12px}" \
+	"#rEmpty .tool{margin-top:14px}" \
+	"@media(max-width:900px){.rtoolbar{grid-template-columns:1fr;justify-items:stretch}.rtoolbar .usrch{max-width:none}.rt{min-width:940px}}" \
 	"body.pg-users{height:100vh;overflow:hidden;padding-top:var(--tbh)}" \
 	"body.pg-users footer:not(.ufoot){display:none!important}" \
 	"body.pg-users #mn{height:100%;min-height:0;margin-top:0}" \

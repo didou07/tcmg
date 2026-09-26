@@ -35,11 +35,6 @@ refresh = 1
 user =
 password =
 bindaddr =
-[pcsc]
-enabled = 0
-reader =
-fast_reset = 0
-poll_ms = 250
 [newcamd]
 port = $nport
 bindaddr =
@@ -107,11 +102,6 @@ refresh = 1
 user =
 password =
 bindaddr =
-[pcsc]
-enabled = 0
-reader =
-fast_reset = 0
-poll_ms = 250
 [newcamd]
 port = 0
 bindaddr =

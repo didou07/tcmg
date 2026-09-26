@@ -292,12 +292,19 @@ static void *pcsc_thread(void *arg)
 {
     (void)arg;
     int64_t last_fast_reset_ms[MAX_READERS];
-    S_CONFIG_PCSC_READER_VIEW pcsc_readers[MAX_READERS];
+    S_READER pcsc_readers[MAX_READERS];
     for (int i = 0; i < MAX_READERS; i++) last_fast_reset_ms[i] = tcmg_mono_ms();
 
     while (atomic_load(&s_running)) {
         int32_t poll_ms = 250;
-        int reader_count = cfg_runtime_pcsc_reader_snapshot(pcsc_readers, MAX_READERS);
+        S_READER readers[MAX_READERS];
+        int reader_count = cfg_runtime_reader_snapshot(readers, MAX_READERS);
+        int pcsc_count = 0;
+        for (int i = 0; i < reader_count; i++) {
+            if (strcasecmp(readers[i].protocol, "pcsc") != 0) continue;
+            pcsc_readers[pcsc_count++] = readers[i];
+        }
+        reader_count = pcsc_count;
         int enabled = reader_count > 0;
 
         for (int i = 0; i < reader_count; i++) {

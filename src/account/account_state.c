@@ -1,4 +1,4 @@
-#define MODULE_LOG_PREFIX "account-state"
+#define MODULE_LOG_PREFIX "account"
 #include "account_state.h"
 #include "../core/config_state.h"
 #include <pthread.h>

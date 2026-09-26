@@ -25,7 +25,7 @@ void handle_api_failban_clear(int fd, const char *qs)
 	}
 
 	int n = failban_clear(clearip);
-	tcmg_log("webif: ban cleared for ip=%s", clearip);
+	tcmg_log("ban cleared for ip=%s", clearip);
 
 	char msg[128];
 	snprintf(msg, sizeof(msg), n ? "Unbanned %s" : "%s was not banned", clearip);
@@ -35,7 +35,7 @@ void handle_api_failban_clear(int fd, const char *qs)
 void handle_api_failban_clearall(int fd)
 {
 	int n = failban_clear(NULL);
-	tcmg_log("%s", "webif: all bans cleared");
+	tcmg_log("%s", "all bans cleared");
 
 	char msg[64];
 	snprintf(msg, sizeof(msg), "Cleared %d ban(s)", n);
@@ -51,10 +51,10 @@ void send_page_failban(int fd, const char *qs)
 	                                                             
 	if (strcmp(action, "clear") == 0 && clearip[0]) {
 		failban_clear(clearip);
-		tcmg_log("webif: ban cleared for ip=%s", clearip);
+		tcmg_log("ban cleared for ip=%s", clearip);
 	} else if (strcmp(action, "clearall") == 0) {
 		failban_clear(NULL);
-		tcmg_log("%s", "webif: all bans cleared");
+		tcmg_log("%s", "all bans cleared");
 	}
 
 	PAGE_INIT(16384)
@@ -166,7 +166,7 @@ void send_page_failban(int fd, const char *qs)
 		"  }"
 
 		                                                                    
-		"  setInterval(function(){"
+		"  function tickCountdown(){"
 		"    var rows=body.querySelectorAll('.fbcd');"
 		"    for(var i=0;i<rows.length;i++){"
 		"      var el=rows[i], v=parseInt(el.getAttribute('data-left'),10);"
@@ -176,13 +176,15 @@ void send_page_failban(int fd, const char *qs)
 		"      el.textContent=v+'s';"
 		"      if(v===0&&el.parentNode) el.parentNode.classList.add('dim');"
 		"    }"
-		"  },1000);"
+		"    setTimeout(tickCountdown,1000);"
+		"  }"
+		"  setTimeout(tickCountdown,1000);"
 
 		                                                       
 		"  function softRefresh(){"
 		"    if(busy) return Promise.resolve();"
 		"    busy=true;"
-		"    return fetch('/failban',{credentials:'same-origin',cache:'no-store'})"
+		"    return tcmg_html('/failban')"
 		"      .then(function(r){"
 		"        if(r.status===401){location.href='/login';return null;}"
 		"        return r.text();"
@@ -203,13 +205,8 @@ void send_page_failban(int fd, const char *qs)
 		"  window.tcmgSoftRefresh=softRefresh;"
 
 		"  function post(url,okmsg){"
-		"    return fetch(url,{method:'POST',credentials:'same-origin',cache:'no-store'})"
-		"      .then(function(r){"
-		"        if(r.status===401){location.href='/login';return null;}"
-		"        return r.json().catch(function(){return null;});"
-		"      })"
+		"    return tcmg_api(url,{method:'POST'})"
 		"      .then(function(d){"
-		"        "
 		"        toast(d&&d.msg?d.msg:okmsg,(d&&d.ok===false)?'err':'ok');"
 		"        return softRefresh();"
 		"      })"

@@ -6,6 +6,7 @@
 int32_t reader_emu_do_ecm(const S_READER_ECM_REQUEST *req);
 int32_t reader_pcsc_do_ecm(const S_READER_ECM_REQUEST *req);
 int32_t reader_internal_do_ecm(const S_READER_ECM_REQUEST *req);
+int32_t reader_serial_do_ecm(const S_READER_ECM_REQUEST *req);
 int32_t reader_cccam_do_ecm(const S_READER_ECM_REQUEST *req);
 int32_t reader_newcamd_do_ecm(const S_READER_ECM_REQUEST *req);
 int32_t reader_cs378x_do_ecm(const S_READER_ECM_REQUEST *req);

@@ -8,7 +8,7 @@
 #include "../log/log.h"
 #include "config_internal.h"
 
-static bool cfg_load_new(const char *global_file, S_CONFIG *cfg, char *err, size_t errsz)
+static bool cfg_load_file(const char *global_file, S_CONFIG *cfg, char *err, size_t errsz)
 {
     char user_file[CFGPATH_LEN];
     char reader_file[CFGPATH_LEN];
@@ -22,9 +22,6 @@ static bool cfg_load_new(const char *global_file, S_CONFIG *cfg, char *err, size
         snprintf(err, errsz, "%s: %s", global_file, strerror(errno));
         return false;
     }
-
-    if (cfg_legacy_detect(global_file))
-        return cfg_load_legacy(global_file, cfg, err, errsz);
 
     cfg_default_runtime(cfg);
     tcmg_strlcpy(cfg->config_file, global_file, sizeof(cfg->config_file));
@@ -47,7 +44,7 @@ bool cfg_load(const char *file, S_CONFIG *cfg)
 
     if (!file || !cfg) return false;
 
-    if (!cfg_load_new(file, cfg, err, sizeof(err))) {
+    if (!cfg_load_file(file, cfg, err, sizeof(err))) {
         tcmg_log("error: %s", err);
         return false;
     }
@@ -73,7 +70,7 @@ bool cfg_reload(const char *file, char *err, size_t esz)
         return false;
     }
 
-    if (!cfg_load_new(file, &next, err, esz)) {
+    if (!cfg_load_file(file, &next, err, esz)) {
         cfg_accounts_free(&next);
         pthread_rwlock_destroy(&next.acc_lock);
         pthread_mutex_destroy(&next.ban_lock);
@@ -126,10 +123,6 @@ bool cfg_reload(const char *file, char *err, size_t esz)
     tcmg_strlcpy(g_cfg.webif_user, next.webif_user, sizeof(g_cfg.webif_user));
     tcmg_strlcpy(g_cfg.webif_pass, next.webif_pass, sizeof(g_cfg.webif_pass));
     tcmg_strlcpy(g_cfg.webif_bindaddr, next.webif_bindaddr, sizeof(g_cfg.webif_bindaddr));
-    g_cfg.pcsc_enabled = next.pcsc_enabled;
-    g_cfg.pcsc_fast_reset = next.pcsc_fast_reset;
-    g_cfg.pcsc_poll_ms = next.pcsc_poll_ms;
-    tcmg_strlcpy(g_cfg.pcsc_reader, next.pcsc_reader, sizeof(g_cfg.pcsc_reader));
     g_cfg.failban_enabled = next.failban_enabled;
     tcmg_strlcpy(g_cfg.failban_allowlist, next.failban_allowlist, sizeof(g_cfg.failban_allowlist));
     g_cfg.failban_max_fails = next.failban_max_fails;

@@ -1,5 +1,6 @@
 #define MODULE_LOG_PREFIX "conf"
 #include "config_internal.h"
+#include "../reader/protocol.h"
 
 #ifndef TCMG_OS_WINDOWS
 #include <unistd.h>
@@ -69,7 +70,7 @@ bool cfg_write_atomic(const char *path, const char *data)
 
 bool cfg_build_global_text(const S_CONFIG*c,char*buf,size_t cap)
 {
-    size_t p=0;bool ok=cfg_appendf(buf,cap,&p,"# TCMG global configuration\n\n[global]\nsocket_timeout = %d\nserver_keepalive = %d\nserver_keepalive_misses = %d\necm_log = %d\nlogfile = %s\nusrfile = %s\n\n[webif]\nenabled = %d\nport = %d\nrefresh = %d\nuser = %s\npassword = %s\nbindaddr = %s\n\n[newcamd]\nport = %d\nbindaddr = %s\nkey = ",c->sock_timeout,c->server_keepalive,c->server_keepalive_misses,c->ecm_log,c->logfile,c->usrfile,c->webif_enabled,c->webif_port,c->webif_refresh,c->webif_user,c->webif_pass,c->webif_bindaddr,c->newcamd_port,c->newcamd_bindaddr);
+    size_t p=0;bool ok=cfg_appendf(buf,cap,&p,"# TCMG global configuration\n\n[global]\nsocket_timeout = %d\nserver_keepalive = %d\nserver_keepalive_misses = %d\necm_log = %d\nscheduled_restart = %d\nscheduled_restart_time = %02d:%02d\nlogfile = %s\nusrfile = %s\n\n[webif]\nenabled = %d\nport = %d\nrefresh = %d\nuser = %s\npassword = %s\nbindaddr = %s\n\n[newcamd]\nport = %d\nbindaddr = %s\nkey = ",c->sock_timeout,c->server_keepalive,c->server_keepalive_misses,c->ecm_log,c->scheduled_restart_enabled,c->scheduled_restart_minutes/60,c->scheduled_restart_minutes%60,c->logfile,c->usrfile,c->webif_enabled,c->webif_port,c->webif_refresh,c->webif_user,c->webif_pass,c->webif_bindaddr,c->newcamd_port,c->newcamd_bindaddr);
     for(int i=0;i<14&&ok;i++)ok=cfg_appendf(buf,cap,&p,"%02X",c->newcamd_key[i]);
     ok=ok&&cfg_appendf(buf,cap,&p,"\nkeepalive = %d\nmode = %s\n\n[cccam]\nport = %d\nbindaddr = %s\n\n[cs378x]\nport = %d\nbindaddr = %s\n\n[failban]\nenabled = %d\nallowlist = %s\nmax_fails = %d\nban_secs = %d\n",c->newcamd_keepalive,c->newcamd_mgclient?"mgcamd":"auto",c->cccam_port,c->cccam_bindaddr,c->cs378x_port,c->cs378x_bindaddr,c->failban_enabled,c->failban_allowlist,c->failban_max_fails,c->failban_ban_secs);return ok;
 }
@@ -107,10 +108,7 @@ bool cfg_build_server_text(const S_CONFIG *c, char *buf, size_t cap)
                            "\necm_maxlen = %d\ninactivitytimeout = %d\n",
                            r->ecm_whitelist, r->inactivitytimeout);
 
-        if (!strcasecmp(r->protocol, "cccam") ||
-            !strcasecmp(r->protocol, "cs378x") ||
-            !strcasecmp(r->protocol, "newcamd") ||
-            !strcasecmp(r->protocol, "mgcamd")) {
+        if (reader_protocol_kind(r->protocol) == READER_PROTOCOL_NETWORK) {
             ok = ok && cfg_appendf(buf, cap, &pos,
                                "device = %s\nuser = %s\npassword = %s\n",
                                r->device, r->user, r->password);
@@ -123,8 +121,7 @@ bool cfg_build_server_text(const S_CONFIG *c, char *buf, size_t cap)
             ok = ok && cfg_appendf(buf, cap, &pos, "\n");
         }
 
-        if (!strcasecmp(r->protocol, "pcsc") ||
-            !strcasecmp(r->protocol, "internal")) {
+        if (reader_protocol_kind(r->protocol) == READER_PROTOCOL_CARD) {
             ok = ok && cfg_appendf(buf, cap, &pos,
                                "device = %s\ndo_ecm = %d\nfast_reset = %d\npoll_ms = %d\n",
                                r->device, r->do_ecm, r->fast_reset, r->poll_ms);

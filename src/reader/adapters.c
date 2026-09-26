@@ -1,4 +1,4 @@
-#define MODULE_LOG_PREFIX "reader-adapter"
+#define MODULE_LOG_PREFIX "reader"
 #include "proto-adapters.h"
 #include "emu/emu.h"
 #include "pcsc/pcsc.h"
@@ -6,6 +6,7 @@
 #include "protocols/cccam.h"
 #include "protocols/cs378x.h"
 #include "protocols/newcamd.h"
+#include "../serial/serial.h"
 
 int32_t reader_emu_do_ecm(const S_READER_ECM_REQUEST *req)
 {
@@ -62,4 +63,15 @@ int32_t reader_internal_do_ecm(const S_READER_ECM_REQUEST *req)
     if (!req->reader->do_ecm) return -2;
     return internal_do_ecm_reader(req->index, r->caid, r->ecm, (size_t)r->ecm_len,
                                   r->cw, req->reader->ecm_whitelist);
+}
+
+int32_t reader_serial_do_ecm(const S_READER_ECM_REQUEST *req)
+{
+    const S_ECM_REQUEST *r;
+    if (!req || !req->reader || !req->request) return -1;
+    r = req->request;
+    if (!r->cw || !r->ecm) return -1;
+    if (!req->reader->do_ecm) return -2;
+    return serial_do_ecm_reader(req->index, r->caid, r->ecm, (size_t)r->ecm_len,
+                                r->cw, req->reader->ecm_whitelist);
 }

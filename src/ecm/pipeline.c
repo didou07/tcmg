@@ -1,4 +1,4 @@
-#define MODULE_LOG_PREFIX "ecm-pipeline"
+#define MODULE_LOG_PREFIX "ecm"
 #include "pipeline.h"
 #include "request.h"
 #include "core/config_state.h"

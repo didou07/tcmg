@@ -1,4 +1,4 @@
-#define MODULE_LOG_PREFIX "ecm-policy"
+#define MODULE_LOG_PREFIX "ecm"
 #include "policy.h"
 #include "account/account.h"
 #include "security/antishare.h"

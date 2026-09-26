@@ -234,6 +234,22 @@ void send_page_config(int fd)
 	pos = buf_printf(&buf, &bsz, pos,
 		"<section class='cfg-card'>"
 		"<div class='cfg-head'><div class='cfg-head-main'>"
+		"<div class='cfg-title'>Scheduled restart</div>"
+		"<div class='cfg-sub'>Restart TCMG every day at the selected local time. Active connections are dropped immediately.</div>"
+		"</div></div>"
+		"<div class='cfg-body'><div class='cfg-grid'>"
+		"<div class='cfg-field'>"
+		"<label class='cfg-label' for='cf_restart_time'>Restart time</label>"
+		"<input class='cfg-input mono' id='cf_restart_time' type='time' step='60' value='%s'>"
+		"<div class='cfg-help'>Uses the device local time. Default: 04:00.</div></div>"
+		"</div><div class='cfg-toggle-row'>"
+		"<label class='cfg-toggle'><input type='checkbox' id='cf_restart_enabled'%s> Enable daily restart</label>"
+		"</div></div></section>",
+		cfg.scheduled_restart_time, cfg.scheduled_restart_enabled ? " checked" : "");
+
+	pos = buf_printf(&buf, &bsz, pos,
+		"<section class='cfg-card'>"
+		"<div class='cfg-head'><div class='cfg-head-main'>"
 		"<div class='cfg-title'>Security</div>"
 		"<div class='cfg-sub'>Temporary protection against repeated failed logins</div>"
 		"</div></div>"
@@ -279,8 +295,7 @@ void send_page_config(int fd)
 		"  e.textContent=msg;"
 		"  e.style.display='flex';"
 		"}"
-		"function cfgSync(){"
-		"}"
+
 		"function cfgHex28(s){return /^[0-9a-fA-F]{28}$/.test(s);}"
 		"function cfgValidate(){"
 		"  var nk=cfgEl('cf_newcamd_key').value.trim();"
@@ -307,6 +322,8 @@ void send_page_config(int fd)
 		"  p.set(\'server_keepalive\',cfgEl(\'cf_server_keepalive\').value);"
 		"  p.set(\'server_keepalive_misses\',cfgEl(\'cf_server_keepalive_misses\').value);"
 		"  p.set('ecm_log',cfgEl('cf_ecm_log').checked?'1':'0');"
+	"  p.set('scheduled_restart',cfgEl('cf_restart_enabled').checked?'1':'0');"
+	"  p.set('scheduled_restart_time',cfgEl('cf_restart_time').value);"
 		"  p.set('logfile',cfgEl('cf_logfile').value);"
 		"  p.set('webif_port',cfgEl('cf_webif_port').value);"
 		"  p.set('webif_bindaddr',cfgEl('cf_webif_bindaddr').value);"
@@ -317,8 +334,7 @@ void send_page_config(int fd)
 		"  p.set(\'failban_allowlist\',cfgEl(\'cf_failban_allowlist\').value);"
 		"  p.set(\'failban_max_fails\',cfgEl(\'cf_failban_max_fails\').value);"
 		"  p.set('failban_ban_secs',cfgEl('cf_failban_ban_secs').value);"
-		"  fetch('/api/config/save',{method:'POST',body:p.toString(),headers:{'Content-Type':'application/x-www-form-urlencoded'}})"
-		"  .then(function(r){return r.json().catch(function(){return null;});})"
+		"  tcmg_api('/api/config/save',{method:'POST',body:p.toString(),headers:{'Content-Type':'application/x-www-form-urlencoded'}})"
 		"  .then(function(d){"
 		"    if(d&&d.ok){cfgSetMessage(true,'Configuration saved. Reload has been triggered.');}"
 		"    else{cfgSetMessage(false,d&&d.msg?d.msg:'Request failed.');}"
@@ -394,8 +410,8 @@ void send_page_files(int fd)
         "function tabs(f){document.querySelectorAll('.file-tabs .ctab').forEach(function(b){var a=b.dataset.file===f;b.classList.toggle('act',a);b.setAttribute('aria-selected',a?'true':'false');b.tabIndex=a?0:-1});var p=document.getElementById('filePanel');if(p)p.setAttribute('aria-labelledby','fileTab-'+f)}"
         "function switchFile(f){if(busy||f===currentFile)return;if(dirty&&!confirm('Discard unsaved changes?'))return;loadFile(f)}"
         "function reloadFile(){if(dirty&&!confirm('Discard unsaved changes?'))return;loadFile(currentFile)}function downloadCurrentFile(){if(busy)return;var blob=new Blob([document.getElementById('fileArea').value],{type:'text/plain;charset=utf-8'}),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=fileNames[currentFile];document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u)},0)}"
-        "function loadFile(f){currentFile=f;dirty=false;tabs(f);clearWarn();setBusy(true);state('Loading','loading');document.getElementById('fileName').textContent=fileNames[f];fetch('/api/config/file/get?file='+encodeURIComponent(f),{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json().catch(function(){return {ok:false,msg:'HTTP '+r.status}})}).then(function(x){if(!x.ok)throw new Error(x.msg||'Load failed');var a=document.getElementById('fileArea');a.value=x.content||'';a.readOnly=!!x.truncated;document.getElementById('fileSize').textContent=x.size+' bytes'+(x.truncated?' · truncated':'');document.getElementById('fileMode').textContent=x.truncated?'Read only':'Validated on save';document.getElementById('fileSaveBtn').disabled=!!x.truncated;document.getElementById('fileWarn').style.display=x.truncated?'flex':'none';if(x.truncated)document.getElementById('fileWarn').textContent='File is larger than 512 KB and is shown read-only.';state('Saved');}).catch(function(e){warn(String(e));state('Load error','error')}).finally(function(){setBusy(false)})}"
-        "function saveCurrentFile(){if(busy)return;var a=document.getElementById('fileArea');if(a.readOnly)return;var p=new URLSearchParams();p.set('file',currentFile);p.set('content',a.value);clearWarn();setBusy(true);state('Saving','loading');fetch('/api/config/file/save',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:p.toString()}).then(function(r){return r.json().catch(function(){return {ok:false,msg:'HTTP '+r.status}})}).then(function(x){if(!x.ok)throw new Error(x.msg||'Save failed');dirty=false;state('Saved','ok');document.getElementById('fileMode').textContent=currentFile==='srv'?'Reloaded':'Saved and reload queued';if(currentFile==='conf'||currentFile==='usr'||currentFile==='rdr'){warn('Saved. Configuration reload queued. Existing sessions remain active until the new state is applied.');} }).catch(function(e){warn(String(e));state('Save error','error')}).finally(function(){setBusy(false)})}"
+        "function loadFile(f){currentFile=f;dirty=false;tabs(f);clearWarn();setBusy(true);state('Loading','loading');document.getElementById('fileName').textContent=fileNames[f];tcmg_api('/api/config/file/get?file='+encodeURIComponent(f)).then(function(x){if(!x.ok)throw new Error(x.msg||'Load failed');var a=document.getElementById('fileArea');a.value=x.content||'';a.readOnly=!!x.truncated;document.getElementById('fileSize').textContent=x.size+' bytes'+(x.truncated?' · truncated':'');document.getElementById('fileMode').textContent=x.truncated?'Read only':'Validated on save';document.getElementById('fileSaveBtn').disabled=!!x.truncated;document.getElementById('fileWarn').style.display=x.truncated?'flex':'none';if(x.truncated)document.getElementById('fileWarn').textContent='File is larger than 512 KB and is shown read-only.';state('Saved');}).catch(function(e){warn(String(e));state('Load error','error')}).finally(function(){setBusy(false)})}"
+        "function saveCurrentFile(){if(busy)return;var a=document.getElementById('fileArea');if(a.readOnly)return;var p=new URLSearchParams();p.set('file',currentFile);p.set('content',a.value);clearWarn();setBusy(true);state('Saving','loading');tcmg_api('/api/config/file/save',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:p.toString()}).then(function(x){if(!x.ok)throw new Error(x.msg||'Save failed');dirty=false;state('Saved','ok');document.getElementById('fileMode').textContent=currentFile==='srv'?'Reloaded':'Saved and reload queued';if(currentFile==='conf'||currentFile==='usr'||currentFile==='rdr'){warn('Saved. Configuration reload queued. Existing sessions remain active until the new state is applied.');} }).catch(function(e){warn(String(e));state('Save error','error')}).finally(function(){setBusy(false)})}"
         "document.getElementById('fileArea').addEventListener('input',markDirty);document.querySelectorAll('.file-tabs .ctab').forEach(function(b){b.addEventListener('keydown',function(e){var a=[].slice.call(document.querySelectorAll('.file-tabs .ctab')),i=a.indexOf(b),n=i;if(e.key==='ArrowRight'||e.key==='ArrowDown')n=(i+1)%%a.length;else if(e.key==='ArrowLeft'||e.key==='ArrowUp')n=(i+a.length-1)%%a.length;else if(e.key==='Home')n=0;else if(e.key==='End')n=a.length-1;else return;e.preventDefault();a[n].focus();a[n].click()})});"
         "document.addEventListener('keydown',function(e){if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();saveCurrentFile()}});"
         "</script>");

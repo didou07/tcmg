@@ -1,4 +1,6 @@
-#include "globals.h"
+#include "core/config_state.h"
+#include "config/config.h"
+#include "config/config_internal.h"
 #include "account/account.h"
 #include <errno.h>
 #include <stdio.h>
@@ -66,8 +68,18 @@ static int load_case(const char *dir, const char *global, const char *users, con
         return 0;
     }
     if (ok) {
+        if (cfg.scheduled_restart_enabled != 1 || cfg.scheduled_restart_minutes != 240) {
+            fprintf(stderr, "scheduled restart defaults/parse mismatch enabled=%d minutes=%d\n", cfg.scheduled_restart_enabled, cfg.scheduled_restart_minutes);
+            free_cfg(&cfg);
+            return 0;
+        }
         if (cfg.naccounts != 2 || cfg.nreaders != 6) {
             fprintf(stderr, "unexpected counts accounts=%d readers=%d\n", cfg.naccounts, cfg.nreaders);
+            free_cfg(&cfg);
+            return 0;
+        }
+        if (cfg.readers[5].fast_reset != 60) {
+            fprintf(stderr, "internal fast_reset migration mismatch value=%d\n", cfg.readers[5].fast_reset);
             free_cfg(&cfg);
             return 0;
         }
@@ -132,85 +144,12 @@ static int run_save_stress(S_CONFIG *cfg)
 }
 
 
-static int run_legacy_migration(const char *dir)
-{
-    const char *legacy =
-        "[server]\n"
-        "SOCK_TIMEOUT = 5\n"
-        "SERVER_KEEPALIVE = 0\n"
-        "SERVER_KEEPALIVE_MISSES = 3\n"
-        "ECM_LOG = 0\n"
-        "CCCAM_PORT = 0\n"
-        "NEWCAMD_PORT = 0\n"
-        "NEWCAMD_KEY = 0102030405060708091011121314\n"
-        "NEWCAMD_KEEPALIVE = 0\n"
-        "NEWCAMD_MGCLIENT = 0\n"
-        "CS378X_PORT = 0\n\n"
-        "[webif]\n"
-        "ENABLED = 0\n"
-        "PORT = 18080\n"
-        "USER = admin\n"
-        "PASS = admin\n\n"
-        "[pcsc]\n"
-        "ENABLED = 0\n"
-        "FAST_RESET = 1\n"
-        "POLL_MS = 250\n\n"
-        "[reader]\n"
-        "label = test emu\n"
-        "protocol = emu\n"
-        "ENABLED = 0\n"
-        "caid = 0B00\n"
-        "ecmwhitelist = 255\n"
-        "group = 1\n"
-        "ecmkey = 0B00=9F3C17A2B5D0481E6A7B92F4C8E05D13A1B9E4F276C3058D4ACF19B08273DE5F\n\n"
-        "[account]\n"
-        "user = client\n"
-        "pwd = 1234\n"
-        "caid = 0B00\n"
-        "group = 1\n"
-        "enabled = 1\n";
-    char path[1024], backup[1100], users[1024], readers[1024];
-    S_CONFIG cfg;
-    if (!write_text((snprintf(path, sizeof(path), "%s/tcmg.conf", dir), path), legacy)) return 0;
-    if (!init_cfg(&cfg)) return 0;
-    char err[256] = "";
-    if (!cfg_load(path, &cfg)) {
-        fprintf(stderr, "legacy cfg_load failed: %s\n", err);
-        free_cfg(&cfg);
-        return 0;
-    }
-    if (cfg.naccounts != 1 || cfg.nreaders != 1 || strcmp(cfg.accounts->user, "client") != 0 ||
-        strcmp(cfg.accounts->pass, "1234") != 0 || strcmp(cfg.webif_user, "admin") != 0 ||
-        strcmp(cfg.webif_pass, "admin") != 0 ||
-        strcmp(cfg.readers[0].label, "test emu") != 0 || cfg.pcsc_enabled != 0) {
-        fprintf(stderr, "legacy migration state mismatch\n");
-        free_cfg(&cfg);
-        return 0;
-    }
-    snprintf(backup, sizeof(backup), "%s.legacy.bak", path);
-    snprintf(users, sizeof(users), "%s/tcmg.users", dir);
-    snprintf(readers, sizeof(readers), "%s/tcmg.readers", dir);
-    if (access(backup, F_OK) != 0 || access(users, F_OK) != 0 || access(readers, F_OK) != 0) {
-        fprintf(stderr, "legacy migration files missing\n");
-        free_cfg(&cfg);
-        return 0;
-    }
-    if (!cfg_save(&cfg)) {
-        fprintf(stderr, "legacy cfg_save failed\n");
-        free_cfg(&cfg);
-        return 0;
-    }
-    free_cfg(&cfg);
-    return 1;
-}
-
 static int run_reload_lifetime(const char *dir)
 {
     const char *global =
         "[global]\n"
-        "socket_timeout = 30\nserver_keepalive = 20\nserver_keepalive_misses = 3\necm_log = 0\nlogfile =\nusrfile =\n"
+        "socket_timeout = 30\nserver_keepalive = 20\nserver_keepalive_misses = 3\necm_log = 0\nscheduled_restart = 0\nscheduled_restart_time = 03:15\nlogfile =\nusrfile =\n"
         "[webif]\nenabled = 0\nport = 18080\nrefresh = 1\nuser =\npassword =\nbindaddr =\n"
-        "[pcsc]\nenabled = 0\nreader =\nfast_reset = 0\npoll_ms = 250\n"
         "[newcamd]\nport = 19050\nbindaddr =\nkey = 0102030405060708091011121314\nkeepalive = 0\nmode = auto\n"
         "[cccam]\nport = 19060\nbindaddr =\n"
         "[cs378x]\nport = 19070\nbindaddr =\n"
@@ -284,9 +223,8 @@ int main(void)
     char path[1024];
     const char *global =
         "[global]\n"
-        "socket_timeout = 30\nserver_keepalive = 20\nserver_keepalive_misses = 3\necm_log = 1\nlogfile =\nusrfile =\n"
+        "socket_timeout = 30\nserver_keepalive = 20\nserver_keepalive_misses = 3\necm_log = 1\nscheduled_restart = 1\nscheduled_restart_time = 04:00\nlogfile =\nusrfile =\n"
         "[webif]\nenabled = 0\nport = 18080\nrefresh = 1\nuser = admin\npassword = change\nbindaddr =\n"
-        "[pcsc]\nenabled = 0\nreader =\nfast_reset = 0\npoll_ms = 250\n"
         "[newcamd]\nport = 18050\nbindaddr =\nkey = 0102030405060708091011121314\nkeepalive = 0\nmode = auto\n"
         "[cccam]\nport = 18060\nbindaddr =\n"
         "[cs378x]\nport = 18070\nbindaddr =\n"
@@ -310,25 +248,24 @@ int main(void)
     if (!load_case(dir, bad_unknown, users, readers, "unknown")) return 4;
 
     const char *bad_dupe =
-        "[global]\nsocket_timeout = 30\n[webif]\nenabled = 0\nport = 18080\n[pcsc]\nenabled = 0\n"
+        "[global]\nsocket_timeout = 30\n[webif]\nenabled = 0\nport = 18080\n"
         "[newcamd]\nport = 18050\nkey = 0102030405060708091011121314\n[cccam]\nport = 18060\n[cs378x]\nport = 18070\n[failban]\nenabled = 0\n";
     const char *dupe_users =
         "[account]\nuser = client\npwd = one\ngroup = 1\n[account]\nuser = client\npwd = two\ngroup = 1\n";
     if (!load_case(dir, bad_dupe, dupe_users, readers, "duplicate")) return 5;
 
     const char *bad_emu =
-        "[global]\nsocket_timeout = 30\n[webif]\nenabled = 0\nport = 18080\n[pcsc]\nenabled = 0\n"
+        "[global]\nsocket_timeout = 30\n[webif]\nenabled = 0\nport = 18080\n"
         "[newcamd]\nport = 18050\nkey = 0102030405060708091011121314\n[cccam]\nport = 18060\n[cs378x]\nport = 18070\n[failban]\nenabled = 0\n";
     const char *bad_reader = "[reader]\nlabel = bad\nprotocol = emu\nenabled = 1\ngroup = 1\ncaid = 0B00\n";
     if (!load_case(dir, bad_emu, users, bad_reader, "emu-key")) return 6;
 
     const char *bad_conflict =
-        "[global]\nsocket_timeout = 30\n[webif]\nenabled = 0\nport = 18080\n[pcsc]\nenabled = 0\n"
+        "[global]\nsocket_timeout = 30\n[webif]\nenabled = 0\nport = 18080\n"
         "[newcamd]\nport = 18050\nkey = 0102030405060708091011121314\n[cccam]\nport = 18050\n[cs378x]\nport = 18070\n[failban]\nenabled = 0\n";
     if (!load_case(dir, bad_conflict, users, readers, "port-conflict")) return 7;
 
     if (!run_reload_lifetime(dir)) return 8;
-    if (!run_legacy_migration(dir)) return 9;
     snprintf(path, sizeof(path), "%s/tcmg.conf", dir); remove(path);
     snprintf(path, sizeof(path), "%s/tcmg.users", dir); remove(path);
     snprintf(path, sizeof(path), "%s/tcmg.readers", dir); remove(path);

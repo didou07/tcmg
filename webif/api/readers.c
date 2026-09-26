@@ -1,7 +1,11 @@
+#include "../../src/internal/internal.h"
 #define MODULE_LOG_PREFIX "webif"
+#include "../../src/serial/serial.h"
+#include "../../src/reader/protocol.h"
 #include "../service/service.h"
 #include "../../src/core/utils.h"
 #include "../internal/proto.h"
+#include "../internal/form.h"
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,26 +29,6 @@ typedef struct {
     char poll_ms[16];
 } reader_form;
 
-static int rfld(const char *body, const char *key, char *out, size_t sz)
-{
-    out[0] = 0;
-    char *v = form_get_alloc(body, key);
-    if (!v) return 0;
-    int bad = strlen(v) >= sz;
-    if (!bad) tcmg_strlcpy(out, v, sz);
-    free(v);
-    return bad ? -1 : 0;
-}
-
-static void api_trim(char *s)
-{
-    size_t n = strlen(s);
-    while (n && isspace((unsigned char)s[n - 1])) s[--n] = 0;
-    char *p = s;
-    while (*p && isspace((unsigned char)*p)) p++;
-    if (p != s) memmove(s, p, strlen(p) + 1);
-}
-
 static int rnum(const char *s, long lo, long hi, long *out)
 {
     if (!s[0]) return -1;
@@ -62,7 +46,7 @@ static int validate_groups(const char *s)
     int values[MAX_GROUPS_PER_READER]; int n = 0;
     char *save = NULL, *tok = strtok_r(buf, ",", &save);
     while (tok) {
-        api_trim(tok);
+        webif_trim(tok);
         long v;
         if (!tok[0] || n >= MAX_GROUPS_PER_READER || rnum(tok, 1, 65535, &v) < 0) return -1;
         for (int i = 0; i < n; i++) if (values[i] == (int)v) return -1;
@@ -83,7 +67,7 @@ static int validate_u16_list(const char *s, size_t max_items, size_t bufsz)
     size_t n = 0;
     char *save = NULL, *tok = strtok_r(buf, ", ;", &save);
     while (tok) {
-        api_trim(tok);
+        webif_trim(tok);
         if (!tok[0] || n >= max_items || strlen(tok) > 4) { free(buf); return -1; }
         char *e = NULL; unsigned long v = strtoul(tok, &e, 16);
         if (e == tok || *e || v > 0xFFFF) { free(buf); return -1; }
@@ -103,7 +87,7 @@ static int validate_ecmkeys(const char *s)
     uint16_t caids[MAX_ECMKEYS_PER_ACC]; int n = 0;
     char *save = NULL, *line = strtok_r(buf, "\r\n;", &save);
     while (line) {
-        api_trim(line);
+        webif_trim(line);
         if (line[0]) {
             if (n >= MAX_ECMKEYS_PER_ACC) { free(buf); return -1; }
             char *eq = strchr(line, '=');
@@ -125,33 +109,30 @@ static const char *parse_reader_form(const char *body, reader_form *f, int index
 {
     (void)index;
     memset(f, 0, sizeof(*f));
-    if (rfld(body, "label", f->label, sizeof(f->label)) < 0 ||
-        rfld(body, "protocol", f->protocol, sizeof(f->protocol)) < 0 ||
-        rfld(body, "enabled", f->enabled, sizeof(f->enabled)) < 0 ||
-        rfld(body, "device", f->device, sizeof(f->device)) < 0 ||
-        rfld(body, "user", f->user, sizeof(f->user)) < 0 ||
-        rfld(body, "password", f->password, sizeof(f->password)) < 0 ||
-        rfld(body, "key", f->key, sizeof(f->key)) < 0 ||
-        rfld(body, "inactivitytimeout", f->inactivity, sizeof(f->inactivity)) < 0 ||
-        rfld(body, "caid", f->caid, sizeof(f->caid)) < 0 ||
-        rfld(body, "sid_whitelist", f->sid, sizeof(f->sid)) < 0 ||
-        rfld(body, "ecmwhitelist", f->ecmwl, sizeof(f->ecmwl)) < 0 ||
-        rfld(body, "group", f->groups, sizeof(f->groups)) < 0 ||
-        rfld(body, "ecmkeys", f->ecmkeys, sizeof(f->ecmkeys)) < 0 ||
-        rfld(body, "DO_ECM", f->do_ecm, sizeof(f->do_ecm)) < 0 ||
-        rfld(body, "FAST_RESET", f->fast_reset, sizeof(f->fast_reset)) < 0 ||
-        rfld(body, "POLL_MS", f->poll_ms, sizeof(f->poll_ms)) < 0)
+    if (webif_form_copy(body, "label", f->label, sizeof(f->label)) < 0 ||
+        webif_form_copy(body, "protocol", f->protocol, sizeof(f->protocol)) < 0 ||
+        webif_form_copy(body, "enabled", f->enabled, sizeof(f->enabled)) < 0 ||
+        webif_form_copy(body, "device", f->device, sizeof(f->device)) < 0 ||
+        webif_form_copy(body, "user", f->user, sizeof(f->user)) < 0 ||
+        webif_form_copy(body, "password", f->password, sizeof(f->password)) < 0 ||
+        webif_form_copy(body, "key", f->key, sizeof(f->key)) < 0 ||
+        webif_form_copy(body, "inactivitytimeout", f->inactivity, sizeof(f->inactivity)) < 0 ||
+        webif_form_copy(body, "caid", f->caid, sizeof(f->caid)) < 0 ||
+        webif_form_copy(body, "sid_whitelist", f->sid, sizeof(f->sid)) < 0 ||
+        webif_form_copy(body, "ecmwhitelist", f->ecmwl, sizeof(f->ecmwl)) < 0 ||
+        webif_form_copy(body, "group", f->groups, sizeof(f->groups)) < 0 ||
+        webif_form_copy(body, "ecmkeys", f->ecmkeys, sizeof(f->ecmkeys)) < 0 ||
+        webif_form_copy(body, "DO_ECM", f->do_ecm, sizeof(f->do_ecm)) < 0 ||
+        webif_form_copy(body, "FAST_RESET", f->fast_reset, sizeof(f->fast_reset)) < 0 ||
+        webif_form_copy(body, "POLL_MS", f->poll_ms, sizeof(f->poll_ms)) < 0)
         return "field too long";
 
     if (!f->label[0]) return "label is required";
     if (!web_valid_text(f->label) || (f->device[0] && !web_valid_text(f->device)) ||
         (f->user[0] && !web_valid_text(f->user)) || (f->password[0] && !web_valid_text(f->password)))
         return "invalid text field";
-    if (strcasecmp(f->protocol, "emu") && strcasecmp(f->protocol, "pcsc") &&
-        strcasecmp(f->protocol, "internal") &&
-        strcasecmp(f->protocol, "cccam") && strcasecmp(f->protocol, "mgcamd") &&
-        strcasecmp(f->protocol, "newcamd") && strcasecmp(f->protocol, "cs378x"))
-        return "unsupported reader protocol";
+    const S_READER_PROTOCOL *protocol = reader_protocol_find(f->protocol);
+    if (!protocol) return "unsupported reader protocol";
 
     long v;
     if (rnum(f->enabled, 0, 1, &v) < 0) return "enabled must be 0 or 1";
@@ -164,17 +145,20 @@ static const char *parse_reader_form(const char *body, reader_form *f, int index
     if (validate_u16_list(f->sid, MAX_SID_WHITELIST, 1024) < 0) return "invalid SID whitelist";
     if (validate_groups(f->groups) < 0) return "group is required";
 
-    if (!strcasecmp(f->protocol, "emu")) {
+    if (protocol->kind == READER_PROTOCOL_EMU) {
         if (validate_ecmkeys(f->ecmkeys) < 0) return "invalid ECM key list";
-    } else if (!strcasecmp(f->protocol, "pcsc") || !strcasecmp(f->protocol, "internal")) {
+    } else if (protocol->kind == READER_PROTOCOL_CARD) {
         if (rnum(f->do_ecm, 0, 1, &v) < 0) return "DO_ECM must be 0 or 1";
-        if (rnum(f->fast_reset, 0, 86400, &v) < 0) return "FAST_RESET must be 0-86400";
+        if (!strcmp(protocol->name, "internal")) {
+            if (rnum(f->fast_reset, 0, 86400, &v) < 0) return "FAST_RESET must be 0-86400 seconds for internal readers";
+            if (v == 1) v = 60;
+        } else if (rnum(f->fast_reset, 0, 86400, &v) < 0) return "FAST_RESET must be 0-86400";
         if (rnum(f->poll_ms, 50, 10000, &v) < 0) return "POLL_MS must be 50-10000";
         if (!f->device[0]) return "device is required";
     } else {
         if (!f->device[0]) return "server is required";
         if (rnum(f->inactivity, 1, 600, &v) < 0) return "inactivitytimeout must be 1-600";
-        if (!strcasecmp(f->protocol, "mgcamd") || !strcasecmp(f->protocol, "newcamd")) {
+        if (!strcmp(protocol->name, "newcamd")) {
             if (!f->user[0]) return "username is required";
             if (strlen(f->key) != 28) return "key must be exactly 28 hex characters";
             for (size_t i = 0; i < 28; i++) if (!isxdigit((unsigned char)f->key[i])) return "key must be hexadecimal";
@@ -183,41 +167,95 @@ static const char *parse_reader_form(const char *body, reader_form *f, int index
     return NULL;
 }
 
-static void view_json(char *dst, size_t sz, const S_WEBIF_READER_VIEW *r)
+static int view_json(char **dst, int *bsz, int pos, const S_WEBIF_READER_VIEW *r, int detail)
 {
-    char label[512], protocol[256], device[1024], user[512], pass[512], key[128], groups[512], caid[512], sid[1024], keys[16384];
-    json_escape(r->label,label,sizeof(label)); json_escape(r->protocol,protocol,sizeof(protocol));
-    json_escape(r->device,device,sizeof(device)); json_escape(r->user,user,sizeof(user));
-    json_escape(r->password,pass,sizeof(pass)); json_escape(r->key,key,sizeof(key)); json_escape(r->groups,groups,sizeof(groups));
-    json_escape(r->caids,caid,sizeof(caid)); json_escape(r->sid_whitelist,sid,sizeof(sid));
-    json_escape(r->ecmkeys,keys,sizeof(keys));
-    snprintf(dst, sz,
-        "{\"index\":%d,\"label\":\"%s\",\"protocol\":\"%s\",\"enabled\":%d,"
-        "\"device\":\"%s\",\"user\":\"%s\",\"password\":\"%s\",\"key\":\"%s\","
-        "\"inactivitytimeout\":%d,\"caid\":\"%s\",\"sid_whitelist\":\"%s\",\"ecmwhitelist\":\"%02X\","
-        "\"group\":\"%s\",\"ecmkeys\":\"%s\",\"DO_ECM\":%d,\"FAST_RESET\":%d,\"POLL_MS\":%d}",
-        r->index,label,protocol,r->enabled,device,user,pass,key,r->inactivitytimeout,caid,sid,
-        (unsigned)(r->ecm_whitelist & 255),groups,keys,r->do_ecm,r->fast_reset,r->poll_ms);
+    const S_READER_PROTOCOL *protocol = reader_protocol_find(r->protocol);
+    const char *kind = protocol ?
+        (protocol->kind == READER_PROTOCOL_CARD ? "card" :
+         protocol->kind == READER_PROTOCOL_EMU ? "emu" : "network") : "other";
+    pos = buf_printf(dst, bsz, pos, "\"index\":%d,\"label\":\"", r->index);
+    pos = buf_json_string(dst, bsz, pos, r->label);
+    if (pos < 0) return -1;
+    pos = buf_printf(dst, bsz, pos, "\",\"protocol\":\"");
+    pos = buf_json_string(dst, bsz, pos, r->protocol);
+    if (pos < 0) return -1;
+    pos = buf_printf(dst, bsz, pos, "\",\"kind\":\"%s\",\"enabled\":%d,\"device\":\"",
+                     kind, r->enabled);
+    pos = buf_json_string(dst, bsz, pos, r->device);
+    if (pos < 0) return -1;
+    pos = buf_printf(dst, bsz, pos, "\",\"groups\":\"");
+    pos = buf_json_string(dst, bsz, pos, r->groups);
+    if (pos < 0) return -1;
+    pos = buf_printf(dst, bsz, pos, "\",\"caid\":\"");
+    pos = buf_json_string(dst, bsz, pos, r->caids);
+    if (pos < 0) return -1;
+    int owned = 0;
+    int present = 0;
+    int ready = 0;
+    if (!strcasecmp(r->protocol, "internal")) {
+        S_INTERNAL_READER ir;
+        if (internal_reader_get(r->index, &ir) == 0) {
+            owned = ir.owned;
+            present = ir.present;
+            ready = ir.ready;
+        }
+    }
+    pos = buf_printf(dst, bsz, pos,
+        "\",\"DO_ECM\":%d,\"FAST_RESET\":%d,\"POLL_MS\":%d,\"cw_ok\":%lld,\"cw_nok\":%lld,\"active\":%d,\"owned\":%d,\"present\":%d,\"ready\":%d",
+        r->do_ecm, r->fast_reset, r->poll_ms, (long long)r->cw_ok, (long long)r->cw_nok, r->active, owned, present, ready);
+    if (!detail) return pos;
+
+    pos = buf_printf(dst, bsz, pos, ",\"user\":\"");
+    pos = buf_json_string(dst, bsz, pos, r->user);
+    if (pos < 0) return -1;
+    pos = buf_printf(dst, bsz, pos, "\",\"password\":\"");
+    pos = buf_json_string(dst, bsz, pos, r->password);
+    if (pos < 0) return -1;
+    pos = buf_printf(dst, bsz, pos, "\",\"key\":\"");
+    pos = buf_json_string(dst, bsz, pos, r->key);
+    if (pos < 0) return -1;
+    pos = buf_printf(dst, bsz, pos, "\",\"inactivitytimeout\":%d,\"sid_whitelist\":\"", r->inactivitytimeout);
+    pos = buf_json_string(dst, bsz, pos, r->sid_whitelist);
+    if (pos < 0) return -1;
+    pos = buf_printf(dst, bsz, pos, "\",\"ecmwhitelist\":\"%02X\",\"group\":\"",
+                     (unsigned)(r->ecm_whitelist & 255));
+    pos = buf_json_string(dst, bsz, pos, r->groups);
+    if (pos < 0) return -1;
+    pos = buf_printf(dst, bsz, pos, "\",\"ecmkeys\":\"");
+    pos = buf_json_string(dst, bsz, pos, r->ecmkeys);
+    if (pos < 0) return -1;
+    return buf_printf(dst, bsz, pos, "\"");
 }
 
 void send_api_readers(int fd)
 {
-    int bsz = 32768, pos = 0; char *buf = malloc((size_t)bsz);
+    int bsz = 32768, pos = 0;
+    char *buf = malloc((size_t)bsz);
     S_WEBIF_READER_VIEW *reader = calloc(1, sizeof(*reader));
     if (!buf || !reader) {
         free(buf); free(reader);
         send_json_error(fd, 503, "Service Unavailable", "out of memory");
         return;
     }
-    pos = buf_printf(&buf,&bsz,pos,"{\"ok\":true,\"count\":%d,\"readers\":[",webif_reader_count());
+    pos = buf_printf(&buf, &bsz, pos, "{\"ok\":true,\"count\":%d,\"readers\":[", webif_reader_count());
     int emitted = 0;
-    for (int idx=0; idx<MAX_READERS; idx++) {
+    for (int idx = 0; idx < MAX_READERS; idx++) {
         if (!webif_reader_get(idx, reader)) continue;
-        char one[24000]; view_json(one,sizeof(one),reader);
-        pos=buf_printf(&buf,&bsz,pos,"%s%s",emitted?",":"",one);
+        int before = pos;
+        if (emitted) pos = buf_printf(&buf, &bsz, pos, ",");
+        pos = buf_printf(&buf, &bsz, pos, "{");
+        pos = view_json(&buf, &bsz, pos, reader, 0);
+        if (pos >= 0) pos = buf_printf(&buf, &bsz, pos, "}");
+        if (pos < 0) {
+            pos = before;
+            free(reader); free(buf);
+            send_json_error(fd, 503, "Service Unavailable", "out of memory");
+            return;
+        }
         emitted++;
     }
-    pos = buf_printf(&buf,&bsz,pos,"]}"); send_response(fd,200,"OK","application/json",buf,pos);
+    pos = buf_printf(&buf, &bsz, pos, "]}");
+    send_response(fd, 200, "OK", "application/json", buf, pos);
     free(reader); free(buf);
 }
 
@@ -227,9 +265,19 @@ void send_api_reader_get(int fd, const char *qs)
     if (rnum(s,0,MAX_READERS-1,&idx)<0) { send_json_error(fd,400,"Bad Request","invalid index"); return; }
     S_WEBIF_READER_VIEW r;
     if (!webif_reader_get((int)idx,&r)) { send_json_error(fd,404,"Not Found","reader not found"); return; }
-    char out[24000]; char one[23000]; view_json(one,sizeof(one),&r);
-    snprintf(out,sizeof(out),"{\"ok\":true,%s",one+1);
-    send_response(fd,200,"OK","application/json",out,(int)strlen(out));
+    int bsz = 32768, pos = 0;
+    char *out = malloc((size_t)bsz);
+    if (!out) { send_json_error(fd, 503, "Service Unavailable", "out of memory"); return; }
+    pos = buf_printf(&out, &bsz, pos, "{\"ok\":true,");
+    pos = view_json(&out, &bsz, pos, &r, 1);
+    if (pos >= 0) pos = buf_printf(&out, &bsz, pos, "}");
+    if (pos < 0) {
+        free(out);
+        send_json_error(fd, 503, "Service Unavailable", "out of memory");
+        return;
+    }
+    send_response(fd, 200, "OK", "application/json", out, pos);
+    free(out);
 }
 
 static void form_to_edit(const reader_form *f, int index, S_WEBIF_READER_EDIT *e)
@@ -248,7 +296,7 @@ static void form_to_edit(const reader_form *f, int index, S_WEBIF_READER_EDIT *e
 
 void handle_api_reader_save(int fd, const char *body)
 {
-    char idxs[16]=""; rfld(body,"index",idxs,sizeof(idxs)); long idx=-1;
+    char idxs[16]=""; webif_form_copy(body,"index",idxs,sizeof(idxs)); long idx=-1;
     int is_new = 0;
     if (idxs[0] && rnum(idxs,-1,MAX_READERS-1,&idx)<0) { send_json_error(fd,400,"Bad Request","invalid index"); return; }
     if (idx < 0) {
@@ -274,4 +322,49 @@ void handle_api_reader_delete(int fd, const char *qs)
     if (rnum(s,0,MAX_READERS-1,&idx)<0) { send_json_error(fd,400,"Bad Request","invalid index"); return; }
     if (!webif_reader_delete((int)idx)) { send_json_error(fd,404,"Not Found","reader not found"); return; }
     send_json_ok(fd,"ok");
+}
+
+void handle_api_reader_toggle(int fd, const char *qs)
+{
+    char s[16] = "";
+    get_param(qs, "index", s, sizeof(s));
+    long idx;
+    if (rnum(s, 0, MAX_READERS - 1, &idx) < 0) {
+        send_json_error(fd, 400, "Bad Request", "invalid index");
+        return;
+    }
+    int enabled = 0;
+    if (!webif_reader_toggle((int)idx, &enabled)) {
+        send_json_error(fd, 404, "Not Found", "reader not found");
+        return;
+    }
+    char out[64];
+    int n = snprintf(out, sizeof(out), "{\"ok\":true,\"enabled\":%d}", enabled);
+    send_response(fd, 200, "OK", "application/json", out, n);
+}
+
+void send_api_serial_ports(int fd)
+{
+    char ports[TCMG_SERIAL_MAX_PORTS][TCMG_SERIAL_PORT_LEN];
+    size_t n = serial_list_ports(ports, TCMG_SERIAL_MAX_PORTS);
+    size_t cap = 4096 + n * (TCMG_SERIAL_PORT_LEN + 64);
+    char *buf = malloc(cap);
+    if (!buf) {
+        send_json_error(fd, 503, "Service Unavailable", "out of memory");
+        return;
+    }
+    int pos = snprintf(buf, cap, "{\"ok\":true,\"count\":%zu,\"transport\":\"serial\",\"ports\":[", n);
+    for (size_t i = 0; i < n && pos >= 0 && (size_t)pos < cap; i++) {
+        char esc[TCMG_SERIAL_PORT_LEN * 2 + 8];
+        json_escape(ports[i], esc, sizeof(esc));
+        pos += snprintf(buf + pos, cap - (size_t)pos, "%s\"%s\"", i ? "," : "", esc);
+    }
+    if (pos >= 0 && (size_t)pos < cap) pos += snprintf(buf + pos, cap - (size_t)pos, "]}");
+    if (pos < 0 || (size_t)pos >= cap) {
+        free(buf);
+        send_json_error(fd, 500, "Internal Server Error", "serial port response too large");
+        return;
+    }
+    send_response(fd, 200, "OK", "application/json", buf, pos);
+    free(buf);
 }

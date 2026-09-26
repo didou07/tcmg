@@ -1,10 +1,12 @@
-#define MODULE_LOG_PREFIX "webif-service"
+#define MODULE_LOG_PREFIX "webif"
 #include "service.h"
 #include "../../src/config/config.h"
 #include "../../src/core/config_state.h"
 #include "../../src/core/runtime_state.h"
 #include "../../src/core/constants.h"
 #include "../../src/core/utils.h"
+#include "../../src/reader/protocol.h"
+#include "../../src/reader/stats.h"
 #include <ctype.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -20,6 +22,11 @@ static void copy_reader(const S_READER *r, int idx, S_WEBIF_READER_VIEW *v)
     v->do_ecm = r->do_ecm;
     v->fast_reset = r->fast_reset;
     v->poll_ms = r->poll_ms;
+    S_READER_STATS_SNAPSHOT stats;
+    reader_stats_snapshot(idx, &stats);
+    v->cw_ok = stats.cw_ok;
+    v->cw_nok = stats.cw_nok;
+    v->active = r->enabled && stats.active;
     tcmg_strlcpy(v->label, r->label, sizeof(v->label));
     tcmg_strlcpy(v->protocol, r->protocol, sizeof(v->protocol));
     tcmg_strlcpy(v->device, r->device, sizeof(v->device));
@@ -128,15 +135,22 @@ bool webif_reader_save(const S_WEBIF_READER_EDIT *e)
         if (end == e->ecmwhitelist || *end || x > 0xFF) return false;
         value.ecm_whitelist = (int32_t)x;
     }
-    if (strcasecmp(e->protocol, "emu") == 0) {
+    const S_READER_PROTOCOL *protocol = reader_protocol_find(e->protocol);
+    if (!protocol) return false;
+
+    if (protocol->kind == READER_PROTOCOL_EMU) {
         value.device[0] = 0; value.user[0] = 0; value.password[0] = 0;
         value.inactivitytimeout = 30; value.do_ecm = 1; value.fast_reset = 0; value.poll_ms = 250;
-    } else if (strcasecmp(e->protocol, "pcsc") == 0 ||
-               strcasecmp(e->protocol, "internal") == 0) {
+    } else if (protocol->kind == READER_PROTOCOL_CARD) {
         value.user[0] = 0; value.password[0] = 0; value.inactivitytimeout = 30;
         if (parse_simple_i32(e->do_ecm, 0, 1, &iv) < 0) return false;
         value.do_ecm = (int8_t)iv;
-        if (parse_simple_i32(e->fast_reset, 0, 86400, &value.fast_reset) < 0) return false;
+        if (strcasecmp(value.protocol, "internal") == 0) {
+            if (parse_simple_i32(e->fast_reset, 0, 86400, &value.fast_reset) < 0) return false;
+            if (value.fast_reset == 1) value.fast_reset = 60;
+        } else {
+            if (parse_simple_i32(e->fast_reset, 0, 86400, &value.fast_reset) < 0) return false;
+        }
         if (parse_simple_i32(e->poll_ms, 50, 10000, &value.poll_ms) < 0) return false;
     } else {
         if (!e->device[0]) return false;
@@ -173,7 +187,14 @@ bool webif_reader_save(const S_WEBIF_READER_EDIT *e)
     }
     if (strlen(e->key) >= sizeof(value.newcamd_key) * 2 + 1) return false;
     char key[sizeof(e->key)]; tcmg_strlcpy(key, e->key, sizeof(key));
-    for (int i = 0; i < 14; i++) { char b[3]={key[i*2],key[i*2+1],0}; if (!isxdigit((unsigned char)b[0]) || !isxdigit((unsigned char)b[1])) { if (strcasecmp(e->protocol,"mgcamd")==0 || strcasecmp(e->protocol,"newcamd")==0) return false; break; } value.newcamd_key[i]=(uint8_t)strtoul(b,NULL,16); }
+    for (int i = 0; i < 14; i++) {
+        char b[3] = { key[i * 2], key[i * 2 + 1], 0 };
+        if (!isxdigit((unsigned char)b[0]) || !isxdigit((unsigned char)b[1])) {
+            if (!strcmp(protocol->name, "newcamd")) return false;
+            break;
+        }
+        value.newcamd_key[i] = (uint8_t)strtoul(b, NULL, 16);
+    }
     char ek[WEBIF_TEXT_8192]; tcmg_strlcpy(ek, e->ecmkeys, sizeof(ek)); save = NULL; tok = strtok_r(ek, "\r\n;", &save);
     while (tok) {
         if (value.nkeys >= MAX_ECMKEYS_PER_ACC) return false;
@@ -195,12 +216,27 @@ bool webif_reader_save(const S_WEBIF_READER_EDIT *e)
     return ok;
 }
 
+bool webif_reader_toggle(int index, int *enabled)
+{
+    if (index < 0 || index >= MAX_READERS) return false;
+    pthread_rwlock_wrlock(&g_cfg.acc_lock);
+    if (!g_cfg.readers[index].in_use) { pthread_rwlock_unlock(&g_cfg.acc_lock); return false; }
+    g_cfg.readers[index].enabled = g_cfg.readers[index].enabled ? 0 : 1;
+    int value = g_cfg.readers[index].enabled;
+    pthread_rwlock_unlock(&g_cfg.acc_lock);
+    if (!cfg_save(&g_cfg)) return false;
+    g_reload_cfg = 1;
+    if (enabled) *enabled = value;
+    return true;
+}
+
 bool webif_reader_delete(int index)
 {
     if (index < 0 || index >= MAX_READERS) return false;
     pthread_rwlock_wrlock(&g_cfg.acc_lock);
     if (!g_cfg.readers[index].in_use) { pthread_rwlock_unlock(&g_cfg.acc_lock); return false; }
     memset(&g_cfg.readers[index], 0, sizeof(g_cfg.readers[index]));
+    reader_stats_reset(index);
     g_cfg.nreaders = 0; for (int i = 0; i < MAX_READERS; i++) if (g_cfg.readers[i].in_use) g_cfg.nreaders++;
     pthread_rwlock_unlock(&g_cfg.acc_lock);
     bool ok = cfg_save(&g_cfg);

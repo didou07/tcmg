@@ -34,10 +34,30 @@
 	"  _theme_apply(document.documentElement.getAttribute('data-tpref') || 'dark');\n" \
 	"});\n" \
 	"\n" \
+	 "(function(){" \
+	 "function mkq(text){" \
+	 "var q=document.createElement('button');q.type='button';q.className='qtip';q.textContent='?';" \
+	 "q.title=text;q.setAttribute('aria-label',text);return q;}" \
+	 "function run(){" \
+	 "document.querySelectorAll('.cfg-sub').forEach(function(el){" \
+	 "var t=(el.textContent||'').replace(/\\s+/g,' ').trim();if(!t)return;" \
+	 "var q=mkq(t),p=el.parentNode,ttl=el.previousElementSibling;" \
+	 "if(ttl)ttl.appendChild(q);else p.insertBefore(q,el);el.remove();});" \
+	 "document.querySelectorAll('.cfg-help,.fhint').forEach(function(el){" \
+	 "var t=(el.textContent||'').replace(/\\s+/g,' ').trim();if(!t){el.remove();return;}" \
+	 "var q=mkq(t);if(el.id)q.id=el.id;el.replaceWith(q);});" \
+	 "document.querySelectorAll('.cfg-intro').forEach(function(el){el.remove();});" \
+	 "}" \
+	 "if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run);else run();" \
+	 "})();" \
 	"\n" \
-	"document.querySelectorAll('.tnav a').forEach(function(a) {\n" \
-	"  a.addEventListener('click', function() {\n" \
-	"    document.querySelector('.tnav').classList.remove('open');\n" \
+	"\n" \
+	"document.addEventListener('DOMContentLoaded', function() {\n" \
+	"  document.querySelectorAll('.tnav a').forEach(function(a) {\n" \
+	"    a.addEventListener('click', function() {\n" \
+	"      var nav = document.querySelector('.tnav');\n" \
+	"      if (nav) nav.classList.remove('open');\n" \
+	"    });\n" \
 	"  });\n" \
 	"});\n" \
 	"\n" \
@@ -68,7 +88,7 @@
 	"    b.classList.toggle('cur', b.dataset.accent === preset.id);\n" \
 	"  });\n" \
 	"}\n" \
-	"(function () {\n" \
+	"document.addEventListener('DOMContentLoaded', function () {\n" \
 	"  var btn = document.getElementById('acBtn'), pop = document.getElementById('acPop');\n" \
 	"  if (!btn || !pop) return;\n" \
 	"  pop.innerHTML = ACCENTS.map(function (p) {\n" \
@@ -95,11 +115,11 @@
 	"      btn.setAttribute('aria-expanded', 'false');\n" \
 	"    }\n" \
 	"  });\n" \
-	"})();\n" \
+	"});\n" \
 	"\n" \
 	"\n" \
 	"var _pm = (function() {\n" \
-	"  var srv = %d;\n" \
+	"  var srv = Number(window.TCMG_WEB_POLL) || 0;\n" \
 	"  if (srv <= 0) return 0;\n" \
 	"  var stored = parseInt(sessionStorage.tcmg_poll);\n" \
 	"  var v = (stored >= 1 && stored <= 99) ? stored : srv;\n" \
@@ -158,6 +178,41 @@
 	"    return r || _geo_try(providers, i + 1);\n" \
 	"  });\n" \
 	"}\n" \
+	"\n" \
+	"function tcmg_api(url, opt) {\n" \
+	"  opt = opt || {};\n" \
+	"  if (!opt.credentials) opt.credentials = 'same-origin';\n" \
+	"  if (!opt.cache) opt.cache = 'no-store';\n" \
+	"  return fetch(url, opt).then(function (r) {\n" \
+	"    if (r.status === 401) {\n" \
+	"      window.location.href = '/login';\n" \
+	"      var e = new Error('unauthorized'); e.auth = true;\n" \
+	"      throw e;\n" \
+	"    }\n" \
+	"    return r.text().then(function (body) {\n" \
+	"      var data = null;\n" \
+	"      if (body) { try { data = JSON.parse(body); } catch (ignore) {} }\n" \
+	"      if (!r.ok) {\n" \
+	"        var err = new Error(data && data.msg ? data.msg : ('HTTP ' + r.status));\n" \
+	"        err.status = r.status; err.data = data;\n" \
+	"        throw err;\n" \
+	"      }\n" \
+	"      return data || {};\n" \
+	"    });\n" \
+	"  });\n" \
+	"}\n" \
+	"\n" \
+	"function tcmg_html(url, opt) {\n" \
+	"  opt = opt || {};\n" \
+	"  if (!opt.credentials) opt.credentials = 'same-origin';\n" \
+	"  if (!opt.cache) opt.cache = 'no-store';\n" \
+	"  return fetch(url, opt).then(function (r) {\n" \
+	"    if (r.status === 401) { window.location.href = '/login'; throw new Error('unauthorized'); }\n" \
+	"    if (!r.ok) throw new Error('HTTP ' + r.status);\n" \
+	"    return r.text();\n" \
+	"  });\n" \
+	"}\n" \
+	"\n" \
 	"\n" \
 	"function _flag_img_html(code) {\n" \
 	"  var cc = String(code || '').toLowerCase();\n" \
@@ -223,13 +278,13 @@
 	"  var v = Math.max(1, Math.min(99, parseInt(el.value) || 5) + d);\n" \
 	"  el.value = v;\n" \
 	"  _pm = v * 1000;\n" \
-	"  sessionStorage.tcmg_poll = v;\n" \
+	"  try { sessionStorage.setItem('tcmg_poll', String(v)); } catch (e) {}\n" \
 	"  if (!_busy) _schedule_poll(_pm);\n" \
 	"}\n" \
 	"\n" \
 	"\n" \
 	"function _fmt_up(s) {\n" \
-	"  var h = Math.floor(s / 3600), m = Math.floor((s %% 3600) / 60), sc = s %% 60;\n" \
+	"  var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sc = s % 60;\n" \
 	"  return (h > 0 ? String(h).padStart(2, '0') + 'h ' : '')\n" \
 	"    + String(m).padStart(2, '0') + 'm '\n" \
 	"    + String(sc).padStart(2, '0') + 's';\n" \
@@ -263,15 +318,17 @@
 	"}\n" \
 	"\n" \
 	"\n" \
+	"function _uptime_tick() {\n" \
+	"  _ut_tmr = null;\n" \
+	"  if (document.hidden) return;\n" \
+	"  _ut++;\n" \
+	"  var e = document.getElementById('p_up');\n" \
+	"  if (e) e.textContent = _fmt_up(_ut);\n" \
+	"  _ut_tmr = setTimeout(_uptime_tick, 1000);\n" \
+	"}\n" \
 	"function _upd_status(d) {\n" \
 	"  _ut = d.uptime_s | 0;\n" \
-	"  if (!_ut_tmr) {\n" \
-	"    _ut_tmr = setInterval(function() {\n" \
-	"      _ut++;\n" \
-	"      var e = document.getElementById('p_up');\n" \
-	"      if (e) e.textContent = _fmt_up(_ut);\n" \
-	"    }, 1000);\n" \
-	"  }\n" \
+	"  if (!_ut_tmr && !document.hidden) _ut_tmr = setTimeout(_uptime_tick, 1000);\n" \
 	"  var eu = document.getElementById('p_up');\n" \
 	"  if (eu) eu.textContent = _fmt_up(_ut);\n" \
 	"\n" \
@@ -283,10 +340,10 @@
 	"  _anim('p_ecm',  _fmt(d.ecm_total));\n" \
 	"\n" \
 	"  var hr = document.getElementById('p_hr');\n" \
-	"  if (hr) hr.textContent = d.hit_rate_pct.toFixed(1) + '%%';\n" \
+	"  if (hr) hr.textContent = d.hit_rate_pct.toFixed(1) + '%';\n" \
 	"\n" \
 	"  var hb = document.getElementById('p_hbf');\n" \
-	"  if (hb) hb.style.width = d.hit_rate_pct.toFixed(0) + '%%';\n" \
+	"  if (hb) hb.style.width = d.hit_rate_pct.toFixed(0) + '%';\n" \
 	"\n" \
 	"  var tb = document.getElementById('p_clients');\n" \
 	"  if (!tb) return;\n" \
@@ -363,7 +420,8 @@
 	"\n" \
 	"function _kill(tid, user) {\n" \
 	"  if (!confirm('Disconnect ' + user + '?')) return;\n" \
-	"  fetch('/status?kill=' + encodeURIComponent(tid) + '&user=' + encodeURIComponent(user), {credentials: 'same-origin'});\n" \
+	"  tcmg_api('/api/client/kill?tid=' + encodeURIComponent(tid) + '&user=' + encodeURIComponent(user), {method: 'POST'})\n" \
+	"    .catch(function(e) { if (!(e && e.auth)) toast('Disconnect failed', 'err'); });\n" \
 	"  var r = document.getElementById('row_' + tid);\n" \
 	"  if (r) {\n" \
 	"    r.style.opacity = '.4';\n" \
@@ -383,19 +441,7 @@
 	"    endpoint = '/api/userstats';\n" \
 	"  }\n" \
 	"\n" \
-	"  fetch(endpoint, { credentials: 'same-origin', cache: 'no-store' })\n" \
-	"    .then(function(r) {\n" \
-	"      if (r.status === 401) {\n" \
-	"        var e = new Error('unauthorized'); e.auth = true;\n" \
-	"        window.location.href = '/login';\n" \
-	"        throw e;\n" \
-	"      }\n" \
-	"      if (!r.ok) {\n" \
-	"        var e2 = new Error('poll failed'); e2.status = r.status;\n" \
-	"        throw e2;\n" \
-	"      }\n" \
-	"      return r.json();\n" \
-	"    })\n" \
+	"  tcmg_api(endpoint)\n" \
 	"    .then(function(d) {\n" \
 	"      if (!d) return;\n" \
 	"      var hook = window.tcmg_poll_apply;\n" \
@@ -420,7 +466,12 @@
 	"});\n" \
 	"\n" \
 	"document.addEventListener('visibilitychange', function() {\n" \
-	"  if (!document.hidden && !_busy && _pm > 0) _schedule_poll(50);\n" \
+	"  if (!document.hidden) {\n" \
+	"    if (!_busy && _pm > 0) _schedule_poll(50);\n" \
+	"    if (document.getElementById('p_up') && !_ut_tmr) _ut_tmr = setTimeout(_uptime_tick, 1000);\n" \
+	"  } else if (_ut_tmr) {\n" \
+	"    clearTimeout(_ut_tmr); _ut_tmr = null;\n" \
+	"  }\n" \
 	"});"
 
 #endif                              

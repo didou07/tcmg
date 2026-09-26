@@ -5,6 +5,7 @@
 #include "../../src/platform/platform.h"
 #include "../../src/log/log.h"
 #include "../internal/proto.h"
+#include "../internal/form.h"
 
 void send_api_config_get(int fd)
 {
@@ -18,27 +19,24 @@ void send_api_config_get(int fd)
     for (int i = 0; i < 14; i++) snprintf(key_hex + i * 2, 3, "%02X", c.newcamd_key[i]);
     key_hex[28] = '\0';
     char esc_bindaddr[256], esc_cs_bind[256], esc_logfile[512], esc_user[256], esc_webif_bind[256];
-    char esc_pcsc_reader[512], esc_failban_allow[CFGVAL_LEN * 2];
+    char esc_failban_allow[CFGVAL_LEN * 2];
     json_escape(c.newcamd_bindaddr, esc_bindaddr, sizeof(esc_bindaddr));
     json_escape(c.cs378x_bindaddr, esc_cs_bind, sizeof(esc_cs_bind));
     json_escape(c.logfile, esc_logfile, sizeof(esc_logfile));
     json_escape(c.webif_user, esc_user, sizeof(esc_user));
     json_escape(c.webif_bindaddr, esc_webif_bind, sizeof(esc_webif_bind));
-    json_escape(c.pcsc_reader, esc_pcsc_reader, sizeof(esc_pcsc_reader));
     json_escape(c.failban_allowlist, esc_failban_allow, sizeof(esc_failban_allow));
     pos = buf_printf(&buf, &bsz, pos,
         "{\"newcamd_port\":%d,\"newcamd_bindaddr\":\"%s\",\"newcamd_key\":\"%s\","
         "\"newcamd_keepalive\":%d,\"newcamd_mgclient\":%d,\"cccam_port\":%d,\"cs378x_port\":%d,"
         "\"cs378x_bindaddr\":\"%s\",\"sock_timeout\":%d,\"server_keepalive\":%d,\"server_keepalive_misses\":%d,"
-        "\"ecm_log\":%d,\"logfile\":\"%s\",\"webif_port\":%d,\"webif_refresh\":%d,\"webif_user\":\"%s\","
-        "\"webif_bindaddr\":\"%s\",\"pcsc_enabled\":%d,\"pcsc_fast_reset\":%d,\"pcsc_poll_ms\":%d,"
-        "\"pcsc_reader\":\"%s\",\"failban_enabled\":%d,\"failban_allowlist\":\"%s\","
+        "\"ecm_log\":%d,\"scheduled_restart\":%d,\"scheduled_restart_time\":\"%s\",\"logfile\":\"%s\",\"webif_port\":%d,\"webif_refresh\":%d,\"webif_user\":\"%s\","
+        "\"webif_bindaddr\":\"%s\",\"failban_enabled\":%d,\"failban_allowlist\":\"%s\","
         "\"failban_max_fails\":%d,\"failban_ban_secs\":%d}",
         c.newcamd_port, esc_bindaddr, key_hex, (int)c.newcamd_keepalive, (int)c.newcamd_mgclient,
         c.cccam_port, c.cs378x_port, esc_cs_bind, c.sock_timeout, c.server_keepalive,
-        c.server_keepalive_misses, (int)c.ecm_log, esc_logfile, c.webif_port, c.webif_refresh,
-        esc_user, esc_webif_bind, (int)c.pcsc_enabled, (int)c.pcsc_fast_reset, (int)c.pcsc_poll_ms,
-        esc_pcsc_reader, (int)c.failban_enabled, esc_failban_allow, c.failban_max_fails, (int)c.failban_ban_secs);
+        c.server_keepalive_misses, (int)c.ecm_log, (int)c.scheduled_restart_enabled, c.scheduled_restart_time, esc_logfile, c.webif_port, c.webif_refresh,
+        esc_user, esc_webif_bind, (int)c.failban_enabled, esc_failban_allow, c.failban_max_fails, (int)c.failban_ban_secs);
     send_response(fd, 200, "OK", "application/json", buf, pos);
     free(buf);
 }
@@ -57,11 +55,8 @@ static void fld(fparse *p, const char *key, char *out, size_t sz)
 {
 	out[0] = '\0';
 	if (p->err[0]) return;
-	char *v = form_get_alloc(p->body, key);
-	if (!v) return;
-	if (strlen(v) >= sz) snprintf(p->err, sizeof(p->err), "%s is too long", key);
-	else tcmg_strlcpy(out, v, sz);
-	free(v);
+	if (webif_form_copy(p->body, key, out, sz) < 0)
+		snprintf(p->err, sizeof(p->err), "%s is too long", key);
 }
 
 static void bad(fparse *p, const char *key, const char *why)
@@ -114,9 +109,8 @@ void handle_api_config_save(int fd, const char *post_body)
 	fparse P = { post_body, "" };
 	char newcamd_port_s[16], newcamd_bindaddr[MAXIPLEN + 8], newcamd_key_s[40], keepalive_s[8], mgclient_s[8];
 	char cccam_port_s[16], cs378x_port_s[16], cs378x_bindaddr[MAXIPLEN+8], sock_timeout_s[16], server_keepalive_s[16], server_keepalive_misses_s[16], ecm_log_s[8], logfile[CFGPATH_LEN];
-	char webif_port_s[16], webif_refresh_s[16], webif_user[CFGKEY_LEN], webif_pass[CFGKEY_LEN];
+	char webif_port_s[16], webif_refresh_s[16], scheduled_restart_s[8], scheduled_restart_time_s[16], webif_user[CFGKEY_LEN], webif_pass[CFGKEY_LEN];
 	char webif_bindaddr[MAXIPLEN + 8];
-	char pcsc_enabled_s[8], pcsc_fast_reset_s[16], pcsc_poll_s[16], pcsc_reader[CFGVAL_LEN];
 	char failban_enabled_s[8], failban_allowlist_s[CFGVAL_LEN], failban_maxfails_s[16], failban_bansecs_s[16];
 
 	fld(&P, "newcamd_port",      newcamd_port_s,   sizeof(newcamd_port_s));
@@ -131,24 +125,21 @@ void handle_api_config_save(int fd, const char *post_body)
 	fld(&P, "server_keepalive", server_keepalive_s, sizeof(server_keepalive_s));
 	fld(&P, "server_keepalive_misses", server_keepalive_misses_s, sizeof(server_keepalive_misses_s));
 	fld(&P, "ecm_log",           ecm_log_s,        sizeof(ecm_log_s));
+	fld(&P, "scheduled_restart", scheduled_restart_s, sizeof(scheduled_restart_s));
+	fld(&P, "scheduled_restart_time", scheduled_restart_time_s, sizeof(scheduled_restart_time_s));
 	fld(&P, "logfile",           logfile,          sizeof(logfile));
 	fld(&P, "webif_port",        webif_port_s,     sizeof(webif_port_s));
 	fld(&P, "webif_refresh",     webif_refresh_s,  sizeof(webif_refresh_s));
 	fld(&P, "webif_user",        webif_user,       sizeof(webif_user));
 	fld(&P, "webif_pass",        webif_pass,       sizeof(webif_pass));
 	fld(&P, "webif_bindaddr",    webif_bindaddr,   sizeof(webif_bindaddr));
-	fld(&P, "pcsc_enabled",      pcsc_enabled_s,   sizeof(pcsc_enabled_s));
-	fld(&P, "pcsc_fast_reset",   pcsc_fast_reset_s, sizeof(pcsc_fast_reset_s));
-	fld(&P, "pcsc_poll_ms",      pcsc_poll_s,      sizeof(pcsc_poll_s));
-	fld(&P, "pcsc_reader",       pcsc_reader,      sizeof(pcsc_reader));
 	fld(&P, "failban_enabled", failban_enabled_s, sizeof(failban_enabled_s));
 	fld(&P, "failban_allowlist", failban_allowlist_s, sizeof(failban_allowlist_s));
 	fld(&P, "failban_max_fails", failban_maxfails_s, sizeof(failban_maxfails_s));
 	fld(&P, "failban_ban_secs",  failban_bansecs_s,  sizeof(failban_bansecs_s));
 
-	long v_newcamd_port = 0, v_ka = 0, v_mgc = 0, v_cccam = 0, v_cs378x = 0, v_sock = 0, v_ska = 0, v_skam = 0, v_ecmlog = 0, v_wport = 0, v_wref = 0;
-	long v_pen = 0, v_pfr = 0, v_ppoll = 0;
-	long v_fb_enabled = 0, v_fbmax = 0, v_fbsecs = 0;
+	long v_newcamd_port = 0, v_ka = 0, v_mgc = 0, v_cccam = 0, v_cs378x = 0, v_sock = 0, v_ska = 0, v_skam = 0, v_ecmlog = 0, v_sched = 0, v_wport = 0, v_wref = 0;
+		long v_fb_enabled = 0, v_fbmax = 0, v_fbsecs = 0;
 	uint8_t k_new[14];
 
 	int h_np  = num(&P, "newcamd_port",      newcamd_port_s,   0, 65535, &v_newcamd_port);                     
@@ -161,11 +152,9 @@ void handle_api_config_save(int fd, const char *post_body)
 	int h_ska = num(&P, "server_keepalive", server_keepalive_s, 0, 3600, &v_ska);
 	int h_skam = num(&P, "server_keepalive_misses", server_keepalive_misses_s, 1, 20, &v_skam);
 	int h_el  = num(&P, "ecm_log",           ecm_log_s,        0, 1, &v_ecmlog);
+	int h_sched = num(&P, "scheduled_restart", scheduled_restart_s, 0, 1, &v_sched);
 	int h_wp  = num(&P, "webif_port",        webif_port_s,     1, 65535, &v_wport);
 	int h_wr  = num(&P, "webif_refresh",     webif_refresh_s,  0, 3600, &v_wref);
-	int h_pe  = num(&P, "pcsc_enabled",      pcsc_enabled_s,   0, 1, &v_pen);
-	int h_pf  = num(&P, "pcsc_fast_reset",   pcsc_fast_reset_s, 0, 86400, &v_pfr);
-	int h_pp  = num(&P, "pcsc_poll_ms",      pcsc_poll_s,      50, 10000, &v_ppoll);
 	int h_fbe = num(&P, "failban_enabled", failban_enabled_s, 0, 1, &v_fb_enabled);
 	int h_fbm = num(&P, "failban_max_fails", failban_maxfails_s, 1, 1000, &v_fbmax);
 	int h_fbs = num(&P, "failban_ban_secs",  failban_bansecs_s,  10, 604800, &v_fbsecs);
@@ -175,8 +164,12 @@ void handle_api_config_save(int fd, const char *post_body)
 	text_ok(&P, "logfile", logfile);
 	text_ok(&P, "webif_user", webif_user);
 	text_ok(&P, "webif_pass", webif_pass);
-	text_ok(&P, "pcsc_reader", pcsc_reader);
 	text_ok(&P, "failban_allowlist", failban_allowlist_s);
+	if (scheduled_restart_time_s[0]) {
+		int hh = -1, mm = -1;
+		if (sscanf(scheduled_restart_time_s, "%d:%d", &hh, &mm) != 2 || hh < 0 || hh > 23 || mm < 0 || mm > 59 || strlen(scheduled_restart_time_s) != 5 || scheduled_restart_time_s[2] != ':')
+			bad(&P, "scheduled_restart_time", "expected HH:MM");
+	}
 
 	if (P.err[0]) {
 		send_json_error(fd, 400, "Bad Request", P.err);
@@ -199,6 +192,9 @@ void handle_api_config_save(int fd, const char *post_body)
 	patch.has_server_keepalive = h_ska; patch.server_keepalive = (int)v_ska;
 	patch.has_server_keepalive_misses = h_skam; patch.server_keepalive_misses = (int)v_skam;
 	patch.has_ecm_log = h_el; patch.ecm_log = (int8_t)v_ecmlog;
+	patch.has_scheduled_restart = h_sched; patch.scheduled_restart_enabled = (int8_t)v_sched;
+	patch.has_scheduled_restart_time = scheduled_restart_time_s[0] || form_has(post_body, "scheduled_restart_time");
+	tcmg_strlcpy(patch.scheduled_restart_time, scheduled_restart_time_s, sizeof(patch.scheduled_restart_time));
 	patch.has_logfile = logfile[0] || form_has(post_body, "logfile");
 	tcmg_strlcpy(patch.logfile, logfile, sizeof(patch.logfile));
 	patch.has_webif_port = h_wp; patch.webif_port = (int)v_wport;
@@ -209,11 +205,6 @@ void handle_api_config_save(int fd, const char *post_body)
 	tcmg_strlcpy(patch.webif_user, webif_user, sizeof(patch.webif_user));
 	tcmg_strlcpy(patch.webif_pass, webif_pass, sizeof(patch.webif_pass));
 	tcmg_strlcpy(patch.webif_bindaddr, webif_bindaddr, sizeof(patch.webif_bindaddr));
-	patch.has_pcsc_enabled = h_pe; patch.pcsc_enabled = (int8_t)v_pen;
-	patch.has_pcsc_fast_reset = h_pf; patch.pcsc_fast_reset = (int)v_pfr;
-	patch.has_pcsc_poll_ms = h_pp; patch.pcsc_poll_ms = (int)v_ppoll;
-	patch.has_pcsc_reader = pcsc_reader[0] || form_has(post_body, "pcsc_reader");
-	tcmg_strlcpy(patch.pcsc_reader, pcsc_reader, sizeof(patch.pcsc_reader));
 	patch.has_failban_enabled = h_fbe; patch.failban_enabled = (int8_t)v_fb_enabled;
 	patch.has_failban_allowlist = failban_allowlist_s[0] || form_has(post_body, "failban_allowlist");
 	tcmg_strlcpy(patch.failban_allowlist, failban_allowlist_s, sizeof(patch.failban_allowlist));
@@ -306,7 +297,7 @@ void handle_api_file_save(int fd, const char *post_body)
         bool ok = webif_save_config_file(content, len);
         free(content);
         if (!ok) { send_json_error(fd, 400, "Bad Request", "config parse or write failed"); return; }
-        tcmg_log("%s", "webif: tcmg.conf saved via api -- reload triggered");
+        tcmg_log("%s", "tcmg.conf saved via api -- reload triggered");
         send_json_ok(fd, "ok");
         return;
     }
@@ -316,7 +307,7 @@ void handle_api_file_save(int fd, const char *post_body)
         bool ok = webif_save_srvid_file(content, strlen(content), &loaded);
         free(content);
         if (!ok) { send_json_error(fd, 500, "Internal Error", "cannot write file"); return; }
-        tcmg_log("webif: srvid2 saved entries=%d reloaded", loaded);
+        tcmg_log("srvid2 saved entries=%d reloaded", loaded);
         send_json_ok(fd, "ok");
         return;
     }
@@ -328,7 +319,7 @@ void handle_api_file_save(int fd, const char *post_body)
                         : webif_save_readers_file(content, strlen(content), err, sizeof(err));
         free(content);
         if (!ok) { send_json_error(fd, 400, "Bad Request", err[0] ? err : "validation or write failed"); return; }
-        tcmg_log("webif: %s saved via file editor -- reload triggered", users ? "tcmg.users" : "tcmg.readers");
+        tcmg_log("%s saved via file editor -- reload triggered", users ? "tcmg.users" : "tcmg.readers");
         send_json_ok(fd, "ok");
         return;
     }

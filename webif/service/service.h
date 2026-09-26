@@ -29,6 +29,7 @@ int webif_reader_snapshot_all(S_WEBIF_READER_VIEW *out, size_t cap);
 bool webif_reader_get(int index, S_WEBIF_READER_VIEW *out);
 bool webif_reader_save(const S_WEBIF_READER_EDIT *edit);
 bool webif_reader_delete(int index);
+bool webif_reader_toggle(int index, int *enabled);
 
 int webif_client_snapshot_all(S_WEBIF_CLIENT_VIEW *out, size_t cap);
 int webif_active_connection_count(void);

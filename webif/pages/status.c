@@ -134,7 +134,7 @@ void send_page_status(int fd)
 		"<div class='sb_'>"
 		"  <div class='sl_'>Actions</div>"
 		"  <div class='sv' style='font-size:13px;font-weight:600'>"
-		"    <a href='#' onclick=\"if(confirm('Reset all stats?')){fetch('/api/resetstats').then(function(){if(typeof _poll==='function')_poll();});}return false\""
+		"    <a href='#' onclick=\"if(confirm('Reset all stats?')){tcmg_api('/api/resetstats',{method:'POST'}).then(function(){if(typeof _poll==='function')_poll();}).catch(function(){});}return false\""
 		"       style='color:inherit;text-decoration:none'>Reset Stats</a>"
 		"  </div>"
 		"  <div class='sd'>clear counters</div>"

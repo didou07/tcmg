@@ -65,6 +65,9 @@ typedef struct {
     int do_ecm;
     int fast_reset;
     int poll_ms;
+    int64_t cw_ok;
+    int64_t cw_nok;
+    int active;
 } S_WEBIF_READER_VIEW;
 
 typedef struct {
@@ -105,16 +108,14 @@ typedef struct {
     int server_keepalive;
     int server_keepalive_misses;
     int ecm_log;
+    int scheduled_restart_enabled;
+    char scheduled_restart_time[6];
     char logfile[CFGPATH_LEN];
     int webif_port;
     int webif_refresh;
     char webif_user[CFGKEY_LEN];
     char webif_pass[CFGKEY_LEN];
     char webif_bindaddr[MAXIPLEN];
-    int pcsc_enabled;
-    int pcsc_fast_reset;
-    int pcsc_poll_ms;
-    char pcsc_reader[CFGVAL_LEN];
     int failban_enabled;
     char failban_allowlist[CFGVAL_LEN];
     int failban_max_fails;
@@ -146,6 +147,10 @@ typedef struct {
     int server_keepalive_misses;
     int has_ecm_log;
     int ecm_log;
+    int has_scheduled_restart;
+    int scheduled_restart_enabled;
+    int has_scheduled_restart_time;
+    char scheduled_restart_time[6];
     int has_logfile;
     char logfile[CFGPATH_LEN];
     int has_webif_port;
@@ -158,14 +163,6 @@ typedef struct {
     char webif_pass[CFGKEY_LEN];
     int has_webif_bindaddr;
     char webif_bindaddr[MAXIPLEN];
-    int has_pcsc_enabled;
-    int pcsc_enabled;
-    int has_pcsc_fast_reset;
-    int pcsc_fast_reset;
-    int has_pcsc_poll_ms;
-    int pcsc_poll_ms;
-    int has_pcsc_reader;
-    char pcsc_reader[CFGVAL_LEN];
     int has_failban_enabled;
     int failban_enabled;
     int has_failban_allowlist;

@@ -1,4 +1,4 @@
-#define MODULE_LOG_PREFIX "reader-rules"
+#define MODULE_LOG_PREFIX "reader"
 #include "rules.h"
 
 bool reader_account_has_group(const S_ACCOUNT *acc, int32_t group)

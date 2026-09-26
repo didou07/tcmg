@@ -7,7 +7,7 @@
 
 #include "../core/compat.h"
 #include "../core/constants.h"
-#include "../core/types.h"
+#include "../core/config_types.h"
 #include "../core/utils.h"
 #include "../log/log.h"
 #include "../crypto/crypto.h"
@@ -24,8 +24,6 @@ typedef bool (*cfg_kv_callback)(const char *section, const S_KV *kv,
                                 void *ctx, char *err, size_t errsz);
 
 void cfg_default_runtime(S_CONFIG *cfg);
-bool cfg_legacy_detect(const char *path);
-bool cfg_load_legacy(const char *path, S_CONFIG *cfg, char *err, size_t errsz);
 void cfg_str_trim(char *s);
 
 bool cfg_parse_file(const char *path, cfg_kv_callback cb, void *ctx,

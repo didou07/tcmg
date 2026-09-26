@@ -2,16 +2,36 @@
 #include "internal.h"
 #include "../config/runtime_access.h"
 #include "../core/constants.h"
-#include "../core/types.h"
 #include "../core/utils.h"
 #include "../log/log.h"
+#include "../platform/platform.h"
 
 #define TCMG_T0_RESPONSE_GAP_MS 10
+#define TCMG_INTERNAL_ECM_QUEUE_CAP 16
+#define TCMG_INTERNAL_ECM_WAIT_MS 20000
+
+enum internal_job_state {
+    INTERNAL_JOB_FREE = 0,
+    INTERNAL_JOB_QUEUED,
+    INTERNAL_JOB_RUNNING,
+    INTERNAL_JOB_DONE,
+    INTERNAL_JOB_CANCELLED
+};
+
+typedef struct {
+    int state;
+    int rc;
+    uint8_t ecm[249];
+    size_t ecm_len;
+    uint8_t cw[16];
+    unsigned waiters;
+} S_INTERNAL_JOB;
 
 #ifndef TCMG_OS_WINDOWS
 
 #include <errno.h>
 #include <fcntl.h>
+#include <sys/file.h>
 #include <pthread.h>
 #include <stdatomic.h>
 #include <string.h>
@@ -47,16 +67,26 @@ typedef struct sci_parameters {
 
 typedef struct {
     int fd;
-    int configured;
+    int exclusive;
     int params_applied;
     int present;
     int ready;
     int protocol;
+    int reset_requested;
     int64_t last_reset_ms;
-    int64_t last_poll_ms;
+    int worker_running;
+    int worker_stop;
+    int queue_head;
+    int queue_tail;
+    int queue_count;
+    int queue_slots[TCMG_INTERNAL_ECM_QUEUE_CAP];
+    S_INTERNAL_JOB jobs[TCMG_INTERNAL_ECM_QUEUE_CAP];
     uint8_t atr[TCMG_INTERNAL_MAX_ATR];
     size_t atr_len;
     char device[256];
+    char target_device[256];
+    pthread_t worker_tid;
+    pthread_cond_t cv;
     pthread_mutex_t mtx;
 } S_INTERNAL_SLOT;
 
@@ -66,12 +96,6 @@ static _Atomic int8_t s_running = 0;
 static pthread_mutex_t s_slots_init_mtx = PTHREAD_MUTEX_INITIALIZER;
 static int s_slots_initialized = 0;
 
-static int64_t mono_ms(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (int64_t)ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL;
-}
 
 static void slots_init(void)
 {
@@ -80,24 +104,136 @@ static void slots_init(void)
         for (int i = 0; i < MAX_READERS; i++) {
             s_slots[i].fd = -1;
             pthread_mutex_init(&s_slots[i].mtx, NULL);
+            pthread_cond_init(&s_slots[i].cv, NULL);
         }
         s_slots_initialized = 1;
     }
     pthread_mutex_unlock(&s_slots_init_mtx);
 }
 
+static void queue_reset_locked(S_INTERNAL_SLOT *s)
+{
+    s->queue_head = 0;
+    s->queue_tail = 0;
+    s->queue_count = 0;
+    for (int i = 0; i < TCMG_INTERNAL_ECM_QUEUE_CAP; i++) {
+        s->queue_slots[i] = -1;
+        s->jobs[i].state = INTERNAL_JOB_FREE;
+        s->jobs[i].rc = -1;
+        s->jobs[i].ecm_len = 0;
+        memset(s->jobs[i].ecm, 0, sizeof(s->jobs[i].ecm));
+        memset(s->jobs[i].cw, 0, sizeof(s->jobs[i].cw));
+        s->jobs[i].waiters = 0;
+    }
+}
+
+static int queue_submit_locked(S_INTERNAL_SLOT *s, const uint8_t *ecm, size_t ecm_len, int *joined)
+{
+    if (joined) *joined = 0;
+
+    for (int i = 0; i < TCMG_INTERNAL_ECM_QUEUE_CAP; i++) {
+        S_INTERNAL_JOB *job = &s->jobs[i];
+        if ((job->state == INTERNAL_JOB_QUEUED || job->state == INTERNAL_JOB_RUNNING) &&
+            job->ecm_len == ecm_len && memcmp(job->ecm, ecm, ecm_len) == 0) {
+            job->waiters++;
+            if (joined) *joined = 1;
+            return i;
+        }
+    }
+
+    if (s->queue_count >= TCMG_INTERNAL_ECM_QUEUE_CAP) return -1;
+
+    int job_index = -1;
+    for (int i = 0; i < TCMG_INTERNAL_ECM_QUEUE_CAP; i++) {
+        if (s->jobs[i].state == INTERNAL_JOB_FREE) {
+            job_index = i;
+            break;
+        }
+    }
+    if (job_index < 0) return -1;
+
+    S_INTERNAL_JOB *job = &s->jobs[job_index];
+    job->state = INTERNAL_JOB_QUEUED;
+    job->rc = -1;
+    job->ecm_len = ecm_len;
+    memcpy(job->ecm, ecm, ecm_len);
+    memset(job->cw, 0, sizeof(job->cw));
+    job->waiters = 1;
+    s->queue_slots[s->queue_tail] = job_index;
+    s->queue_tail = (s->queue_tail + 1) % TCMG_INTERNAL_ECM_QUEUE_CAP;
+    s->queue_count++;
+    return job_index;
+}
+
+static int queue_pop_locked(S_INTERNAL_SLOT *s)
+{
+    if (s->queue_count <= 0) return -1;
+    int job_index = s->queue_slots[s->queue_head];
+    s->queue_slots[s->queue_head] = -1;
+    s->queue_head = (s->queue_head + 1) % TCMG_INTERNAL_ECM_QUEUE_CAP;
+    s->queue_count--;
+    return job_index;
+}
+
+static void queue_release_locked(S_INTERNAL_JOB *job)
+{
+    if (!job) return;
+    job->state = INTERNAL_JOB_FREE;
+    job->rc = -1;
+    job->ecm_len = 0;
+    job->waiters = 0;
+    memset(job->ecm, 0, sizeof(job->ecm));
+    memset(job->cw, 0, sizeof(job->cw));
+}
+
+static int queue_waiter_count_locked(const S_INTERNAL_SLOT *s)
+{
+    int total = 0;
+    for (int i = 0; i < TCMG_INTERNAL_ECM_QUEUE_CAP; i++)
+        total += (int)s->jobs[i].waiters;
+    return total;
+}
+
+static void slot_close_fd(S_INTERNAL_SLOT *s)
+{
+    if (!s || s->fd < 0) return;
+    if (s->exclusive) (void)flock(s->fd, LOCK_UN);
+    close(s->fd);
+    s->fd = -1;
+    s->exclusive = 0;
+}
+
 static void slot_clear(S_INTERNAL_SLOT *s)
 {
-    if (s->fd >= 0) close(s->fd);
-    s->fd = -1;
-    s->configured = 0;
+    slot_close_fd(s);
     s->params_applied = 0;
     s->present = 0;
     s->ready = 0;
     s->protocol = 0;
+    s->reset_requested = 0;
+    s->last_reset_ms = 0;
+    queue_reset_locked(s);
     s->atr_len = 0;
     memset(s->atr, 0, sizeof(s->atr));
     s->device[0] = '\0';
+}
+
+static void slot_reset_state(S_INTERNAL_SLOT *s)
+{
+    s->fd = -1;
+    s->exclusive = 0;
+    s->params_applied = 0;
+    s->present = 0;
+    s->ready = 0;
+    s->protocol = 0;
+    s->reset_requested = 0;
+    s->last_reset_ms = 0;
+    s->worker_running = 0;
+    s->worker_stop = 0;
+    queue_reset_locked(s);
+    s->atr_len = 0;
+    s->device[0] = '\0';
+    s->target_device[0] = '\0';
 }
 
 static int configure_tty(int fd, const char *device)
@@ -263,6 +399,7 @@ static int sci_fast_reset(S_INTERNAL_SLOT *s)
         return -1;
     }
     tcflush(s->fd, TCIOFLUSH);
+    tcmg_sleep_ms(50);
     uint32_t one = 1;
     if (ioctl(s->fd, SCI_SET_RESET, &one) < 0) {
         tcmg_log("fast reset ioctl failed device=%s errno=%d", s->device, errno);
@@ -289,7 +426,13 @@ static int sci_fast_reset(S_INTERNAL_SLOT *s)
 #endif
     s->ready = 1;
     s->present = 1;
-    s->last_reset_ms = mono_ms();
+    if (strncmp(s->device, "/dev/sci", 8) == 0) {
+        tcmg_sleep_ms(150);
+        s->params_applied = 0;
+        (void)sci_apply_params(s, s->protocol);
+        tcmg_sleep_ms(150);
+    }
+    s->last_reset_ms = tcmg_mono_ms();
     tcmg_log_force("fast reset ok device=%s T=%d ATR=%zu",
                   s->device, s->protocol, s->atr_len);
     return 0;
@@ -317,16 +460,56 @@ static int slot_open(S_INTERNAL_SLOT *s, const char *device)
 {
     if (!device || !*device) return -1;
     if (s->fd >= 0 && strcmp(s->device, device) == 0) return 0;
-    slot_clear(s);
+    if (s->fd >= 0) close(s->fd);
+    s->fd = -1;
+    s->params_applied = 0;
+    s->present = 0;
+    s->ready = 0;
+    s->protocol = 0;
+    s->reset_requested = 0;
+    s->last_reset_ms = 0;
+    s->atr_len = 0;
+    s->device[0] = '\0';
 
-    int fd = open(device, O_RDWR | O_NOCTTY | O_NONBLOCK);
+    int fd = open(device, O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
     if (fd < 0) return -1;
-    if (configure_tty(fd, device) < 0) { close(fd); return -1; }
+
+    int exclusive = 0;
+#if defined(TIOCEXCL)
+    if (ioctl(fd, TIOCEXCL) == 0) exclusive = 1;
+#endif
+    if (!exclusive && flock(fd, LOCK_EX | LOCK_NB) == 0) exclusive = 1;
+
+    if (configure_tty(fd, device) < 0) {
+        if (exclusive) (void)flock(fd, LOCK_UN);
+        close(fd);
+        return -1;
+    }
+
+    if (!exclusive)
+        tcmg_log_dbg(D_READER, "exclusive lock unavailable device=%s; process retains fd ownership", device);
 
     s->fd = fd;
-    s->configured = 1;
+    s->exclusive = exclusive;
     tcmg_strlcpy(s->device, device, sizeof(s->device));
     return 0;
+}
+
+static int internal_recover(S_INTERNAL_SLOT *s, int fast)
+{
+    if (!s || s->fd < 0) return -1;
+    if (fast) return sci_fast_reset(s);
+
+    char device[sizeof(s->device)];
+    tcmg_strlcpy(device, s->device, sizeof(device));
+    slot_close_fd(s);
+    s->params_applied = 0;
+    s->present = 0;
+    s->ready = 0;
+    s->protocol = 0;
+    s->atr_len = 0;
+    if (slot_open(s, device) < 0) return -1;
+    return sci_fast_reset(s);
 }
 
 static int t0_transmit(S_INTERNAL_SLOT *s, const uint8_t *apdu, size_t apdu_len,
@@ -439,8 +622,9 @@ static int internal_parse_conax_cw(const uint8_t *rsp, size_t rsp_len,
 }
 
 static int internal_conax_ecm(S_INTERNAL_SLOT *s, const uint8_t *ecm, size_t ecm_len,
-                              uint8_t cw[16])
+                              uint8_t cw[16], int *needs_recovery)
 {
+    if (needs_recovery) *needs_recovery = 0;
     uint8_t apdu[260];
     uint8_t rsp[320];
     size_t rsp_len = sizeof(rsp);
@@ -457,13 +641,22 @@ static int internal_conax_ecm(S_INTERNAL_SLOT *s, const uint8_t *ecm, size_t ecm
     apdu[7] = 0x00;
     memcpy(apdu + 8, ecm, ecm_len);
 
-    if (t0_transmit(s, apdu, apdu_len, rsp, &rsp_len) < 0) return -2;
+    if (t0_transmit(s, apdu, apdu_len, rsp, &rsp_len) < 0) {
+        if (needs_recovery) *needs_recovery = 1;
+        return -2;
+    }
     if (rsp_len < 2) return -3;
 
     uint8_t sw1 = rsp[rsp_len - 2];
     uint8_t sw2 = rsp[rsp_len - 1];
-    if (sw1 == 0x90 && sw2 == 0x11) return -4;
-    if (sw1 != 0x90 && sw1 != 0x98) return -5;
+    if (sw1 == 0x90 && sw2 == 0x11) {
+        if (needs_recovery) *needs_recovery = 1;
+        return -4;
+    }
+    if (sw1 != 0x90 && sw1 != 0x98) {
+        if (needs_recovery) *needs_recovery = 1;
+        return -5;
+    }
 
     int got = 0;
     if (sw1 == 0x90 && sw2 == 0x00) {
@@ -473,7 +666,10 @@ static int internal_conax_ecm(S_INTERNAL_SLOT *s, const uint8_t *ecm, size_t ecm
     while (sw1 == 0x98 && sw2 != 0x00 && sw2 != 0xFF) {
         uint8_t ins_ca[5] = { 0xDD, 0xCA, 0x00, 0x00, sw2 };
         rsp_len = sizeof(rsp);
-        if (t0_transmit(s, ins_ca, sizeof(ins_ca), rsp, &rsp_len) < 0) return -7;
+        if (t0_transmit(s, ins_ca, sizeof(ins_ca), rsp, &rsp_len) < 0) {
+            if (needs_recovery) *needs_recovery = 1;
+            return -7;
+        }
         if (rsp_len < 2) return -8;
 
         sw1 = rsp[rsp_len - 2];
@@ -490,62 +686,220 @@ static int internal_conax_ecm(S_INTERNAL_SLOT *s, const uint8_t *ecm, size_t ecm
     return got == 3 ? 0 : -11;
 }
 
-static int internal_open_and_reset(S_INTERNAL_SLOT *s, const char *device)
+static int worker_wait(S_INTERNAL_SLOT *s, int timeout_ms)
 {
-    if (slot_open(s, device) < 0) return -1;
-    if (reader_present(s) <= 0) return -2;
-    if (!s->ready) {
-        if (sci_fast_reset(s) < 0) return -3;
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += timeout_ms / 1000;
+    ts.tv_nsec += (long)(timeout_ms % 1000) * 1000000L;
+    if (ts.tv_nsec >= 1000000000L) {
+        ts.tv_sec++;
+        ts.tv_nsec -= 1000000000L;
     }
+    pthread_mutex_lock(&s->mtx);
+    if (!s->worker_stop && s->queue_count == 0 && !s->reset_requested)
+        (void)pthread_cond_timedwait(&s->cv, &s->mtx, &ts);
+    int stop = s->worker_stop;
+    pthread_mutex_unlock(&s->mtx);
+    return stop ? -1 : 0;
+}
+
+static void *internal_reader_worker(void *arg)
+{
+    int index = (int)(intptr_t)arg;
+    S_INTERNAL_SLOT *s = &s_slots[index];
+
+    for (;;) {
+        S_READER cfg;
+        if (!cfg_runtime_reader_get(index, &cfg) ||
+            !cfg.in_use || !cfg.enabled ||
+            strcasecmp(cfg.protocol, "internal") != 0 || !cfg.device[0])
+            break;
+
+        pthread_mutex_lock(&s->mtx);
+        if (s->worker_stop) {
+            pthread_mutex_unlock(&s->mtx);
+            break;
+        }
+        tcmg_strlcpy(s->target_device, cfg.device, sizeof(s->target_device));
+        int fd_ready = (s->fd >= 0 && strcmp(s->device, cfg.device) == 0);
+        pthread_mutex_unlock(&s->mtx);
+
+        if (!fd_ready) {
+            pthread_mutex_lock(&s->mtx);
+            if (!s->worker_stop && slot_open(s, cfg.device) < 0) {
+                s->present = 0;
+                s->ready = 0;
+            }
+            pthread_mutex_unlock(&s->mtx);
+            if (s->fd < 0) {
+                worker_wait(s, 1000);
+                continue;
+            }
+        }
+
+        pthread_mutex_lock(&s->mtx);
+        if (s->worker_stop) {
+            pthread_mutex_unlock(&s->mtx);
+            break;
+        }
+
+        int present = reader_present(s);
+        if (!present) {
+            s->ready = 0;
+            s->params_applied = 0;
+        } else {
+            int recovery = s->reset_requested && s->ready;
+            int64_t now_ms = tcmg_mono_ms();
+            int interval_due = cfg.fast_reset > 0 && s->ready && s->present &&
+                               s->last_reset_ms > 0 &&
+                               now_ms - s->last_reset_ms >= (int64_t)cfg.fast_reset * 1000LL;
+            int need_reset = !s->ready || s->reset_requested || interval_due;
+            if (need_reset) {
+                s->reset_requested = 0;
+                int rc;
+                if (recovery) rc = internal_recover(s, cfg.fast_reset > 0);
+                else rc = sci_fast_reset(s);
+                if (rc < 0)
+                    tcmg_log("reader[%d]: %s reset failed device=%s",
+                             index + 1, recovery && cfg.fast_reset <= 0 ? "full" : "fast", s->device);
+            }
+        }
+
+        int job_index = (s->ready && s->present) ? queue_pop_locked(s) : -1;
+        if (job_index >= 0) {
+            S_INTERNAL_JOB *job = &s->jobs[job_index];
+            if (job->state == INTERNAL_JOB_CANCELLED) {
+                queue_release_locked(job);
+                pthread_cond_broadcast(&s->cv);
+                pthread_mutex_unlock(&s->mtx);
+                continue;
+            }
+            job->state = INTERNAL_JOB_RUNNING;
+            size_t ecm_len = job->ecm_len;
+            uint8_t ecm[249];
+            memcpy(ecm, job->ecm, ecm_len);
+            pthread_mutex_unlock(&s->mtx);
+
+            uint8_t cw[16] = {0};
+            int needs_recovery = 0;
+            int rc = internal_conax_ecm(s, ecm, ecm_len, cw, &needs_recovery);
+
+            pthread_mutex_lock(&s->mtx);
+            if (job->state == INTERNAL_JOB_CANCELLED) {
+                queue_release_locked(job);
+            } else {
+                job->rc = rc;
+                if (rc == 0) memcpy(job->cw, cw, sizeof(job->cw));
+                job->state = INTERNAL_JOB_DONE;
+                if (rc < 0 && needs_recovery) s->reset_requested = 1;
+                if (job->waiters == 0) queue_release_locked(job);
+            }
+            pthread_cond_broadcast(&s->cv);
+            pthread_mutex_unlock(&s->mtx);
+            continue;
+        }
+        pthread_mutex_unlock(&s->mtx);
+
+        int poll_ms = cfg.poll_ms > 0 ? cfg.poll_ms : 250;
+        if (poll_ms < 50) poll_ms = 50;
+        if (poll_ms > 10000) poll_ms = 10000;
+        if (worker_wait(s, poll_ms) < 0) break;
+    }
+
+    pthread_mutex_lock(&s->mtx);
+    for (int i = 0; i < TCMG_INTERNAL_ECM_QUEUE_CAP; i++) {
+        if (s->jobs[i].state != INTERNAL_JOB_FREE && s->jobs[i].state != INTERNAL_JOB_DONE) {
+            s->jobs[i].rc = -9;
+            s->jobs[i].state = INTERNAL_JOB_DONE;
+        }
+    }
+    s->worker_running = 0;
+    s->worker_stop = 0;
+    s->target_device[0] = '\0';
+    pthread_cond_broadcast(&s->cv);
+    while (queue_waiter_count_locked(s) > 0)
+        (void)pthread_cond_wait(&s->cv, &s->mtx);
+    slot_clear(s);
+    pthread_mutex_unlock(&s->mtx);
+    return NULL;
+}
+
+static int start_reader_worker(int index, const char *device)
+{
+    S_INTERNAL_SLOT *s = &s_slots[index];
+    pthread_mutex_lock(&s->mtx);
+    if (s->worker_running) {
+        pthread_mutex_unlock(&s->mtx);
+        return 0;
+    }
+    s->worker_stop = 0;
+    queue_reset_locked(s);
+    tcmg_strlcpy(s->target_device, device ? device : "", sizeof(s->target_device));
+    s->worker_running = 1;
+    if (pthread_create(&s->worker_tid, NULL, internal_reader_worker, (void *)(intptr_t)index) != 0) {
+        s->worker_running = 0;
+        s->target_device[0] = '\0';
+        pthread_mutex_unlock(&s->mtx);
+        return -1;
+    }
+    pthread_mutex_unlock(&s->mtx);
     return 0;
+}
+
+static void stop_reader_worker(int index)
+{
+    S_INTERNAL_SLOT *s = &s_slots[index];
+    pthread_t tid;
+    int join = 0;
+    pthread_mutex_lock(&s->mtx);
+    if (s->worker_running) {
+        s->worker_stop = 1;
+        tid = s->worker_tid;
+        join = 1;
+        pthread_cond_broadcast(&s->cv);
+    }
+    pthread_mutex_unlock(&s->mtx);
+    if (join) pthread_join(tid, NULL);
+    pthread_mutex_lock(&s->mtx);
+    if (s->fd < 0) slot_reset_state(s);
+    pthread_mutex_unlock(&s->mtx);
+}
+
+static int internal_sync_once(void)
+{
+    S_READER cfg_readers[MAX_READERS];
+    int reader_count = cfg_runtime_reader_snapshot_indexed(cfg_readers, MAX_READERS);
+
+    for (int i = 0; i < MAX_READERS; i++) {
+        S_READER *cfg = (i < reader_count) ? &cfg_readers[i] : NULL;
+        int want = cfg && cfg->in_use && cfg->enabled &&
+                   strcasecmp(cfg->protocol, "internal") == 0 && cfg->device[0];
+        pthread_mutex_lock(&s_slots[i].mtx);
+        int running = s_slots[i].worker_running;
+        int matches = running && strcmp(s_slots[i].target_device, want ? cfg->device : "") == 0;
+        pthread_mutex_unlock(&s_slots[i].mtx);
+
+        if (!want) {
+            if (running) stop_reader_worker(i);
+            continue;
+        }
+
+        if (!matches) {
+            if (running) stop_reader_worker(i);
+            if (start_reader_worker(i, cfg->device) < 0)
+                tcmg_log("reader[%d]: failed to start internal worker device=%s", i + 1, cfg->device);
+        }
+    }
+    return 250;
 }
 
 static void *internal_thread(void *arg)
 {
     (void)arg;
     while (atomic_load(&s_running)) {
-        int min_poll = 250;
-        S_READER cfg_readers[MAX_READERS];
-        int reader_count = cfg_runtime_reader_snapshot_indexed(cfg_readers, MAX_READERS);
-
-        for (int i = 0; i < MAX_READERS; i++) {
-            S_READER *cfg = (i < reader_count) ? &cfg_readers[i] : NULL;
-            int want = cfg && cfg->in_use && cfg->enabled && strcasecmp(cfg->protocol, "internal") == 0;
-            const char *device = want ? cfg->device : NULL;
-            if (want && cfg->poll_ms > 0 && cfg->poll_ms < min_poll) min_poll = cfg->poll_ms;
-
-            pthread_mutex_lock(&s_slots[i].mtx);
-            if (!want || !device || !*device) {
-                slot_clear(&s_slots[i]);
-            } else if (slot_open(&s_slots[i], device) == 0) {
-                int present = reader_present(&s_slots[i]);
-                if (!present) {
-                    s_slots[i].ready = 0;
-                    s_slots[i].present = 0;
-                    s_slots[i].params_applied = 0;
-                } else if (!s_slots[i].ready) {
-                    int rc = sci_fast_reset(&s_slots[i]);
-                    if (rc < 0)
-                        tcmg_log("reader[%d]: reset failed device=%s", i + 1, s_slots[i].device);
-                }
-
-                int fast = cfg->fast_reset;
-                int64_t now = mono_ms();
-                if (present && fast > 0 && s_slots[i].ready &&
-                    now - s_slots[i].last_reset_ms >= (int64_t)fast * 1000LL) {
-                    int rc = sci_fast_reset(&s_slots[i]);
-                    if (rc < 0)
-                        tcmg_log("reader[%d]: fast reset failed device=%s",
-                                  i + 1, s_slots[i].device);
-                }
-                s_slots[i].last_poll_ms = now;
-            }
-            pthread_mutex_unlock(&s_slots[i].mtx);
-        }
-
-        if (min_poll < 50) min_poll = 50;
-        if (min_poll > 10000) min_poll = 10000;
-        tcmg_sleep_ms(min_poll);
+        int poll = internal_sync_once();
+        tcmg_sleep_ms(poll);
     }
     return NULL;
 }
@@ -554,8 +908,10 @@ int internal_start(void)
 {
     slots_init();
     if (atomic_exchange(&s_running, 1)) return 0;
+    (void)internal_sync_once();
     if (pthread_create(&s_tid, NULL, internal_thread, NULL) != 0) {
         atomic_store(&s_running, 0);
+        for (int i = 0; i < MAX_READERS; i++) stop_reader_worker(i);
         return -1;
     }
     tcmg_log("reader support enabled");
@@ -566,11 +922,7 @@ void internal_stop(void)
 {
     slots_init();
     if (atomic_exchange(&s_running, 0)) pthread_join(s_tid, NULL);
-    for (int i = 0; i < MAX_READERS; i++) {
-        pthread_mutex_lock(&s_slots[i].mtx);
-        slot_clear(&s_slots[i]);
-        pthread_mutex_unlock(&s_slots[i].mtx);
-    }
+    for (int i = 0; i < MAX_READERS; i++) stop_reader_worker(i);
 }
 
 int internal_reader_get(int index, S_INTERNAL_READER *out)
@@ -579,14 +931,19 @@ int internal_reader_get(int index, S_INTERNAL_READER *out)
     slots_init();
     pthread_mutex_lock(&s_slots[index].mtx);
     memset(out, 0, sizeof(*out));
-    tcmg_strlcpy(out->device, s_slots[index].device, sizeof(out->device));
+    out->owned = s_slots[index].fd >= 0;
+    out->exclusive = s_slots[index].exclusive;
+    tcmg_strlcpy(out->device,
+                  s_slots[index].target_device[0] ? s_slots[index].target_device : s_slots[index].device,
+                  sizeof(out->device));
     out->present = s_slots[index].present;
     out->ready = s_slots[index].ready;
     out->atr_len = s_slots[index].atr_len;
     memcpy(out->atr, s_slots[index].atr, out->atr_len);
     out->protocol = s_slots[index].protocol;
+    int owned = out->owned;
     pthread_mutex_unlock(&s_slots[index].mtx);
-    return out->device[0] ? 0 : -1;
+    return owned ? 0 : -1;
 }
 
 int internal_reader_count(void)
@@ -595,7 +952,7 @@ int internal_reader_count(void)
     slots_init();
     for (int i = 0; i < MAX_READERS; i++) {
         pthread_mutex_lock(&s_slots[i].mtx);
-        if (s_slots[i].device[0]) n++;
+        if (s_slots[i].fd >= 0) n++;
         pthread_mutex_unlock(&s_slots[i].mtx);
     }
     return n;
@@ -613,20 +970,73 @@ int internal_do_ecm_reader(int index, uint16_t caid,
     slots_init();
     S_READER cfg;
     if (!cfg_runtime_reader_get(index, &cfg)) return -4;
-    if (!cfg.enabled || strcasecmp(cfg.protocol, "internal") != 0) return -5;
+    if (!cfg.enabled || strcasecmp(cfg.protocol, "internal") != 0 || !cfg.do_ecm) return -5;
 
     S_INTERNAL_SLOT *s = &s_slots[index];
     pthread_mutex_lock(&s->mtx);
-    if (internal_open_and_reset(s, cfg.device) < 0) {
+    if (!s->worker_running || s->fd < 0 || !s->ready || !s->present) {
         pthread_mutex_unlock(&s->mtx);
         return -6;
     }
 
-    int rc = internal_conax_ecm(s, ecm, ecm_len, cw);
-    if (rc < 0) {
-        (void)sci_fast_reset(s);
-        rc = internal_conax_ecm(s, ecm, ecm_len, cw);
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += TCMG_INTERNAL_ECM_WAIT_MS / 1000;
+    ts.tv_nsec += (long)(TCMG_INTERNAL_ECM_WAIT_MS % 1000) * 1000000L;
+    if (ts.tv_nsec >= 1000000000L) {
+        ts.tv_sec++;
+        ts.tv_nsec -= 1000000000L;
     }
+
+    int joined = 0;
+    int job_index = -1;
+    for (;;) {
+        job_index = queue_submit_locked(s, ecm, ecm_len, &joined);
+        if (job_index >= 0) break;
+        int wait_rc = pthread_cond_timedwait(&s->cv, &s->mtx, &ts);
+        if (wait_rc == ETIMEDOUT || !s->worker_running || s->worker_stop) {
+            pthread_mutex_unlock(&s->mtx);
+            return -7;
+        }
+        if (!s->ready || !s->present) {
+            pthread_mutex_unlock(&s->mtx);
+            return -6;
+        }
+    }
+
+    S_INTERNAL_JOB *job = &s->jobs[job_index];
+    if (joined) {
+        tcmg_log_dbg(D_READER, "internal reader coalesced ECM index=%d device=%s waiters=%u",
+                     index, s->device, job->waiters);
+    }
+    pthread_cond_signal(&s->cv);
+
+    while (job->state != INTERNAL_JOB_DONE && s->worker_running && !s->worker_stop) {
+        int wait_rc = pthread_cond_timedwait(&s->cv, &s->mtx, &ts);
+        if (wait_rc == ETIMEDOUT) {
+            if (job->waiters > 0) job->waiters--;
+            if (job->state == INTERNAL_JOB_QUEUED && job->waiters == 0)
+                job->state = INTERNAL_JOB_CANCELLED;
+            pthread_cond_broadcast(&s->cv);
+            pthread_mutex_unlock(&s->mtx);
+            return -8;
+        }
+    }
+
+    if (job->state != INTERNAL_JOB_DONE) {
+        if (job->waiters > 0) job->waiters--;
+        if (job->state == INTERNAL_JOB_CANCELLED && job->waiters == 0)
+            queue_release_locked(job);
+        pthread_cond_broadcast(&s->cv);
+        pthread_mutex_unlock(&s->mtx);
+        return -9;
+    }
+
+    int rc = job->rc;
+    if (rc == 0) memcpy(cw, job->cw, sizeof(job->cw));
+    if (job->waiters > 0) job->waiters--;
+    if (job->waiters == 0) queue_release_locked(job);
+    pthread_cond_broadcast(&s->cv);
     pthread_mutex_unlock(&s->mtx);
     return rc;
 }
@@ -638,9 +1048,9 @@ void internal_stop(void) { }
 int internal_reader_get(int index, S_INTERNAL_READER *out)
 {
     (void)index;
-    if (!out) return 0;
+    if (!out) return -1;
     memset(out, 0, sizeof(*out));
-    return 0;
+    return -1;
 }
 int internal_reader_count(void) { return 0; }
 int internal_do_ecm_reader(int index, uint16_t caid,

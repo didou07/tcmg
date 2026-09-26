@@ -10,6 +10,8 @@ typedef struct {
     int32_t  server_keepalive;
     int32_t  server_keepalive_misses;
     int8_t   ecm_log;
+    int8_t   scheduled_restart_enabled;
+    int16_t  scheduled_restart_minutes;
     char     logfile[CFGPATH_LEN];
     char     usrfile[CFGPATH_LEN];
 
@@ -35,10 +37,6 @@ typedef struct {
     char      config_file[CFGPATH_LEN];
     char      user_file[CFGPATH_LEN];
     char      server_file[CFGPATH_LEN];
-    int8_t    pcsc_enabled;
-    int32_t   pcsc_fast_reset;
-    int32_t   pcsc_poll_ms;
-    char      pcsc_reader[CFGVAL_LEN];
     S_READER  readers[MAX_READERS];
     int32_t   nreaders;
     S_ACCOUNT *accounts;

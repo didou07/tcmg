@@ -1,4 +1,4 @@
-#include "globals.h"
+#include "core/config_state.h"
 #include "internal/internal.h"
 #include "reader/protocol.h"
 #include <pthread.h>
@@ -23,7 +23,7 @@ int main(void)
     g_cfg.readers[0].enabled = 1;
     strcpy(g_cfg.readers[0].protocol, "internal");
     strcpy(g_cfg.readers[0].device, "/dev/tcmg-no-such-sci");
-    g_cfg.readers[0].fast_reset = 1;
+    g_cfg.readers[0].fast_reset = 60;
     g_cfg.readers[0].poll_ms = 50;
 
     if (internal_start() != 0) {

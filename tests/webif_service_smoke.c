@@ -1,4 +1,6 @@
-#include "globals.h"
+#include "core/config_state.h"
+#include "core/runtime_state.h"
+#include "config/config.h"
 #include "webif/service/service.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,7 +27,6 @@ static int init_global_config(const char *dir)
         "socket_timeout = 30\nserver_keepalive = 20\nserver_keepalive_misses = 3\n"
         "ecm_log = 0\nlogfile =\nusrfile =\n"
         "[webif]\nenabled = 1\nport = 18080\nrefresh = 7\nuser = admin\npassword = secret\nbindaddr = 127.0.0.1\n"
-        "[pcsc]\nenabled = 0\nreader =\nfast_reset = 0\npoll_ms = 250\n"
         "[newcamd]\nport = 19050\nbindaddr =\nkey = 0102030405060708091011121314\nkeepalive = 1\nmode = auto\n"
         "[cccam]\nport = 19060\nbindaddr =\n"
         "[cs378x]\nport = 19070\nbindaddr =\n"
@@ -83,7 +84,8 @@ int main(void)
 
     if (!webif_config_snapshot(&cfg) || cfg.webif_port != 18080 ||
         cfg.webif_refresh != 7 || strcmp(cfg.webif_bindaddr, "127.0.0.1") != 0 ||
-        cfg.newcamd_port != 19050 || cfg.newcamd_key[0] != 0x01) return 4;
+        cfg.newcamd_port != 19050 || cfg.newcamd_key[0] != 0x01 ||
+        cfg.scheduled_restart_enabled != 1 || strcmp(cfg.scheduled_restart_time, "04:00") != 0) return 4;
 
     n = webif_account_snapshot_all(accounts, 2);
     if (n != 1 || strcmp(accounts[0].user, "admin") != 0 ||

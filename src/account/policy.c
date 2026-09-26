@@ -1,4 +1,4 @@
-#define MODULE_LOG_PREFIX "account-policy"
+#define MODULE_LOG_PREFIX "account"
 #include "account.h"
 #include <time.h>
 
