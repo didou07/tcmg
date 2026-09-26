@@ -362,7 +362,7 @@ static int read_atr(S_SERIAL_SLOT *s)
         if (serial_read_byte(s, &a[n++], 500) < 0) return -1;
     if (has_tck && serial_read_byte(s, &a[n++], 500) < 0) return -1;
 
-    if (a[0] == 0x3F) return -1; /* inverse convention is intentionally unsupported, as in the reference reader */
+    if (a[0] == 0x3F) return -1;
     s->atr_len = n;
     s->protocol = 0;
     return 0;
@@ -401,7 +401,7 @@ static int do_reset_parity(S_SERIAL_SLOT *s, int parity, int *got)
 
 static int serial_fast_reset(S_SERIAL_SLOT *s)
 {
-    static const int parities[] = { 0, 1, 2 }; /* even, odd, none */
+    static const int parities[] = { 0, 1, 2 };
     int got = 0;
     for (size_t i = 0; i < sizeof(parities) / sizeof(parities[0]); i++) {
         if (do_reset_parity(s, parities[i], &got) == 0) {
@@ -430,7 +430,7 @@ static int t0_transmit(S_SERIAL_SLOT *s, const uint8_t *apdu, size_t apdu_len,
     if (!case2 && !case3) return -2;
 
     if (serial_write_all(s, apdu, 5, 1500) < 0) return -3;
-    if (serial_drain(s, 5) < 0) return -4; /* Phoenix/USB serial readers commonly echo the command bytes */
+    if (serial_drain(s, 5) < 0) return -4;
 
     const uint8_t ins = apdu[1];
     const size_t le = apdu[4] ? apdu[4] : 256u;

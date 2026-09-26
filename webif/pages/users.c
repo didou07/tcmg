@@ -4,19 +4,6 @@
 #include "../../src/core/utils.h"
 #include "../internal/proto.h"
 
-  
-              
-  
-                                                                             
-                                                                            
-                                                                        
-                                                  
-                                                                               
-                                                                            
-   
-
-                                                                              
-
 static void fmt_int(long long v, char *out, size_t sz)
 {
 	char tmp[32], o[48];
@@ -36,7 +23,6 @@ static void fmt_date(time_t t, char *out, size_t sz)
 	strftime(out, sz, "%d-%m-%Y", &tm_s);
 }
 
-                                                                    
 static void fmt_ago(time_t t, time_t now, char *out, size_t sz)
 {
 	if (t <= 0) { tcmg_strlcpy(out, "never", sz); return; }
@@ -51,7 +37,6 @@ static void fmt_ago(time_t t, time_t now, char *out, size_t sz)
 	else                  snprintf(out, sz, "%ldy ago", d / (86400L * 365));
 }
 
-                                                 
 static void fmt_dur(long s, char *out, size_t sz)
 {
 	if (s < 0) s = 0;
@@ -61,12 +46,6 @@ static void fmt_dur(long s, char *out, size_t sz)
 	else                snprintf(out, sz, "%ldd %ldh", s / 86400, (s % 86400) / 3600);
 }
 
-                                                                           
-                                                                    
-                                                            
-
-                                                                               
-
 void send_page_users(int fd)
 {
 	PAGE_INIT(65536)
@@ -75,7 +54,6 @@ void send_page_users(int fd)
 
 	time_t now = time(NULL);
 
-	                                                                           
 	int total_u = webif_account_count();
 	S_WEBIF_ACCOUNT_VIEW *accounts = total_u > 0 ? calloc((size_t)total_u, sizeof(*accounts)) : NULL;
 	int naccounts = accounts ? webif_account_snapshot_all(accounts, (size_t)total_u) : 0;
@@ -89,9 +67,6 @@ void send_page_users(int fd)
 	}
 	total_u = naccounts;
 
-	                                                           
-
-	                                                                           
 	pos = buf_printf(&buf, &bsz, pos,
 		"<section class='utoolbar' aria-label='Users toolbar'>"
 		"<div class='tgrp' id='uStats'>"
@@ -110,7 +85,6 @@ void send_page_users(int fd)
 		"</div></section>",
 		total_u, active_u, online_u, disabled_u, expired_u);
 
-	                                                                           
 #define TH(cls, key, label) "<th class='" cls "'><button type='button' class='table-sort' data-k='" key "' data-dir=''>" label "<span class='sort-arrow' aria-hidden='true'></span></button></th>"
 	pos = buf_printf(&buf, &bsz, pos,
 		"<section class='tw cm' id='uTable'><table class='ut' id='usrTable'>"
@@ -132,11 +106,9 @@ void send_page_users(int fd)
 		"</tr></thead><tbody id='usrBody'>");
 #undef TH
 
-	                                                                           
 	S_WEBIF_CLIENT_VIEW *snaps = calloc(MAX_ACTIVE_CLIENTS, sizeof(*snaps));
 	int nsnaps = snaps ? webif_client_snapshot_all(snaps, MAX_ACTIVE_CLIENTS) : 0;
 
-	                                                                           
 	int row = 0;
 	int64_t tot_ok = 0, tot_nok = 0;
 
@@ -149,7 +121,6 @@ void send_page_users(int fd)
 		tot_ok += ok; tot_nok += nok;
 		long long avg = ok > 0 ? (long long)(a->cw_time_total_ms / ok) : -1;
 
-		                                        
 		int    nsess = 0;
 		char   ip_str[MAXIPLEN] = "", proto_raw[12] = "", live_chan[80] = "";
 		time_t last_ecm_t = 0, live_t = 0;
@@ -206,10 +177,6 @@ void send_page_users(int fd)
 		fmt_int(ok,  ok_s,  sizeof(ok_s));
 		fmt_int(nok, nok_s, sizeof(nok_s));
 
-		                                                                    
-                                                                        
-                                                                  
-                                                                          
 		const char *vis = "";
 		if (expired) {
 			vis = "expired";
@@ -221,7 +188,6 @@ void send_page_users(int fd)
 			vis = "online";
 		}
 
-		                                       
 		pos = buf_printf(&buf, &bsz, pos,
 			"<tr class='urow' data-i='%d' data-user='%s' data-state='%s' data-vis='%s' data-en='%d' data-expd='%d'"
 			" data-online='%d' data-active='%d' data-caid='%u' data-ok='%lld' data-nok='%lld'"
@@ -238,7 +204,6 @@ void send_page_users(int fd)
 			"<td class='c-user'><button type='button' class='ulink' data-a='edit' title='%s'>%s</button></td>",
 			a->enabled ? " checked" : "", esc_user, esc_user);
 
-		                        
 		char maxc[16];
 		if (a->max_connections <= 0) tcmg_strlcpy(maxc, "&infin;", sizeof(maxc));
 		else snprintf(maxc, sizeof(maxc), "%d", (int)a->max_connections);
@@ -248,7 +213,6 @@ void send_page_users(int fd)
 			"<span class='dim'>/%s</span></td>",
 			full ? " full" : a->active > 0 ? " on" : "", (int)a->active, maxc);
 
-		                                      
 		if (nsess > 0)
 			pos = buf_printf(&buf, &bsz, pos,
 				"<td class='c-ip mono'>%s</td>"
@@ -262,7 +226,6 @@ void send_page_users(int fd)
 			pos = buf_printf(&buf, &bsz, pos,
 				"<td class='c-ip dim'>&mdash;</td><td class='c-country dim'>&mdash;</td>");
 
-		                               
 		{
 			char chan_esc[400], tip[700];
 			html_escape(live_chan, chan_esc, sizeof(chan_esc));
@@ -289,7 +252,6 @@ void send_page_users(int fd)
 			"<td class='c-nok mono %s'>%s</td>",
 			ok_s, nok > 0 ? "tr" : "dim", nok_s);
 
-		                                  
 		if (nsess > 0) {
 			char idle_txt[24];
 			fmt_dur(idle_s, idle_txt, sizeof(idle_txt));
@@ -302,7 +264,6 @@ void send_page_users(int fd)
 				"<td class='c-proto dim'>&mdash;</td><td class='c-idle dim'>&mdash;</td>");
 		}
 
-		                             
 		{
 			char seen[40], seen_full[32], first_d[32];
 			fmt_ago(a->last_seen, now, seen, sizeof(seen));
@@ -319,7 +280,6 @@ void send_page_users(int fd)
 				pos = buf_printf(&buf, &bsz, pos, "<td class='c-last dim'>&mdash;</td>");
 		}
 
-		                                                                    
 		if (a->expirationdate > 0) {
 			char ed[16], sub[48];
 			const char *dot;
@@ -342,7 +302,6 @@ void send_page_users(int fd)
 			pos = buf_printf(&buf, &bsz, pos, "<td class='c-exp dim' title='No expiry'>&mdash;</td>");
 		}
 
-		             
 		pos = buf_printf(&buf, &bsz, pos,
 			"<td class='c-btn'><div class='ba'>"
 			"<button type='button' class='act-b ed' data-a='edit' title='Edit' aria-label='Edit user'>" ICON("i-edit") "</button>"
@@ -353,7 +312,6 @@ void send_page_users(int fd)
 	free(snaps);
 	free(accounts);
 
-	                                                                            
 	{
 		char ok_s[32], nok_s[32];
 		fmt_int(tot_ok,  ok_s,  sizeof(ok_s));
@@ -382,7 +340,6 @@ void send_page_users(int fd)
 			tot_nok > 0 ? "tr" : "dim", nok_s);
 	}
 
-	                                                                           
 	pos = buf_printf(&buf, &bsz, pos,
 		"<div class='mo' id='uModal' hidden>"
 		"<div class='mc user-modal' role='dialog' aria-modal='true' aria-labelledby='umTitle'>"
@@ -445,7 +402,6 @@ void send_page_users(int fd)
 		"<button type='button' class='btn bp' id='em_saveBtn' data-a='save'>Save</button>"
 		"</div></div></div>");
 
-	                                                                              
 	pos = buf_printf(&buf, &bsz, pos,
 		"<script src='/assets/users.js?v='" TCMG_VERSION " defer></script>");
 

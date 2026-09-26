@@ -128,13 +128,6 @@
 	"    badge.textContent = String(reader.protocol || '').toUpperCase();\n" \
 	"    badge.title = kindLabel(reader.kind);\n" \
 	"    protocolCell.appendChild(badge);\n" \
-	"    if (reader.protocol === 'internal' && reader.owned) {\n" \
-	"      var lock = document.createElement('span');\n" \
-	"      lock.className = 'badge bgr';\n" \
-	"      lock.textContent = reader.ready ? 'LOCKED' : 'OPEN';\n" \
-	"      lock.title = reader.ready ? 'TCMG owns this reader and the card is ready' : 'TCMG owns this reader; waiting for card';\n" \
-	"      protocolCell.appendChild(lock);\n" \
-	"    }\n" \
 	"    tr.appendChild(protocolCell);\n" \
 	"\n" \
 	"    [['c-rdev', reader.device || '—'], ['c-rgroup', reader.groups || '—'], ['c-rcaid', reader.caid || '—']].forEach(function (item) {\n" \
@@ -246,8 +239,8 @@
 	"    $('rTimeout').value = 30;\n" \
 	"    $('rGroup').value = 1;\n" \
 	"    $('rWl').value = '37';\n" \
-	"    ['rPoll', 'rInternalPoll', 'rSerialPoll'].forEach(function (id) { $(id).value = 250; });\n" \
-	"    $('rFast').value = 0;\n    $('rInternalFast').value = 60;\n    $('rSerialFast').value = 0;\n" \
+	"    ['rPoll', 'rSerialPoll'].forEach(function (id) { $(id).value = 250; });\n" \
+	"    $('rFast').value = 0;\n    $('rInternalFast').value = 0;\n    $('rSerialFast').value = 0;\n" \
 	"    $('rEnabled').checked = true;\n" \
 	"    $('rDoEcm').checked = true;\n" \
 	"    $('rInternalDoEcm').checked = true;\n" \
@@ -268,7 +261,8 @@
 	"      $('rTitle').textContent = 'Edit Reader';\n" \
 	"      $('rLabel').value = data.label || '';\n" \
 	"      $('rProtocol').value = (data.protocol || 'emu').toLowerCase();\n" \
-	"      ['rCccamDevice', 'rPcscDevice', 'rInternalDevice', 'rSerialDevice'].forEach(function (id) { $(id).value = data.device || ''; });\n" \
+	"      ['rCccamDevice', 'rPcscDevice', 'rInternalDevice', 'rSerialDevice'].forEach(function (id) { $(id).value = ''; });\n" \
+	"      if (data.protocol === 'pcsc') $('rPcscDevice').value = data.device || ''; else if (data.protocol === 'internal') $('rInternalDevice').value = data.device || ''; else if (data.protocol === 'serial') $('rSerialDevice').value = data.device || ''; else $('rCccamDevice').value = data.device || '';\n" \
 	"      $('rUser').value = data.user || '';\n" \
 	"      $('rPassword').value = data.password || '';\n" \
 	"      $('rKey').value = data.key || '';\n" \
@@ -277,8 +271,8 @@
 	"      $('rCaid').value = data.caid || '';\n" \
 	"      $('rSid').value = data.sid_whitelist || '';\n" \
 	"      $('rWl').value = data.ecmwhitelist || '37';\n" \
-	"      ['rPoll', 'rInternalPoll', 'rSerialPoll'].forEach(function (id) { $(id).value = data.POLL_MS || 250; });\n" \
-	"      $('rFast').value = data.FAST_RESET || 0;\n      $('rInternalFast').value = data.FAST_RESET || 0;\n      $('rSerialFast').value = data.FAST_RESET || 0;\n" \
+	"      $('rPoll').value = data.protocol === 'pcsc' ? (data.POLL_MS || 250) : 250; $('rSerialPoll').value = data.protocol === 'serial' ? (data.POLL_MS || 250) : 250;\n" \
+	"      $('rFast').value = data.protocol === 'pcsc' ? (data.FAST_RESET || 0) : 0; $('rInternalFast').value = data.protocol === 'internal' ? (data.FAST_RESET || 0) : 0; $('rSerialFast').value = data.protocol === 'serial' ? (data.FAST_RESET || 0) : 0;\n" \
 	"      $('rInternalDoEcm').checked = !!data.DO_ECM;\n" \
 	"      $('rSerialDoEcm').checked = !!data.DO_ECM;\n" \
 	"      $('rEnabled').checked = !!data.enabled;\n" \
@@ -361,7 +355,6 @@
 	"    $('rPoll').disabled = protocol !== 'pcsc';\n" \
 	"    $('rFast').disabled = protocol !== 'pcsc';\n" \
 	"    $('rDoEcm').disabled = protocol !== 'pcsc';\n" \
-	"    $('rInternalPoll').disabled = protocol !== 'internal';\n" \
 	"    $('rInternalFast').disabled = protocol !== 'internal';\n" \
 	"    $('rInternalDoEcm').disabled = protocol !== 'internal';\n" \
 	"    $('rSerialPoll').disabled = protocol !== 'serial';\n" \
@@ -369,6 +362,7 @@
 	"    $('rSerialDoEcm').disabled = protocol !== 'serial';\n" \
 	"    $('rKeys').disabled = protocol !== 'emu';\n" \
 	"    if (card && protocol === 'serial') loadSerialPorts();\n" \
+	"    if (protocol !== 'pcsc') $('rPoll').value = 250; if (protocol !== 'internal') $('rInternalFast').value = 0; if (protocol !== 'serial') $('rSerialPoll').value = 250; if (protocol !== 'serial') $('rSerialFast').value = 0;\n" \
 	"    syncCaidPlaceholder();\n" \
 	"  }\n" \
 	"\n" \
@@ -395,7 +389,7 @@
 	"    request.set('ecmkeys', protocol === 'emu' ? $('rKeys').value : '');\n" \
 	"    request.set('DO_ECM', protocol === 'pcsc' ? ($('rDoEcm').checked ? '1' : '0') : protocol === 'internal' ? ($('rInternalDoEcm').checked ? '1' : '0') : protocol === 'serial' ? ($('rSerialDoEcm').checked ? '1' : '0') : '1');\n" \
 	"    request.set('FAST_RESET', protocol === 'pcsc' ? $('rFast').value : protocol === 'internal' ? $('rInternalFast').value : protocol === 'serial' ? $('rSerialFast').value : '0');\n" \
-	"    request.set('POLL_MS', protocol === 'pcsc' ? $('rPoll').value : protocol === 'internal' ? $('rInternalPoll').value : protocol === 'serial' ? $('rSerialPoll').value : '250');\n" \
+	"    if (protocol === 'pcsc') request.set('POLL_MS', $('rPoll').value); else if (protocol === 'serial') request.set('POLL_MS', $('rSerialPoll').value);\n" \
 	"    request.set('enabled', $('rEnabled').checked ? '1' : '0');\n" \
 	"\n" \
 	"    var save = $('rSave');\n" \

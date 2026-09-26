@@ -30,7 +30,6 @@ int cfg_runtime_reader_snapshot(S_READER *out, size_t cap)
     return n;
 }
 
-
 int cfg_runtime_reader_snapshot_indexed(S_READER *out, size_t cap)
 {
     if (!out || cap < MAX_READERS) return 0;
@@ -40,7 +39,6 @@ int cfg_runtime_reader_snapshot_indexed(S_READER *out, size_t cap)
     pthread_rwlock_unlock(&g_cfg.acc_lock);
     return MAX_READERS;
 }
-
 
 bool cfg_runtime_reader_get(int index, S_READER *out)
 {

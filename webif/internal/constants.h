@@ -10,21 +10,15 @@
 #define WEB_SESSION_MAX_AGE  86400
 #define WEB_SESSION_LEN      32
 #define WEB_MAX_SESSIONS     64
-#define WEB_POST_MAX         (1024 * 1024)                                          
-#define WEB_FILE_VIEW_MAX    (512 * 1024)                                                         
+#define WEB_POST_MAX         (1024 * 1024)
+#define WEB_FILE_VIEW_MAX    (512 * 1024)
 
-                                                                           
-                                                                    
-                                                                                 
 #define WEB_THEME_INIT_JS \
  "(function(){var r=document.documentElement,p='dark',t;" \
  "try{p=localStorage.getItem('tcmg_theme')||'dark'}catch(e){}" \
  "if(p!=='light')p='dark';t=p;" \
  "r.setAttribute('data-theme',t);r.setAttribute('data-tpref',p)})();"
 
-                                                                            
-                                                                          
-                                                                               
 #define WEB_ACCENT_INIT_JS \
  "(function(){var s={blue:['#147bd1','#106fbe'],purple:['#7c3aed','#6d28d9']," \
  "teal:['#0e9488','#0c7e73'],green:['#16a34a','#128a3e'],rose:['#db2777','#be185d']," \

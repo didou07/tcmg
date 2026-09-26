@@ -72,4 +72,3 @@ void cw_cache_store_groups(const uint8_t *ecm_md5, const uint8_t *cw,
     pthread_mutex_unlock(&g_cw_cache_mtx[shard]);
     tcmg_log_dbg(D_CCCAM|D_NEWCAMD, "cw cache stored scoped slot=%u groups=%d", idx, stored_groups);
 }
-

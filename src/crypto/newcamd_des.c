@@ -6,7 +6,6 @@
 #define HASH         1
 #define CWS_NETMSGSIZE NC_MSG_MAX
 
-
 static const uint8_t PC2[8][6] =
 {
 	{ 14, 17, 11, 24,  1,  5 },
@@ -18,7 +17,6 @@ static const uint8_t PC2[8][6] =
 	{ 44, 49, 39, 56, 34, 53 },
 	{ 46, 42, 50, 36, 29, 32 }
 };
-
 
 static const uint8_t E[8][6] =
 {
@@ -263,7 +261,7 @@ static void permut32(uint8_t data[])
 {
 	uint8_t i, j;
 	uint8_t bit;
-	uint8_t r[4] = {0}; // init to keep Valgrind happy
+	uint8_t r[4] = {0};
 	uint8_t *p;
 
 	for(i = 0; i < 32; i++)
@@ -301,7 +299,6 @@ static void desRound(uint8_t left[], uint8_t right[], uint8_t data[], uint8_t mo
 
 	memcpy(tempr, data + 4, 4);
 
-	/* Viaccess */
 	temp = (short)k8 * (short)tempr[0] + (short)k8 + (short)tempr[0];
 	tempr[0] = (temp & 0xff) - ((temp >> 8) & 0xff);
 	if((temp & 0xff) - (temp >> 8) < 0)
@@ -372,7 +369,6 @@ static void nc_des(uint8_t key[], uint8_t mode, uint8_t data[])
 
 }
 
-/*------------------------------------------------------------------------*/
 static void des_key_parity_adjust(uint8_t *key, uint8_t len)
 {
 	uint8_t i, j, parity;
@@ -412,16 +408,14 @@ static void des_random_get(uint8_t *buffer, uint8_t len)
 {
 	if(len == 0) return;
 	if(!csprng(buffer, len)) {
-		// csprng() is expected to succeed on supported targets. Keep a deterministic
-		// fallback only for the impossible/error path so the function never leaves
-		// uninitialized padding/IV bytes behind.
+
 		memset(buffer, 0, len);
 	}
 }
 
 static void EuroDes(uint8_t key[], uint8_t operatingMode, uint8_t data[])
 {
-	/* Eurocrypt 3-DES */
+
 	uint8_t mode = (operatingMode == HASH) ? 0 : DES_RIGHT;
 	nc_des(key, (uint8_t)(DES_IP | mode), data);
 

@@ -51,7 +51,6 @@ static void cs_signature(const S_READER *r, char *out, size_t out_len)
     secure_zero(blob, sizeof(blob));
 }
 
-
 static void cs_close_locked(S_CS378X_READER_STATE *s)
 {
     if (s->fd >= 0) close(s->fd);

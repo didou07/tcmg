@@ -140,4 +140,3 @@ void send_logpoll(int fd, const char *qs)
 	send_response(fd, 200, "OK", "application/json", buf, pos);
 	free(buf);
 }
-

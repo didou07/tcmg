@@ -4,10 +4,6 @@
 #include "../core/account_types.h"
 #include <stdint.h>
 
-/* Anti-sharing protection is split into two independent limits:
- *   - ECM rate: requests accepted during the configured time window.
- *   - Active channels: distinct client/channel entries that are still active.
- */
 typedef enum {
     AS_CHECK_OK = 0,
     AS_CHECK_ECM_RATE,

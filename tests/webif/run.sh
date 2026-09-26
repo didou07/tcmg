@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 CONF=${CONF:-/tmp/tcu}
 H=${HARNESS:-"$ROOT/build/tharness"}
 case "$H" in
-  /*) ;; 
+  /*) ;;
   *) H="$ROOT/$H" ;;
 esac
 [ -x "$H" ] || { echo "Harness not found/executable: $H" >&2; exit 2; }

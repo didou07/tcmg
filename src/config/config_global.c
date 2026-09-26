@@ -54,4 +54,3 @@ bool cfg_parse_bindaddr(const char *s)
     struct in_addr a;
     return s && inet_pton(AF_INET,s,&a)==1;
 }
-

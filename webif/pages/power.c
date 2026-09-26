@@ -13,14 +13,13 @@ void send_page_power(int fd, const char *qs)
 
 	pos = emit_header(&buf, &bsz, pos, "Power", "power");
 
-	                                                                               
 	int valid_action = (strcmp(action, "restart") == 0 || strcmp(action, "shutdown") == 0);
 	int do_stop = 0, do_restart = 0;
 
 	if (strcmp(confirm, "yes") == 0 && valid_action) {
 		int is_restart = (strcmp(action, "restart") == 0);
 		tcmg_log("%s requested", is_restart ? "restart" : "shutdown");
-		do_stop = 1; do_restart = is_restart;                                                
+		do_stop = 1; do_restart = is_restart;
 
 		pos = buf_printf(&buf, &bsz, pos,
 			"<div class='pg-center'>"
@@ -128,7 +127,6 @@ void send_page_power(int fd, const char *qs)
 	pos = emit_footer(&buf, &bsz, pos);
 	PAGE_SEND_AND_FREE(fd);
 
-	                                                                                      
 	if (do_stop) {
 		if (do_restart) g_restart = 1;
 		g_running = 0;

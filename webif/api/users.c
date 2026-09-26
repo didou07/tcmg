@@ -6,13 +6,7 @@
 #include "../../src/core/utils.h"
 #include "../../src/log/log.h"
 #include <errno.h>
-                                                                                
-                                                                            
-                                                                         
-                                                                          
-                                                                              
-                                                                       
-                        
+
 typedef struct {
 	char   user[CFGKEY_LEN];
 	char   pass[CFGKEY_LEN];
@@ -24,7 +18,7 @@ typedef struct {
 	char   groups[256];
 	int32_t groupv[MAX_GROUPS_PER_ACC];
 	int32_t ngroups;
-	time_t exp;                                   
+	time_t exp;
 } acct_form;
 
 static int all_digits(const char *s, size_t maxlen)
@@ -46,7 +40,6 @@ static int parse_uint_range(const char *s, size_t maxlen, int lo, int hi, int *o
     return 0;
 }
 
-                                                                                      
 static int parse_date(const char *s, time_t *out)
 {
 	int y, m, d;
@@ -56,14 +49,13 @@ static int parse_date(const char *s, time_t *out)
 	struct tm t;
 	memset(&t, 0, sizeof(t));
 	t.tm_year = y - 1900; t.tm_mon = m - 1; t.tm_mday = d;
-	t.tm_isdst = -1;                                                                           
+	t.tm_isdst = -1;
 	time_t r = mktime(&t);
 	if (r == (time_t)-1 || t.tm_mday != d || t.tm_mon != m - 1) return -1;
 	*out = r;
 	return 0;
 }
 
-                                                                
 static int parse_groups(const char *s, int32_t out[MAX_GROUPS_PER_ACC], int32_t *n)
 {
 	char buf[256];
@@ -110,7 +102,6 @@ static int parse_caid_list(const char *s, acct_form *f)
 	if (only_zero || f->ncaidv == 0) { f->caidv[0] = 0; f->ncaidv = 1; }
 	return 0;
 }
-
 
 static const char *parse_account_form(const char *body, acct_form *f)
 {
@@ -180,8 +171,6 @@ static const char *parse_account_form(const char *body, acct_form *f)
 
 	return NULL;
 }
-
-                                                                                  
 
 static void api_userstats_find_session(const S_WEBIF_CLIENT_VIEW *clients, int nclients, const char *user,
                                         int *active, const S_WEBIF_CLIENT_VIEW **best, long *idle_s)

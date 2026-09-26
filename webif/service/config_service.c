@@ -235,7 +235,6 @@ bool webif_save_srvid_file(const char *content, size_t len, int *loaded)
     return ok;
 }
 
-
 bool webif_save_users_file(const char *content, size_t len, char *err, size_t errsz)
 {
     char path[CFGPATH_LEN], tmp[CFGPATH_LEN];

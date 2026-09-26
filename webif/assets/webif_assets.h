@@ -1,11 +1,3 @@
-                                                                                    
-  
-                                                                           
-                                                                                    
-                                                                           
-  
-                                                               
-   
 #ifndef TCMG_WEBIF_ASSETS_H_
 #define TCMG_WEBIF_ASSETS_H_
 
@@ -15,4 +7,4 @@
 #include "js_readers.h"
 #include "js_livelog.h"
 
-#endif                           
+#endif

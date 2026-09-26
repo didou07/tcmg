@@ -1,7 +1,7 @@
 import http.client, base64, sys, urllib.parse, time
 H="127.0.0.1"; P=18080; fails=[]
 def ok(n,c,x=""):
-    print(("PASS " if c else "FAIL ")+n+((" -> "+str(x)) if not c and x!="" else "")); 
+    print(("PASS " if c else "FAIL ")+n+((" -> "+str(x)) if not c and x!="" else ""));
     if not c: fails.append(n)
 def req(m,path,body=None,h=None):
     c=http.client.HTTPConnection(H,P,timeout=10); hh={"Connection":"close"}; hh.update(h or {})

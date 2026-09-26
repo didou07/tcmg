@@ -1,12 +1,3 @@
-                                                                                  
-  
-                                                                                   
-                                                                         
-                                                                                     
-                                                                                    
-  
-                                                                                 
-                                                                       
 #ifndef TCMG_WEBIF_JS_COMMON_H_
 #define TCMG_WEBIF_JS_COMMON_H_
 
@@ -474,4 +465,4 @@
 	"  }\n" \
 	"});"
 
-#endif                              
+#endif

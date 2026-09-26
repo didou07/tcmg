@@ -1,12 +1,3 @@
-                                                                          
-  
-                                                                            
-                                                           
-                                                                        
-                                                                   
-                                                          
-                                                                                  
-   
 #ifndef TCMG_WEBIF_CSS_H_
 #define TCMG_WEBIF_CSS_H_
 
@@ -509,20 +500,20 @@
 	"body.pg-readers footer:not(.ufoot){display:none!important}" \
 	"body.pg-readers #mn{height:100%;min-height:0;margin-top:0}" \
 	"body.pg-readers #ct{display:flex;flex-direction:column;gap:8px;max-width:none;height:100%;padding:10px 12px 8px}" \
-	".rtoolbar{grid-template-columns:minmax(0,1fr) 260px auto}" \
+	".rtoolbar{grid-template-columns:minmax(0,1fr) 250px auto}" \
 	".rtoolbar #rStats{overflow-x:auto;scrollbar-width:thin;padding-bottom:1px}" \
 	"#rTable{flex:1;min-height:0;margin:0;overflow:auto;position:relative}" \
-	"#rTable table{min-width:940px}" \
+	"#rTable table{min-width:900px}" \
 	".rt th[data-k]{padding:0}" \
-	".rt .c-rstate{width:92px;white-space:nowrap}" \
-	".rt .c-rlabel{width:160px}" \
-	".rt .c-rproto{width:95px}" \
-	".rt .c-rdev{min-width:220px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" \
-	".rt .c-rgroup{width:100px}" \
-	".rt .c-rcaid{width:110px}" \
+	".rt .c-rstate{width:88px;white-space:nowrap}" \
+	".rt .c-rlabel{width:150px}" \
+	".rt .c-rproto{width:92px}" \
+	".rt .c-rdev{min-width:200px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" \
+	".rt .c-rgroup{width:82px}" \
+	".rt .c-rcaid{width:100px}" \
 	".rt .c-rstat-ok{width:72px;text-align:right}" \
 	".rt .c-rstat-nok{width:72px;text-align:right}" \
-	".rt .c-btn{width:108px}" \
+	".rt .c-btn{width:96px}" \
 	".rlink{max-width:100%;padding:4px 2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--t1);font-family:var(--mono);font-size:13px;font-weight:700;border-radius:4px;transition:background .15s}" \
 	".rdot{display:inline-block;width:8px;height:8px;margin-right:6px;border-radius:50%;vertical-align:middle;background:var(--t2);box-shadow:0 0 0 3px rgba(148,163,184,.08)}" \
 	".rdot.on{background:var(--gr);box-shadow:0 0 0 3px rgba(74,222,128,.10)}" \
@@ -540,7 +531,7 @@
 	"#rEmpty b{display:block;margin-bottom:4px;font-size:15px;color:var(--t0)}" \
 	"#rEmpty span{color:var(--t2);font-size:12px}" \
 	"#rEmpty .tool{margin-top:14px}" \
-	"@media(max-width:900px){.rtoolbar{grid-template-columns:1fr;justify-items:stretch}.rtoolbar .usrch{max-width:none}.rt{min-width:940px}}" \
+	"@media(max-width:900px){.rtoolbar{grid-template-columns:1fr;justify-items:stretch}.rtoolbar .usrch{max-width:none}.rt{min-width:900px}}" \
 	"body.pg-users{height:100vh;overflow:hidden;padding-top:var(--tbh)}" \
 	"body.pg-users footer:not(.ufoot){display:none!important}" \
 	"body.pg-users #mn{height:100%;min-height:0;margin-top:0}" \
@@ -709,4 +700,4 @@
 	"body.pg-tvcas .tv-tabs{margin-bottom:10px!important}" \
 	""
 
-#endif                        
+#endif

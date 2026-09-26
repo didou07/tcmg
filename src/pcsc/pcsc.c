@@ -47,8 +47,6 @@ typedef struct {
 } S_PCSC_CARD;
 static S_PCSC_CARD s_cards[TCMG_PCSC_MAX_READERS];
 
-/* Forward declarations: reset paths use the persistent-card helpers before
- * their definitions later in this translation unit. */
 static void pcsc_drop_card_locked(int idx);
 static void pcsc_drop_all_cards_locked(void);
 static void pcsc_drop_stale_cards_locked(const S_PCSC_READER *readers, int count);
@@ -467,8 +465,6 @@ static int pcsc_card_index_locked(const char *reader)
     return -1;
 }
 
-/* Keep one shared PC/SC handle per reader. ECM, status polling and reset all
- * use the same long-lived handle, matching the OSCam reader lifecycle. */
 static int pcsc_ensure_card_locked(const char *reader)
 {
     int idx = pcsc_card_index_locked(reader);
@@ -504,7 +500,7 @@ static LONG pcsc_transmit_locked(int idx, const uint8_t *cmd, size_t cmd_len,
     return rc;
 }
 
-#endif /* TCMG_PCSC */
+#endif
 
 int pcsc_transmit(const char *reader, const uint8_t *cmd, size_t cmd_len,
                   uint8_t *rsp, size_t *rsp_len)
@@ -547,7 +543,6 @@ int pcsc_transmit(const char *reader, const uint8_t *cmd, size_t cmd_len,
     return -1;
 #endif
 }
-
 
 #ifdef TCMG_PCSC
 static int pcsc_select_reader_ex(const char *selector, char *out, size_t out_len)

@@ -78,8 +78,8 @@ static int load_case(const char *dir, const char *global, const char *users, con
             free_cfg(&cfg);
             return 0;
         }
-        if (cfg.readers[5].fast_reset != 60) {
-            fprintf(stderr, "internal fast_reset migration mismatch value=%d\n", cfg.readers[5].fast_reset);
+        if (cfg.readers[5].fast_reset != 1) {
+            fprintf(stderr, "internal fast_reset user value changed value=%d\n", cfg.readers[5].fast_reset);
             free_cfg(&cfg);
             return 0;
         }
@@ -118,7 +118,6 @@ static int load_case(const char *dir, const char *global, const char *users, con
     return 1;
 }
 
-
 static void *save_stress_thread(void *arg)
 {
     S_CONFIG *cfg = (S_CONFIG *)arg;
@@ -142,7 +141,6 @@ static int run_save_stress(S_CONFIG *cfg)
     }
     return 1;
 }
-
 
 static int run_reload_lifetime(const char *dir)
 {

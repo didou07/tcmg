@@ -123,8 +123,12 @@ bool cfg_build_server_text(const S_CONFIG *c, char *buf, size_t cap)
 
         if (reader_protocol_kind(r->protocol) == READER_PROTOCOL_CARD) {
             ok = ok && cfg_appendf(buf, cap, &pos,
-                               "device = %s\ndo_ecm = %d\nfast_reset = %d\npoll_ms = %d\n",
-                               r->device, r->do_ecm, r->fast_reset, r->poll_ms);
+                               "device = %s\ndo_ecm = %d\nfast_reset = %d\n",
+                               r->device, r->do_ecm, r->fast_reset);
+            if (strcasecmp(r->protocol, "pcsc") == 0 ||
+                strcasecmp(r->protocol, "serial") == 0) {
+                ok = ok && cfg_appendf(buf, cap, &pos, "poll_ms = %d\n", r->poll_ms);
+            }
         }
 
         if (!strcasecmp(r->protocol, "emu")) {
@@ -174,17 +178,12 @@ bool cfg_save(S_CONFIG *c)
         return false;
     }
 
-    /* Snapshot all configuration text under the same read lock so a concurrent
-     * web/API mutation cannot produce a mixed generation across the three files. */
     pthread_rwlock_rdlock(&c->acc_lock);
     ok = cfg_build_global_text(c, global_text, GLOBAL_CAP) &&
          cfg_build_user_text(c, user_text, USER_CAP) &&
          cfg_build_server_text(c, reader_text, READER_CAP);
     pthread_rwlock_unlock(&c->acc_lock);
 
-    /* Prepare all three complete temporary files first. There is still no
-     * filesystem-level multi-file transaction, but we never overwrite one of
-     * the live files with a truncated buffer. */
     if (ok) ok = cfg_write_atomic(c->config_file, global_text);
     if (ok) ok = cfg_write_atomic(c->user_file, user_text);
     if (ok) ok = cfg_write_atomic(c->server_file, reader_text);

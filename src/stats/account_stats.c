@@ -129,7 +129,6 @@ void account_stats_global_snapshot(int64_t *cw_found, int64_t *cw_not)
     if (cw_not)  *cw_not  = atomic_load_explicit(&s_global_cw_not, memory_order_relaxed);
 }
 
-
 void account_stats_global_remove(S_ACCOUNT *account)
 {
     if (!account) return;

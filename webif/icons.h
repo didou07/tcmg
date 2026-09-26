@@ -113,8 +113,6 @@
 "<path d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/>" \
 "</svg>"
 
-                                                                           
-                                                                              
 #define GLOBAL_ICON_SPRITE \
 	"<svg width='0' height='0' style='position:absolute' aria-hidden='true'><defs>" \
 	"<symbol id='i-edit' viewBox='0 0 24 24'><path d='M12 20h9'/>" \

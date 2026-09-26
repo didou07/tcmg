@@ -97,8 +97,7 @@ bool cfg_validate(S_CONFIG *c, char *err, size_t esz)
                 snprintf(err, esz, "reader[%d] '%s': device is required", i, r->label);
                 return false;
             }
-            if (r->fast_reset < 0 || r->fast_reset > 86400 ||
-                r->poll_ms < 25 || r->poll_ms > 10000) {
+            if (r->fast_reset < 0 || r->fast_reset > 86400) {
                 snprintf(err, esz, "reader[%d] '%s': invalid internal reader settings", i, r->label);
                 return false;
             }
@@ -189,4 +188,3 @@ bool cfg_listener_settings_changed(const S_CONFIG *old_cfg,
     }
     return false;
 }
-

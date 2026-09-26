@@ -13,7 +13,6 @@ uint32_t ban_hash_pub(const char *ip)
     return h & (BAN_BUCKETS - 1);
 }
 
-
 static bool ban_ip_allowed(const char *ip)
 {
     S_CONFIG_FAILBAN_VIEW cfg;

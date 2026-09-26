@@ -16,7 +16,6 @@
 
 #define MAX_DEBUG_LEVELS 8
 
-
 extern const S_DBLEVEL_NAME g_dblevel_names[MAX_DEBUG_LEVELS];
 extern _Atomic uint16_t     g_dblevel;
 

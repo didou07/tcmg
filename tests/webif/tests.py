@@ -89,6 +89,16 @@ st,_,j=req("GET",f"/api/reader/get?index={reader_test_index}"); ok("reader add r
 reader_edit=dict(reader_base); reader_edit.update(index=str(reader_test_index),label="Edited EMU",enabled="0",group="2,3",ecmkeys="0B00="+"B"*64)
 st,_,j=req("POST","/api/reader/save",reader_edit); ok("edit reader",st==200 and j.get("ok"),j)
 st,_,j=req("GET",f"/api/reader/get?index={reader_test_index}"); ok("reader edit roundtrip",st==200 and j.get("label")=="Edited EMU" and j.get("enabled")==0 and j.get("group")=="2,3",j)
+internal_reader_base={"index":"-1","label":"Test Internal","protocol":"internal","enabled":"1","device":"/dev/sci0","user":"","password":"","key":"","inactivitytimeout":"30","caid":"0B00","sid_whitelist":"","ecmwhitelist":"37","group":"1","ecmkeys":"","DO_ECM":"1","FAST_RESET":"99"}
+st,_,j=req("POST","/api/reader/save",internal_reader_base); ok("add internal without poll_ms",st==200 and j.get("ok"),j)
+st,_,rj=req("GET","/api/readers"); internal_idx=next((r.get("index") for r in rj.get("readers",[]) if r.get("label")=="Test Internal"),-1)
+st,_,j=req("GET",f"/api/reader/get?index={internal_idx}"); ok("internal add roundtrip",st==200 and j.get("protocol")=="internal" and j.get("FAST_RESET")==99 and "POLL_MS" not in j,j)
+internal_edit=dict(internal_reader_base); internal_edit.update(index=str(internal_idx),label="Edited Internal",enabled="0",device="/dev/sci1",FAST_RESET="123")
+st,_,j=req("POST","/api/reader/save",internal_edit); ok("edit internal without poll_ms",st==200 and j.get("ok"),j)
+st,_,j=req("GET",f"/api/reader/get?index={internal_idx}"); ok("internal edit roundtrip",st==200 and j.get("label")=="Edited Internal" and j.get("device")=="/dev/sci1" and j.get("FAST_RESET")==123 and "POLL_MS" not in j,j)
+st,_,j=req("GET","/readers"); ok("internal status badges removed",st==200 and "LOCKED" not in j and ">OPEN<" not in j,j[:500])
+if internal_idx >= 0:
+    st,_,j=req("POST",f"/api/reader/delete?index={internal_idx}"); ok("internal reader cleanup",st==200 and j.get("ok"),j)
 for k,bad in [("label",dict(reader_base, label="")), ("protocol",dict(reader_base, protocol="bogus")), ("group",dict(reader_base, group="0")), ("ecmwl",dict(reader_base, ecmwhitelist="100")), ("ecmkey",dict(reader_base, ecmkeys="0B00="+"C"*63))]:
     st,_,j=req("POST","/api/reader/save",bad); ok("reject reader "+k,st==400 and j.get("ok") is False,(st,j))
 st,_,j=req("POST",f"/api/reader/delete?index={reader_test_index}"); ok("delete reader",st==200 and j.get("ok"),j)
@@ -177,7 +187,7 @@ st,_,j=req("GET","/api/config/file/get?file=rdr"); ok("readers file roundtrip",s
 reader_bad="[reader]\nlabel =\nprotocol = bogus\nenabled = 0\n"
 st,_,j=req("POST","/api/config/file/save",{"file":"rdr","content":reader_bad}); ok("invalid readers file rejected",st==400 and j.get("ok") is False,j)
 st,_,j=req("POST","/api/config/file/save",{"file":"rdr","content":orig_readers}); ok("restore readers file",st==200 and j.get("ok"),j)
-st,_,j=req("POST","/api/config/file/save",{"file":"conf","content":"[account\nuser=\n\x00"}); 
+st,_,j=req("POST","/api/config/file/save",{"file":"conf","content":"[account\nuser=\n\x00"});
 st,_,j=req("POST","/api/config/file/save",{"file":"conf","content":""}); ok("empty content rejected",st==400,(st,j))
 st,_,j=req("POST","/api/config/file/save",{"file":"other","content":"x"}); ok("bad file name rejected",st==400)
 huge="a="+"x"*(2*1024*1024)

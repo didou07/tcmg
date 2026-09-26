@@ -12,7 +12,6 @@
 #include <limits.h>
 #endif
 
-
 s_session       s_sessions[WEB_MAX_SESSIONS];
 pthread_mutex_t s_sess_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -122,7 +121,6 @@ int check_credentials(const char *user, const char *pass)
 	return webif_credentials_valid(user, pass) ? 1 : 0;
 }
 
-
 static int hexval(int c)
 {
 	if (c >= '0' && c <= '9') return c - '0';
@@ -131,9 +129,6 @@ static int hexval(int c)
 	return -1;
 }
 
-                                                                             
-                                                                               
-                          
 void url_decode(char *s)
 {
 	char *r = s, *w = s;
@@ -160,8 +155,6 @@ static int web_ncaseeq(const char *a, const char *b, size_t n)
 	return 1;
 }
 
-                                                                            
-                                                                     
 const char *web_header_get(const char *raw, const char *name, char *buf, int bufsz)
 {
 	buf[0] = '\0';
@@ -224,13 +217,13 @@ int req_parse(s_http_req *req, int fd, char *raw, int rawlen)
 			clen = strtol(clbuf, &e, 10);
 			if (e == clbuf || *e != '\0' || clen < 0) { req->status = 400; return 1; }
 		}
-		                                                                         
+
 		if (has_clen && have > clen) {
 			req->status = 400;
 			return 1;
 		}
 		if (clen > WEB_POST_MAX || have > WEB_POST_MAX) {
-			/* Drain the advertised body so the client gets a clean 413 instead of TCP reset. */
+
 			long discard = clen - have;
 			char sink[4096];
 			while (discard > 0) {
@@ -277,7 +270,7 @@ int buf_printf(char **dst, int *dstsz, int pos, const char *fmt, ...)
 	if (needed < 0) return pos;
 
 	if (pos + needed + 1 >= *dstsz) {
-		int newsz = *dstsz * 2;                                                       
+		int newsz = *dstsz * 2;
 		if (newsz < pos + needed + 8192) newsz = pos + needed + 8192;
 		char *nb = (char *)realloc(*dst, (size_t)newsz);
 		if (!nb) return pos;
@@ -354,10 +347,6 @@ void form_get(const char *body, const char *key, char *out, int outsz)
 	}
 }
 
-
-
-                                                                        
-                                                                         
 char *form_get_alloc(const char *body, const char *key)
 {
 	if (!body || !key || !*key) return NULL;
@@ -381,8 +370,6 @@ char *form_get_alloc(const char *body, const char *key)
 	return NULL;
 }
 
-                                                                             
-                                                                   
 int write_file_atomic(const char *path, const char *data, size_t len)
 {
 	char tmp[CFGPATH_LEN + 8];
@@ -410,9 +397,6 @@ int write_file_atomic(const char *path, const char *data, size_t len)
 	return 1;
 }
 
-                                                                              
-                                                                              
-                                                         
 int web_valid_text(const char *s)
 {
 	size_t n = strlen(s);
@@ -472,7 +456,7 @@ char *file_read_escaped(const char *path, int maxbytes, int *truncated)
 	if (!raw) { fclose(fp); return NULL; }
 	int n = (int)fread(raw, 1, maxbytes, fp);
 	raw[n] = '\0';
-	if (truncated) *truncated = (n == maxbytes && fgetc(fp) != EOF);                                         
+	if (truncated) *truncated = (n == maxbytes && fgetc(fp) != EOF);
 	fclose(fp);
 
 	char *out = html_escape_alloc(raw, n, NULL);
@@ -490,7 +474,7 @@ int json_escape(const char *src, char *dst, int dstsz)
 		if      (c == '\n') { dst[o++] = '\\'; dst[o++] = 'n'; }
 		else if (c == '\t') { dst[o++] = '\\'; dst[o++] = 't'; }
 		else if (c == '"' || c == '\\') { dst[o++] = '\\'; dst[o++] = (char)c; }
-		else if (c < 0x20) {                                                               
+		else if (c < 0x20) {
 			dst[o++] = '\\'; dst[o++] = 'u'; dst[o++] = '0'; dst[o++] = '0';
 			dst[o++] = hx[c >> 4]; dst[o++] = hx[c & 15];
 		}
@@ -545,7 +529,7 @@ void send_response_ex(int fd, int code, const char *reason,
 {
 	send_headers_ex(fd, code, reason, ctype, blen, set_cookie);
 	if (body && blen > 0)
-		send_all(fd, body, blen);                                                     
+		send_all(fd, body, blen);
 }
 
 void send_response(int fd, int code, const char *reason,
@@ -564,9 +548,6 @@ void send_redirect(int fd, const char *location)
 	send_all(fd, hdr, n);
 }
 
-                                                                              
-                                                                              
-                                                                         
 void send_redirect_with_cookie(int fd, const char *location, const char *token)
 {
 	char hdr[512];
@@ -634,7 +615,6 @@ void send_webif_asset(int fd, const char *path)
 	send_all(fd, body, len);
 }
 
-
 S_SERVER_STATS collect_stats(void)
 {
 	S_WEBIF_SERVER_STATS in = webif_server_stats();
@@ -657,7 +637,6 @@ void handle_reset_stats(void)
 	webif_account_reset_all_stats();
 	tcmg_log("%s", "all user stats reset");
 }
-
 
 #pragma GCC diagnostic ignored "-Wformat"
 #pragma GCC diagnostic ignored "-Wformat-extra-args"

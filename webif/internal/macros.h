@@ -10,7 +10,6 @@
 	send_response((fd), 200, "OK", "text/html", buf, pos); \
 	free(buf);
 
-                                                                    
 static inline void send_json_error(int fd, int code, const char *reason,
                                    const char *msg)
 {

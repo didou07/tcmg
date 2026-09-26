@@ -84,7 +84,6 @@ T_ANTISHARE_STATUS antishare_check_request(S_ACCOUNT *acc, uint32_t client_tid,
     reset_ecm_window_locked(acc, now_ms);
     purge_channels_locked(acc, now_ms);
 
-    /* Count every accepted ECM request, not only successful ECMs. */
     if (acc->as_max_ecm > 0 && acc->as_ecm_count >= acc->as_max_ecm) {
         pthread_mutex_unlock(&acc->as_mtx);
         return AS_CHECK_ECM_RATE;
@@ -92,13 +91,12 @@ T_ANTISHARE_STATUS antishare_check_request(S_ACCOUNT *acc, uint32_t client_tid,
 
     int idx = find_channel_locked(acc, client_tid, caid, sid);
     if (idx >= 0) {
-        /* Repeating ECMs on the same active/pending channel do not consume another slot. */
+
         acc->as_ecm_count++;
         pthread_mutex_unlock(&acc->as_mtx);
         return AS_CHECK_OK;
     }
 
-    /* Keep the existing channel for this client available as the replacement slot. */
     const int old_idx = find_client_channel_locked(acc, client_tid);
     const int max_channels = acc->as_max_sids > 0 ? acc->as_max_sids : 1;
     if (occupied_channels_locked(acc) >= max_channels && old_idx < 0) {
@@ -123,7 +121,6 @@ T_ANTISHARE_STATUS antishare_check_request(S_ACCOUNT *acc, uint32_t client_tid,
     acc->as_channels[idx].pending_since_ms = now_ms;
     acc->as_ecm_count++;
 
-    /* A channel switch by the same client can optionally delay the returned CW. */
     if (switching_channel && delay_ms && acc->as_switch_delay_s > 0)
         *delay_ms = acc->as_switch_delay_s * 1000;
 

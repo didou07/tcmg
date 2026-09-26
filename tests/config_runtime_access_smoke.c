@@ -17,7 +17,7 @@ static void init_cfg(void)
     g_cfg.readers[3].enabled = 1;
     snprintf(g_cfg.readers[3].protocol, sizeof(g_cfg.readers[3].protocol), "pcsc");
     snprintf(g_cfg.readers[3].device, sizeof(g_cfg.readers[3].device), "Reader 3");
-    g_cfg.readers[3].fast_reset = 60;
+    g_cfg.readers[3].fast_reset = 1;
     g_cfg.readers[3].poll_ms = 400;
 }
 
@@ -35,7 +35,7 @@ int main(void)
     if (n != 1 || readers[0].enabled != 1 ||
         strcmp(readers[0].protocol, "pcsc") != 0 ||
         strcmp(readers[0].device, "Reader 3") != 0 ||
-        readers[0].fast_reset != 60 || readers[0].poll_ms != 400) return 3;
+        readers[0].fast_reset != 1 || readers[0].poll_ms != 400) return 3;
     if (cfg_runtime_failban_snapshot(NULL) || cfg_runtime_reader_snapshot(NULL, 1) != 0) return 4;
 
     cfg_accounts_free(&g_cfg);

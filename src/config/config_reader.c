@@ -62,9 +62,6 @@ bool cfg_parse_readers(const char *path, S_CONFIG *c, char *err, size_t esz)
                 return false;
             }
 
-            /* OSCam-style files use repeated [reader] blocks.  Allocate the
-             * first free internal slot and never expose slot numbers in the
-             * file format. */
             for (int i = 0; i < MAX_READERS; i++) {
                 if (!used[i]) {
                     index = i;
@@ -158,7 +155,6 @@ bool cfg_parse_readers(const char *path, S_CONFIG *c, char *err, size_t esz)
             }
             else if (!strcasecmp(key, "fast_reset")) {
                 if (!cfg_parse_long_range(value, 0, 86400, &v)) goto badval;
-                if (!strcasecmp(reader->protocol, "internal") && v == 1) v = 60;
                 reader->fast_reset = (int32_t)v;
             }
             else if (!strcasecmp(key, "poll_ms")) {

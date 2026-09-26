@@ -49,8 +49,7 @@ static int request_is_authed(const char *raw, const char *client_ip, char *sess_
 
 	char auth_hdr[512] = "";
 	if (web_header_get(raw, "Authorization", auth_hdr, sizeof(auth_hdr))) {
-		                                                                        
-                                                                       
+
 		if (ban_is_banned(client_ip)) return 0;
 		if (check_auth(auth_hdr)) return 1;
 		ban_record_fail(client_ip);
@@ -60,10 +59,6 @@ static int request_is_authed(const char *raw, const char *client_ip, char *sess_
 	return 0;
 }
 
-                                                                             
-                                                                            
-                                                                                
-                                                                             
 static int is_state_changing(const char *method, const char *path, const char *qs)
 {
 	if (strcmp(method, "POST") == 0) return 1;
@@ -411,7 +406,7 @@ void webif_stop(void)
 {
 	if (!s_webif_running) return;
 	atomic_store_explicit(&s_webif_running, 0, memory_order_release);
-	pthread_join(s_webif_tid, NULL);                                                     
+	pthread_join(s_webif_tid, NULL);
 	if (s_webif_sock >= 0) { close(s_webif_sock); s_webif_sock = -1; }
 	sem_destroy(&s_webif_sem);
 }

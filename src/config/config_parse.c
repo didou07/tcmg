@@ -295,4 +295,3 @@ void cfg_strip_inline_comment(char *s)
     }
     cfg_str_trim(s);
 }
-

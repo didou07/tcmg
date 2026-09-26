@@ -132,8 +132,6 @@ static bool ncd_handle_login(S_CLIENT *cl,
 	{ uint8_t r[3] = { MSG_CLIENT_LOGIN_ACK, 0, 0 };
 	  nc_send(cl, r, 3, sid, mid, pid); }
 
-	/* LOGIN_ACK is protected by the initial key.  Only after it is sent do
-	 * both sides switch to the password-derived session key, matching OSCam. */
 	{ size_t hlen = strlen(hash);
 	  if (hlen == 0 || hlen > NC_MSG_MAX) return false;
 	  tcmg_ncd_des_login_key_get(g_cfg.newcamd_key, (const uint8_t *)hash, (int)hlen, key16);
@@ -144,8 +142,7 @@ static bool ncd_handle_login(S_CLIENT *cl,
 
 	cl->ecm.caid      = acc->caid;
 	cl->identity.client_id = sid;
-	/* MGcamd is identified by the NCD525 custom login header.  An account
-	 * having multiple CAIDs is not evidence that the peer is MGcamd. */
+
 	cl->protocol.wire.newcamd.is_mgcamd = (cl->protocol.wire.newcamd.is_mgcamd || (g_cfg.newcamd_mgclient != 0)) ? 1 : 0;
 	tcmg_strlcpy(cl->protocol.name, cl->protocol.wire.newcamd.is_mgcamd ? "mgcamd" : "newcamd", sizeof(cl->protocol.name));
 	tcmg_strlcpy(cl->identity.user,        acc->user,            CFGKEY_LEN);

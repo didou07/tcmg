@@ -54,7 +54,6 @@ int32_t net_send_all(int fd, const void *buf, int32_t len)
     return total;
 }
 
-
 int net_parse_host_port(const char *device, char *host, size_t host_len, uint16_t *port)
 {
     if (!device || !*device || !host || host_len < 2 || !port) return -1;
@@ -110,17 +109,13 @@ void net_tune_socket(int fd)
     (void)one;
 }
 
-/* Newcamd has two closely related wire layouts. 525 is the normal modern
- * layout and carries the 8-byte custom header; 524 has only 4 header bytes.
- * We auto-detect the first received message and retain the mode for the
- * lifetime of the connection, exactly as OSCam does. */
 #define NCD_PROTO_UNKNOWN 0
 #define NCD_PROTO_524     524
 #define NCD_PROTO_525     525
 
 static int ncd_header_size(uint16_t proto)
 {
-    return proto == NCD_PROTO_524 ? 8 : 12; /* incl. 2-byte outer length */
+    return proto == NCD_PROTO_524 ? 8 : 12;
 }
 
 static int ncd_cmd_offset(uint16_t proto)
@@ -151,8 +146,6 @@ static int ncd_detect_proto(const uint8_t *buf, int total_len, uint16_t *proto_o
         v524 = n <= (uint32_t)(total_len - off524) && ncd_valid_command(buf[off524]);
     }
 
-    /* Prefer 525 when both heuristics match.  Its extended command space and
-     * 8-byte custom header are what modern MGcamd/Newcamd peers expect. */
     if (v525) { *proto_out = NCD_PROTO_525; return 0; }
     if (v524) { *proto_out = NCD_PROTO_524; return 0; }
     return -1;
@@ -169,11 +162,6 @@ static void ncd_build_header(uint8_t *buf, uint16_t proto, uint16_t sid,
         return;
     }
 
-    /* OSCam 525 header semantics:
-     *   4..5  = SID for normal addressed messages;
-     *   6..10 = CAID/provider only for custom ECM/card-data messages;
-     *   11    = MGcamd/card-data marker where required.
-     * Ordinary server responses keep the 8-byte header zeroed. */
     memset(buf + 4, 0, 8);
 
     if (mg_ack) {
@@ -227,8 +215,6 @@ static int32_t ncd_send_ex(S_CLIENT *cl, const uint8_t *data, int32_t dlen,
     ncd_build_header(buf, proto, sid,
                      caid, pid, mg_ack, card_data, header_caid);
 
-    /* MGcamd login marker: OSCam identifies MGcamd on the 525 custom header
-     * (client id "mg" plus 0x11), not from the account's CAID list. */
     if (!mg_ack && !card_data && cl->protocol.wire.newcamd.is_mgcamd && proto == NCD_PROTO_525 &&
         data[0] == MSG_CLIENT_LOGIN) {
         buf[4] = 0x6D;
@@ -236,7 +222,6 @@ static int32_t ncd_send_ex(S_CLIENT *cl, const uint8_t *data, int32_t dlen,
         buf[11] = 0x11;
     }
 
-    /* The two-byte outer length is part of the EuroDES protected message. */
     total = head + dlen;
     if (total + 24 >= (int32_t)sizeof(cl->protocol.wire.newcamd.send_buf)) return -1;
     wr_be16(buf, (uint16_t)(total - 2));
@@ -348,9 +333,6 @@ int32_t nc_send(S_CLIENT *cl, const uint8_t *data, int32_t dlen,
     bool mg_ack = cl->protocol.wire.newcamd.is_mgcamd && data[0] == MSG_CLIENT_LOGIN_ACK;
     bool addcard = data[0] == MSG_ADDCARD;
 
-    /* OSCam only puts SID/CAID/provider into the extended 525 header for
-     * client ECM requests and explicit ADDCARD reports. Ordinary server
-     * responses use a zeroed header (apart from the MG login ACK marker). */
     return ncd_send_ex(cl, data, dlen, custom ? sid : (addcard ? 0 : 0), mid,
                        caid, pid, custom, mg_ack, addcard);
 }

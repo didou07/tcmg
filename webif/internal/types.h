@@ -16,7 +16,7 @@ typedef struct {
 	char  qs[512];
 	char *body;
 	int   body_len;
-	int   status;                                                                
+	int   status;
 } s_http_req;
 
 typedef struct {

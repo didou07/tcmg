@@ -5,12 +5,10 @@ from playwright.sync_api import sync_playwright
 base = "http://127.0.0.1:18080"
 fails, errs = [], []
 
-
 def ok(name, cond, extra=""):
     print(("PASS " if cond else "FAIL ") + name + ((" -> " + str(extra)) if not cond and extra != "" else ""))
     if not cond:
         fails.append(name)
-
 
 with sync_playwright() as p:
     b = p.chromium.launch()

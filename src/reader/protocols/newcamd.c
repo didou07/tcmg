@@ -51,7 +51,6 @@ static void mg_signature(const S_READER *r, char *out, size_t out_len)
     secure_zero(blob, sizeof(blob));
 }
 
-
 static void mg_close_locked(S_MG_READER_STATE *s)
 {
     if (s->fd >= 0) close(s->fd);
@@ -235,10 +234,7 @@ int32_t newcamd_reader_do_ecm(int index, const S_READER *reader,
         for (;;) {
             int32_t dlen = nc_recv(&s->nc, data, &rsid, &rmid, &rpid, &rcaid);
             if (dlen == 3 && data[0] == MSG_ADDCARD) {
-            /* MGcamd/newcamd525 servers may report one or more cards after
-             * MSG_CARD_DATA. The report is asynchronous and can still be in
-             * the socket when the first ECM is sent; consume it before
-             * evaluating the ECM reply, just like OSCam's recv_chk path. */
+
                 tcmg_log_dbg(D_NEWCAMD, "mgcamd reader[%d] consumed ADDCARD mid=%04X",
                              index, rmid);
                 continue;

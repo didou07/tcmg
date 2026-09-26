@@ -7,7 +7,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Copy one form value into a fixed buffer: 0 = absent/ok, -1 = too long. */
 static inline int webif_form_copy(const char *body, const char *key, char *out, size_t outsz)
 {
     out[0] = '\0';

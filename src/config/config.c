@@ -84,7 +84,6 @@ bool cfg_reload(const char *file, char *err, size_t esz)
         return false;
     }
 
-    /* Keep counters and timestamps for users that survive the reload. */
     pthread_rwlock_rdlock(&g_cfg.acc_lock);
     for (S_ACCOUNT *new_acc = next.accounts; new_acc; new_acc = new_acc->next) {
         for (S_ACCOUNT *old_acc = g_cfg.accounts; old_acc; old_acc = old_acc->next) {
@@ -156,9 +155,6 @@ bool cfg_reload(const char *file, char *err, size_t esz)
     pthread_rwlock_unlock(&g_cfg.acc_lock);
     pthread_mutex_unlock(&g_clients_mtx);
 
-    /* Old accounts remain valid for any protocol code already executing with
-     * the old pointer. At shutdown they are all released; inactive ones are
-     * reclaimed during normal operation. */
     while (old_accounts) {
         S_ACCOUNT *next_old = old_accounts->next;
         old_accounts->next = NULL;
@@ -228,4 +224,3 @@ const char *cfg_client_name(uint16_t id)
     }
     return "unknown";
 }
-

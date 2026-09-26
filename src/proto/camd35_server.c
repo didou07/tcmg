@@ -18,7 +18,6 @@
 
 static S_PROTO_SERVER s_server;
 
-
 static void cs378x_send_error(S_CLIENT *cl)
 {
     uint8_t plain[CS378X_HEADER_LEN];
@@ -159,9 +158,7 @@ void *handle_cs378x_client(void *arg)
     while (g_running && !cl.session.kill_flag) {
         uint8_t frame_ucrc[CS378X_UCRC_LEN];
         int urc_frame = 0;
-        /* The first UCRC was consumed as part of authentication. OSCam
-         * immediately decrypts that same frame; only subsequent frames
-         * carry a newly-read UCRC here. */
+
         if (!first_frame) urc_frame = cs378x_recv_ucrc(cl.session.fd, frame_ucrc);
         else memcpy(frame_ucrc, cl.protocol.wire.cs378x.ucrc, CS378X_UCRC_LEN);
         if (urc_frame == NET_RECV_TIMEOUT) {
@@ -203,9 +200,7 @@ void *handle_cs378x_client(void *arg)
         }
         case CS378X_CMD_EMM_REQ:
         case CS378X_CMD_EMM_DATA:
-            /* EMM transport is accepted at the wire layer but not applied by
-             * TCMG's ECM-only reader engine yet. Return the standard internal
-             * error rather than pretending the update was processed. */
+
             cs378x_send_error(&cl);
             break;
         case CS378X_CMD_STOP:

@@ -1,4 +1,3 @@
-/* Test harness: real webif server + synthetic stats and fake clients. */
 #define MODULE_LOG_PREFIX "test"
 #include "../../src/core/config_state.h"
 #include "../../src/core/runtime_state.h"

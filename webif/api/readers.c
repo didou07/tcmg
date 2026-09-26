@@ -151,9 +151,10 @@ static const char *parse_reader_form(const char *body, reader_form *f, int index
         if (rnum(f->do_ecm, 0, 1, &v) < 0) return "DO_ECM must be 0 or 1";
         if (!strcmp(protocol->name, "internal")) {
             if (rnum(f->fast_reset, 0, 86400, &v) < 0) return "FAST_RESET must be 0-86400 seconds for internal readers";
-            if (v == 1) v = 60;
-        } else if (rnum(f->fast_reset, 0, 86400, &v) < 0) return "FAST_RESET must be 0-86400";
-        if (rnum(f->poll_ms, 50, 10000, &v) < 0) return "POLL_MS must be 50-10000";
+        } else {
+            if (rnum(f->fast_reset, 0, 86400, &v) < 0) return "FAST_RESET must be 0-86400";
+            if (rnum(f->poll_ms, 50, 10000, &v) < 0) return "POLL_MS must be 50-10000";
+        }
         if (!f->device[0]) return "device is required";
     } else {
         if (!f->device[0]) return "server is required";
@@ -200,9 +201,15 @@ static int view_json(char **dst, int *bsz, int pos, const S_WEBIF_READER_VIEW *r
             ready = ir.ready;
         }
     }
-    pos = buf_printf(dst, bsz, pos,
-        "\",\"DO_ECM\":%d,\"FAST_RESET\":%d,\"POLL_MS\":%d,\"cw_ok\":%lld,\"cw_nok\":%lld,\"active\":%d,\"owned\":%d,\"present\":%d,\"ready\":%d",
-        r->do_ecm, r->fast_reset, r->poll_ms, (long long)r->cw_ok, (long long)r->cw_nok, r->active, owned, present, ready);
+    if (!strcasecmp(r->protocol, "internal")) {
+        pos = buf_printf(dst, bsz, pos,
+            "\",\"DO_ECM\":%d,\"FAST_RESET\":%d,\"cw_ok\":%lld,\"cw_nok\":%lld,\"active\":%d,\"owned\":%d,\"present\":%d,\"ready\":%d",
+            r->do_ecm, r->fast_reset, (long long)r->cw_ok, (long long)r->cw_nok, r->active, owned, present, ready);
+    } else {
+        pos = buf_printf(dst, bsz, pos,
+            "\",\"DO_ECM\":%d,\"FAST_RESET\":%d,\"POLL_MS\":%d,\"cw_ok\":%lld,\"cw_nok\":%lld,\"active\":%d,\"owned\":%d,\"present\":%d,\"ready\":%d",
+            r->do_ecm, r->fast_reset, r->poll_ms, (long long)r->cw_ok, (long long)r->cw_nok, r->active, owned, present, ready);
+    }
     if (!detail) return pos;
 
     pos = buf_printf(dst, bsz, pos, ",\"user\":\"");

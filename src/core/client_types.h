@@ -17,7 +17,6 @@ typedef struct s_client {
     S_CLIENT_PROTOCOL_STATE protocol;
 } S_CLIENT;
 
-
 typedef struct {
     int fd;
     char ip[MAXIPLEN];

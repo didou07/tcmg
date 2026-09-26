@@ -64,7 +64,6 @@ static void bad(fparse *p, const char *key, const char *why)
 	if (!p->err[0]) snprintf(p->err, sizeof(p->err), "invalid %s: %s", key, why);
 }
 
-                                                      
 static int num(fparse *p, const char *key, const char *s, long lo, long hi, long *out)
 {
 	if (!s[0]) return 0;
@@ -142,7 +141,7 @@ void handle_api_config_save(int fd, const char *post_body)
 		long v_fb_enabled = 0, v_fbmax = 0, v_fbsecs = 0;
 	uint8_t k_new[14];
 
-	int h_np  = num(&P, "newcamd_port",      newcamd_port_s,   0, 65535, &v_newcamd_port);                     
+	int h_np  = num(&P, "newcamd_port",      newcamd_port_s,   0, 65535, &v_newcamd_port);
 	int h_ka  = num(&P, "newcamd_keepalive", keepalive_s,      0, 1, &v_ka);
 	int h_mgc = num(&P, "newcamd_mgclient",  mgclient_s,       0, 1, &v_mgc);
 	int h_cc  = num(&P, "cccam_port",        cccam_port_s,     0, 65535, &v_cccam);
@@ -223,7 +222,6 @@ void handle_api_config_save(int fd, const char *post_body)
 	}
 
 }
-
 
 static bool api_file_target(const char *kind, char *path, size_t psz, const char **label)
 {

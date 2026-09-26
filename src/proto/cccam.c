@@ -18,7 +18,6 @@
 
 static S_PROTO_SERVER s_server;
 
-
 static void cc_rc4_init(S_CC_CRYPT *b, const uint8_t *key, int klen)
 {
     uint8_t j=0,tmp; int i;
@@ -191,12 +190,6 @@ static void cc_send_cards(S_CCCAM_CLIENT *cc, const S_ACCOUNT *acc)
     tcmg_log_dbg(D_CCCAM, "sent %d card(s) to user='%s'", total, acc->user);
 }
 
-
-/* CCCam transmits a fixed-width 20-byte username. Authenticate against that
- * exact wire field and verify the password proof using a copy of the receive
- * stream state. The accepted stream state is then installed for subsequent
- * encrypted messages. This also disambiguates accounts sharing the same first
- * 20 bytes, matching OSCam's authentication model. */
 static S_ACCOUNT *cc_authenticate_account(S_CCCAM_CLIENT *cc,
                                           const uint8_t username[20],
                                           const uint8_t encrypted_cccam[6])
@@ -463,9 +456,6 @@ void *handle_cccam_client(void *arg)
     if (cc_send_srv_data(&cc) < 0) goto done;
     tcmg_log_dbg(D_CCCAM, "%s SRV_DATA sent to user='%s'", cl.identity.ip, acc->user);
 
-    /* OSCam waits for the client's post-SRV_DATA CLI_DATA before publishing
-     * the card list. This makes the handshake deterministic and prevents card
-     * frames from racing the client's server-data parser. */
     {
         int ready = 0;
         for (int n = 0; n < 4 && !ready; n++) {

@@ -145,13 +145,10 @@ bool webif_reader_save(const S_WEBIF_READER_EDIT *e)
         value.user[0] = 0; value.password[0] = 0; value.inactivitytimeout = 30;
         if (parse_simple_i32(e->do_ecm, 0, 1, &iv) < 0) return false;
         value.do_ecm = (int8_t)iv;
-        if (strcasecmp(value.protocol, "internal") == 0) {
-            if (parse_simple_i32(e->fast_reset, 0, 86400, &value.fast_reset) < 0) return false;
-            if (value.fast_reset == 1) value.fast_reset = 60;
-        } else {
-            if (parse_simple_i32(e->fast_reset, 0, 86400, &value.fast_reset) < 0) return false;
+        if (parse_simple_i32(e->fast_reset, 0, 86400, &value.fast_reset) < 0) return false;
+        if (strcasecmp(value.protocol, "internal") != 0) {
+            if (parse_simple_i32(e->poll_ms, 50, 10000, &value.poll_ms) < 0) return false;
         }
-        if (parse_simple_i32(e->poll_ms, 50, 10000, &value.poll_ms) < 0) return false;
     } else {
         if (!e->device[0]) return false;
         if (parse_simple_i32(e->inactivitytimeout, 1, 600, &value.inactivitytimeout) < 0) return false;

@@ -75,4 +75,3 @@ void send_login_page(int fd, int failed)
 	else             send_response(fd, 200, "OK", "text/html", buf, pos);
 	free(buf);
 }
-

@@ -8,8 +8,6 @@
 #include "../crypto/crypto.h"
 #include <time.h>
 
-
-
 void client_init(S_CLIENT *cl, int fd, const char *ip)
 {
     if (!cl) return;

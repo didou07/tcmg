@@ -5,15 +5,12 @@
 #include "../../src/log/log.h"
 #include "../internal/proto.h"
 
-                                                                          
-                                                                            
-                                    
 static int failban_clear(const char *clearip)
 {
 	if (clearip && clearip[0]) return webif_ban_clear(clearip);
 	return webif_ban_clear_all();
 }
-                                                                    
+
 void handle_api_failban_clear(int fd, const char *qs)
 {
 	char clearip[MAXIPLEN] = "";
@@ -48,7 +45,6 @@ void send_page_failban(int fd, const char *qs)
 	get_param(qs, "action", action,  sizeof(action));
 	get_param(qs, "ip",     clearip, sizeof(clearip));
 
-	                                                             
 	if (strcmp(action, "clear") == 0 && clearip[0]) {
 		failban_clear(clearip);
 		tcmg_log("ban cleared for ip=%s", clearip);
@@ -61,7 +57,6 @@ void send_page_failban(int fd, const char *qs)
 
 	pos = emit_header(&buf, &bsz, pos, "Fail-Ban", "failban");
 
-	                                                                 
 	S_WEBIF_BAN_STATS bstats;
 	webif_ban_snapshot(NULL, 0, &bstats);
 	int ban_cap = bstats.active_bans > 0 ? bstats.active_bans : 1;
@@ -145,7 +140,6 @@ void send_page_failban(int fd, const char *qs)
 		"  var body=document.getElementById('fbBody');"
 		"  var busy=false;"
 
-		                                                          
 		"  var tbox=null;"
 		"  function toast(msg,kind){"
 		"    if(!tbox){"
@@ -165,7 +159,6 @@ void send_page_failban(int fd, const char *qs)
 		"    },kind==='err'?5000:2600);"
 		"  }"
 
-		                                                                    
 		"  function tickCountdown(){"
 		"    var rows=body.querySelectorAll('.fbcd');"
 		"    for(var i=0;i<rows.length;i++){"
@@ -180,7 +173,6 @@ void send_page_failban(int fd, const char *qs)
 		"  }"
 		"  setTimeout(tickCountdown,1000);"
 
-		                                                       
 		"  function softRefresh(){"
 		"    if(busy) return Promise.resolve();"
 		"    busy=true;"
@@ -214,7 +206,6 @@ void send_page_failban(int fd, const char *qs)
 		"        toast('Request failed','err');"
 		"      });"
 		"  }"
-
 
 		"  var ca=document.getElementById('fbClearAll');"
 		"  if(ca) ca.addEventListener('click',function(){"

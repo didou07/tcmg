@@ -7,8 +7,6 @@
 
 #define TCMG_RUNTIME_CONFIG_TEXT_MAX CFGVAL_LEN
 
-
-
 typedef struct {
     bool enabled;
     int max_fails;

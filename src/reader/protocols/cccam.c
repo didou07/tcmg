@@ -112,7 +112,6 @@ static void cc_signature(const S_READER *r, char *out, size_t out_len)
     secure_zero(blob, sizeof(blob));
 }
 
-
 static int connect_host(const char *host, uint16_t port, int timeout_s)
 {
     char service[8];
@@ -184,10 +183,7 @@ static int cc_recv_msg(S_CC_READER_STATE *s, uint8_t *cmd, uint8_t *buf, uint16_
 static void cc_cw_crypt(S_CC_READER_STATE *s, uint8_t *cw, uint32_t card_id)
 {
     uint8_t nod[8], n, tmp;
-    /* OSCam asymmetry: the server-side cc_cw_crypt() uses the peer
-     * node id (the reader's id) while a reader-side connection uses its
-     * own node id. The server advertises its node id as peer_node_id,
-     * but that value must NOT be used for CW obfuscation here. */
+
     for (int i = 0; i < 8; i++) nod[i] = s->node_id[7 - i];
     for (int i = 0; i < 16; i++) {
         int j = i >> 1;
@@ -286,21 +282,12 @@ static int cc_connect_locked(S_CC_READER_STATE *s, const S_READER *r, int index)
     memcpy(xseed, seed, sizeof(xseed));
     cc_seed_xor(xseed);
     sha1_hash(xseed, sizeof(xseed), hash);
-    /* recv_block decrypts server->client traffic and is keyed straight from
-     * the seed hash. send_block encrypts client->server traffic and is keyed
-     * from the seed after recv_block decrypts it -- getting this pair
-     * backwards silently desyncs the RC4-like state from byte one and the
-     * server drops the connection (or every message after login decrypts to
-     * garbage). Verified against oscam's module-cccam.c cc_cli_connect(). */
+
     cc_rc4_init(&s->recv_block, hash, 20);
     memcpy(dec_seed, xseed, sizeof(dec_seed));
     cc_crypt(&s->recv_block, dec_seed, sizeof(dec_seed), 0);
     cc_rc4_init(&s->send_block, dec_seed, 16);
-    /* The login hash needs an extra "priming" pass through send_block before
-     * it goes out, on top of the automatic encrypt pass cc_send_raw() always
-     * applies -- two passes total, matching oscam's manual pre-crypt plus its
-     * cc_cmd_send()'s own cc_crypt(). Sending the untransformed hash here
-     * (as opposed to hash_buf) is what used to make every login fail. */
+
     memcpy(hash_buf, hash, sizeof(hash_buf));
     cc_crypt(&s->send_block, hash_buf, sizeof(hash_buf), 0);
     if (cc_send_raw(s, hash_buf, 20) < 0) goto fail;
@@ -427,8 +414,7 @@ int32_t cccam_reader_do_ecm(int index, const S_READER *reader,
     }
 
     if (cmd == CCCAM_CMD_ECM_NOK1 || cmd == CCCAM_CMD_ECM_NOK2) {
-        /* OSCam uses FE/FF as the explicit "CW not found" response. Treat
-         * both as a valid protocol-level NAK instead of a broken frame. */
+
         pthread_mutex_unlock(&s->mtx);
         return -9;
     }
@@ -440,9 +426,7 @@ int32_t cccam_reader_do_ecm(int index, const S_READER *reader,
     memcpy(cw, rsp, CW_LEN);
     cc_cw_crypt(s, cw, card_id);
     tcmg_dump_dbg(D_READER, cw, CW_LEN, "reader[%d] after cw_crypt card=%08X", index, card_id);
-    /* OSCam advances the DECRYPT stream once more with ENCRYPT direction
-     * after a CW frame, but that operation is only a stream-state update.
-     * Do it on a throw-away copy so the caller receives the actual CW. */
+
     uint8_t state_step[CW_LEN];
     memcpy(state_step, cw, CW_LEN);
     cc_crypt(&s->recv_block, state_step, CW_LEN, 1);

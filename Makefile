@@ -189,7 +189,7 @@ test-config: $(TARGET)
 test-network: $(TARGET)
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(TEST_COMMON_CFLAGS) tests/reader_smoke.c $(filter-out $(OBJ_DIR)/src/main.o,$(OBJS)) -o $(BUILD_DIR)/test_reader_smoke $(LDFLAGS)
-	TCMG_NETWORK_BUILD_DIR="$(abspath $(BUILD_DIR))" ./tests/network_matrix.sh
+	TCMG_NETWORK_BUILD_DIR="$(abspath $(BUILD_DIR))" bash ./tests/network_matrix.sh
 
 test-reader-registry: $(TARGET)
 	@mkdir -p $(BUILD_DIR)
@@ -210,7 +210,6 @@ test-session: $(TARGET)
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(TEST_COMMON_CFLAGS) tests/session_smoke.c $(filter-out $(OBJ_DIR)/src/main.o,$(OBJS)) -o $(BUILD_DIR)/test_session $(LDFLAGS)
 	$(BUILD_DIR)/test_session
-
 
 test-cache: $(TARGET)
 	@mkdir -p $(BUILD_DIR)
@@ -261,8 +260,8 @@ check: $(ASSET_HDRS)
 	if grep -RInE '\bfetch\(' webif/pages webif/core.c | grep -v 'js_common.h'; then echo 'DIRECT FETCH IN PAGE DETECTED' >&2; exit 1; fi; \
 	if grep -RInE '"../../src/(core/config_state|core/client_state|config/config|client/client|security/failban)' webif/api webif/pages webif/core.c webif/server.c; then echo 'WEBIF internal include detected' >&2; exit 1; fi; \
 	if grep -RIn 'globals.h' src webif tests --include='*.c' --include='*.h' >/tmp/tcmg-globals.$$ 2>/dev/null && [ -s /tmp/tcmg-globals.$$ ]; then echo 'Umbrella globals.h include detected' >&2; rm -f /tmp/tcmg-globals.$$; exit 1; fi; rm -f /tmp/tcmg-globals.$$; \
-	./build.sh check >/dev/null; \
-	./build.sh self-test >/dev/null; \
+	bash ./build.sh check >/dev/null; \
+	bash ./build.sh self-test >/dev/null; \
 	echo "CHECK: PASS"
 
 all: $(TARGET)

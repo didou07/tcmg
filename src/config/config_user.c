@@ -95,4 +95,3 @@ badkey:snprintf(err,esz,"%s:%d: unknown key '%s'",path,ln,key);fclose(f);return 
 badval:snprintf(err,esz,"%s:%d: invalid value for '%s'",path,ln,key);fclose(f);return false;
 badline:snprintf(err,esz,"%s:%d: invalid line",path,ln);fclose(f);return false;
 }
-

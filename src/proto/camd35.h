@@ -26,14 +26,10 @@ uint32_t cs378x_crc32(const uint8_t *data, size_t len);
 void cs378x_user_crc(const char *user, uint8_t out[4]);
 void cs378x_password_key(const char *password, uint8_t out[16]);
 
-/* A CS378X wire frame is: 4-byte big-endian UCRC + AES-128-ECB ciphertext.
- * The plaintext contains the 20-byte camd35 header followed by the command data. */
 int cs378x_build_frame(const uint8_t ucrc[4], const uint8_t key[16],
                        const uint8_t *plain, size_t plain_len,
                        uint8_t *out, size_t out_cap, size_t *out_len);
 
-/* Reads/decrypts a frame after the caller has already identified the account
- * from its 4-byte UCRC. Only the ciphertext is consumed by this function. */
 int cs378x_recv_ucrc(int fd, uint8_t ucrc[4]);
 int cs378x_recv_payload(int fd, const uint8_t key[16],
                         uint8_t *plain, size_t plain_cap, size_t *plain_len);

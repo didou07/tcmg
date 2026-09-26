@@ -4,10 +4,6 @@
 #include "../core/account_types.h"
 #include <stdint.h>
 
-/*
- * Account-list synchronization is kept behind this domain boundary.
- * Callers that need to walk the list must hold the corresponding lock.
- */
 void account_state_read_lock(void);
 void account_state_read_unlock(void);
 void account_state_write_lock(void);

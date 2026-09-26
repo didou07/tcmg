@@ -419,7 +419,6 @@ materialize_toolchain(){
   printf '%s\n' "$root" > "$cache/root.path"
 }
 
-
 cross_pcsc_root(){
   local root=""
   if [[ "$TOOLCHAIN" == manual ]]; then
