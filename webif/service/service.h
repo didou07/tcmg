@@ -15,6 +15,7 @@ bool webif_save_readers_file(const char *content, size_t len, char *err, size_t 
 int webif_account_count(void);
 int webif_account_snapshot_all(S_WEBIF_ACCOUNT_VIEW *out, size_t cap);
 int webif_account_userstats_snapshot_all(S_WEBIF_USER_STATS_VIEW *out, size_t cap);
+void webif_account_status_counts(int *disabled, int *expired);
 bool webif_account_get(const char *user, S_WEBIF_ACCOUNT_VIEW *out);
 bool webif_account_toggle(const char *user, int *enabled);
 bool webif_account_save(const S_WEBIF_ACCOUNT_EDIT *edit);

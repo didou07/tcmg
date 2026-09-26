@@ -3,8 +3,6 @@
 
 #define TCMG_JS \
 	"\n" \
-	"\n" \
-	"\n" \
 	"function _theme_apply(pref) {\n" \
 	"  if (pref !== 'light') pref = 'dark';\n" \
 	"  var r = document.documentElement;\n" \
@@ -25,23 +23,22 @@
 	"  _theme_apply(document.documentElement.getAttribute('data-tpref') || 'dark');\n" \
 	"});\n" \
 	"\n" \
-	 "(function(){" \
-	 "function mkq(text){" \
-	 "var q=document.createElement('button');q.type='button';q.className='qtip';q.textContent='?';" \
-	 "q.title=text;q.setAttribute('aria-label',text);return q;}" \
-	 "function run(){" \
-	 "document.querySelectorAll('.cfg-sub').forEach(function(el){" \
-	 "var t=(el.textContent||'').replace(/\\s+/g,' ').trim();if(!t)return;" \
-	 "var q=mkq(t),p=el.parentNode,ttl=el.previousElementSibling;" \
-	 "if(ttl)ttl.appendChild(q);else p.insertBefore(q,el);el.remove();});" \
-	 "document.querySelectorAll('.cfg-help,.fhint').forEach(function(el){" \
-	 "var t=(el.textContent||'').replace(/\\s+/g,' ').trim();if(!t){el.remove();return;}" \
-	 "var q=mkq(t);if(el.id)q.id=el.id;el.replaceWith(q);});" \
-	 "document.querySelectorAll('.cfg-intro').forEach(function(el){el.remove();});" \
-	 "}" \
-	 "if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run);else run();" \
-	 "})();" \
-	"\n" \
+	"(function(){" \
+	"function mkq(text){" \
+	"var q=document.createElement('button');q.type='button';q.className='qtip';q.textContent='?';" \
+	"q.title=text;q.setAttribute('aria-label',text);return q;}" \
+	"function run(){" \
+	"document.querySelectorAll('.cfg-sub').forEach(function(el){" \
+	"var t=(el.textContent||'').replace(/\\s+/g,' ').trim();if(!t)return;" \
+	"var q=mkq(t),p=el.parentNode,ttl=el.previousElementSibling;" \
+	"if(ttl)ttl.appendChild(q);else p.insertBefore(q,el);el.remove();});" \
+	"document.querySelectorAll('.cfg-help,.fhint').forEach(function(el){" \
+	"var t=(el.textContent||'').replace(/\\s+/g,' ').trim();if(!t){el.remove();return;}" \
+	"var q=mkq(t);if(el.id)q.id=el.id;el.replaceWith(q);});" \
+	"document.querySelectorAll('.cfg-intro').forEach(function(el){el.remove();});" \
+	"}" \
+	"if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run);else run();" \
+	"})();" \
 	"\n" \
 	"document.addEventListener('DOMContentLoaded', function() {\n" \
 	"  document.querySelectorAll('.tnav a').forEach(function(a) {\n" \
@@ -51,7 +48,6 @@
 	"    });\n" \
 	"  });\n" \
 	"});\n" \
-	"\n" \
 	"\n" \
 	"var ACCENTS = [\n" \
 	"  { id: 'blue',   p: '#147bd1', p2: '#106fbe' },\n" \
@@ -107,7 +103,6 @@
 	"    }\n" \
 	"  });\n" \
 	"});\n" \
-	"\n" \
 	"\n" \
 	"var _pm = (function() {\n" \
 	"  var srv = Number(window.TCMG_WEB_POLL) || 0;\n" \
@@ -170,6 +165,26 @@
 	"  });\n" \
 	"}\n" \
 	"\n" \
+	"function toast(message, kind) {\n" \
+	"  var box = document.querySelector('.toasts');\n" \
+	"  if (!box) {\n" \
+	"    box = document.createElement('div');\n" \
+	"    box.className = 'toasts';\n" \
+	"    box.setAttribute('role', 'status');\n" \
+	"    box.setAttribute('aria-live', 'polite');\n" \
+	"    document.body.appendChild(box);\n" \
+	"  }\n" \
+	"  var item = document.createElement('div');\n" \
+	"  item.className = 'toast ' + (kind || '');\n" \
+	"  item.textContent = message;\n" \
+	"  box.appendChild(item);\n" \
+	"  setTimeout(function () {\n" \
+	"    item.style.transition = 'opacity .25s';\n" \
+	"    item.style.opacity = '0';\n" \
+	"    setTimeout(function () { if (item.parentNode) item.parentNode.removeChild(item); }, 260);\n" \
+	"  }, kind === 'err' ? 5000 : 2600);\n" \
+	"}\n" \
+	"\n" \
 	"function tcmg_api(url, opt) {\n" \
 	"  opt = opt || {};\n" \
 	"  if (!opt.credentials) opt.credentials = 'same-origin';\n" \
@@ -203,7 +218,6 @@
 	"    return r.text();\n" \
 	"  });\n" \
 	"}\n" \
-	"\n" \
 	"\n" \
 	"function _flag_img_html(code) {\n" \
 	"  var cc = String(code || '').toLowerCase();\n" \
@@ -251,7 +265,6 @@
 	"    .catch(function () { delete _cc_cache[ip]; delete _cc_waiters[ip]; });\n" \
 	"}\n" \
 	"\n" \
-	"\n" \
 	"function _schedule_poll(ms) {\n" \
 	"  if (_pm <= 0) return;\n" \
 	"  if (_pit) clearTimeout(_pit);\n" \
@@ -272,7 +285,6 @@
 	"  try { sessionStorage.setItem('tcmg_poll', String(v)); } catch (e) {}\n" \
 	"  if (!_busy) _schedule_poll(_pm);\n" \
 	"}\n" \
-	"\n" \
 	"\n" \
 	"function _fmt_up(s) {\n" \
 	"  var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sc = s % 60;\n" \
@@ -302,12 +314,10 @@
 	"  e.classList.add('cnt-up');\n" \
 	"}\n" \
 	"\n" \
-	"\n" \
 	"function _upd_topbar(d) {\n" \
 	"  var e = document.getElementById('tb_conn');\n" \
 	"  if (e) e.textContent = d.active_connections;\n" \
 	"}\n" \
-	"\n" \
 	"\n" \
 	"function _uptime_tick() {\n" \
 	"  _ut_tmr = null;\n" \
@@ -339,7 +349,6 @@
 	"  var tb = document.getElementById('p_clients');\n" \
 	"  if (!tb) return;\n" \
 	"\n" \
-	"  \n" \
 	"  if (!tb._kb) {\n" \
 	"    tb._kb = 1;\n" \
 	"    tb.addEventListener('click', function(e) {\n" \
@@ -361,7 +370,6 @@
 	"  var ids = {};\n" \
 	"  d.clients.forEach(function(cl) { ids[cl.thread_id] = 1; });\n" \
 	"\n" \
-	"  \n" \
 	"  rows.forEach(function(r) {\n" \
 	"    var tid = r.id.slice(4);\n" \
 	"    if (!ids[tid] && r.getAttribute('data-gone') !== '1') {\n" \
@@ -374,7 +382,7 @@
 	"  d.clients.forEach(function(cl) {\n" \
 	"    var existing = document.getElementById('row_' + cl.thread_id);\n" \
 	"    if (existing) {\n" \
-	"      \n" \
+	"\n" \
 	"      _cell(existing, 'c-caid', cl.caid);\n" \
 	"      _cell(existing, 'c-sid', cl.sid);\n" \
 	"      _cell(existing, 'c-ch', cl.channel || '\\u2014');\n" \
@@ -408,7 +416,6 @@
 	"  if (e && e.textContent !== val) e.textContent = val;\n" \
 	"}\n" \
 	"\n" \
-	"\n" \
 	"function _kill(tid, user) {\n" \
 	"  if (!confirm('Disconnect ' + user + '?')) return;\n" \
 	"  tcmg_api('/api/client/kill?tid=' + encodeURIComponent(tid) + '&user=' + encodeURIComponent(user), {method: 'POST'})\n" \
@@ -419,7 +426,6 @@
 	"    setTimeout(function() { if (r.parentNode) r.parentNode.removeChild(r); }, 800);\n" \
 	"  }\n" \
 	"}\n" \
-	"\n" \
 	"\n" \
 	"function _poll() {\n" \
 	"  if (_busy || document.hidden) return;\n" \
@@ -447,7 +453,6 @@
 	"    .catch(function(e) {\n" \
 	"      _busy = false;\n" \
 	"      if (e && e.auth) return;\n" \
-	"      // OSCam-style backoff: a failed request never spins the browser.\n" \
 	"      _schedule_poll(Math.max(15000, _pm));\n" \
 	"    });\n" \
 	"}\n" \

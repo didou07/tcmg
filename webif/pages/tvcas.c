@@ -5,7 +5,7 @@
 
 void send_page_tvcas(int fd)
 {
-	PAGE_INIT(32768)
+	PAGE_INIT(16384)
 
 	pos = emit_header(&buf, &bsz, pos, "TVCAS Tool", "tvcas");
 

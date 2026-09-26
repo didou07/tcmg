@@ -30,7 +30,7 @@ static int emit_stat_card(char **buf, int *bsz, int pos,
 
 void send_page_status(int fd)
 {
-	PAGE_INIT(32768)
+	PAGE_INIT(16384)
 
 	pos = emit_header(&buf, &bsz, pos, "Dashboard", "status");
 
@@ -46,20 +46,7 @@ void send_page_status(int fd)
 	         st.hit_rate);
 
 	int dis_cnt = 0, exp_cnt = 0;
-	{
-		time_t now = time(NULL);
-		int cap = webif_account_count();
-		if (cap < 1) cap = 1;
-		S_WEBIF_ACCOUNT_VIEW *accounts = calloc((size_t)cap, sizeof(*accounts));
-		if (accounts) {
-			int n = webif_account_snapshot_all(accounts, (size_t)cap);
-			for (int i = 0; i < n; i++) {
-				if (!accounts[i].enabled) dis_cnt++;
-				if (accounts[i].expirationdate > 0 && now > accounts[i].expirationdate) exp_cnt++;
-			}
-		}
-		free(accounts);
-	}
+	webif_account_status_counts(&dis_cnt, &exp_cnt);
 
 	pos = buf_printf(&buf, &bsz, pos, "<div class='cg'>");
 

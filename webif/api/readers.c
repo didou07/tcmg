@@ -236,7 +236,7 @@ static int view_json(char **dst, int *bsz, int pos, const S_WEBIF_READER_VIEW *r
 
 void send_api_readers(int fd)
 {
-    int bsz = 32768, pos = 0;
+    int bsz = 8192, pos = 0;
     char *buf = malloc((size_t)bsz);
     S_WEBIF_READER_VIEW *reader = calloc(1, sizeof(*reader));
     if (!buf || !reader) {
@@ -272,7 +272,7 @@ void send_api_reader_get(int fd, const char *qs)
     if (rnum(s,0,MAX_READERS-1,&idx)<0) { send_json_error(fd,400,"Bad Request","invalid index"); return; }
     S_WEBIF_READER_VIEW r;
     if (!webif_reader_get((int)idx,&r)) { send_json_error(fd,404,"Not Found","reader not found"); return; }
-    int bsz = 32768, pos = 0;
+    int bsz = 8192, pos = 0;
     char *out = malloc((size_t)bsz);
     if (!out) { send_json_error(fd, 503, "Service Unavailable", "out of memory"); return; }
     pos = buf_printf(&out, &bsz, pos, "{\"ok\":true,");

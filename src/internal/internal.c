@@ -396,10 +396,6 @@ static int reader_present(S_INTERNAL_SLOT *s)
 
 static void sci_parameters_defaults(SCI_PARAMETERS *p)
 {
-    /* Match OSCam ifd_sci.c initial reset parameters for a Dreambox PLL SCI:
-     * fs=27 (1 MHz initial clock divider), ETU=372, T=0, EGT=0.
-     * The remaining fields stay zero until ATR-derived settings are written.
-     */
     memset(p, 0, sizeof(*p));
     p->T = 0;
     p->fs = TCMG_INTERNAL_DEFAULT_FS;
@@ -418,9 +414,6 @@ static uint32_t calc_etu_us(const S_INTERNAL_SLOT *s)
 {
     if (!s || s->sci_etu == 0 || s->sci_fs == 0) return 120;
 
-    /* OSCam's SCI driver uses fs as the Dreambox PLL divider.
-     * card clock is expressed in 10 kHz units: 2700 / divider.
-     */
     const uint32_t clock_10khz = TCMG_INTERNAL_DREAMBOX_CARDMHZ / s->sci_fs;
     if (clock_10khz == 0) return 120;
 
@@ -700,7 +693,6 @@ static int sci_reset_card(S_INTERNAL_SLOT *s, const char *reason)
             break;
         }
 
-        /* sci_write_parameters updates the actual values returned by the SCI driver. */
         calculate_t0_timing(s);
         tcmg_sleep_ms(TCMG_INTERNAL_SCI_SETTLE_MS);
         s->present = 1;

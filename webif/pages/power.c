@@ -9,7 +9,7 @@ void send_page_power(int fd, const char *qs)
 	get_param(qs, "action",  action,  sizeof(action));
 	get_param(qs, "confirm", confirm, sizeof(confirm));
 
-	PAGE_INIT(12288)
+	PAGE_INIT(8192)
 
 	pos = emit_header(&buf, &bsz, pos, "Power", "power");
 

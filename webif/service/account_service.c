@@ -149,6 +149,21 @@ static void apply_account_edit(S_ACCOUNT *a, const S_WEBIF_ACCOUNT_EDIT *f, bool
     a->expirationdate = f->expiry;
 }
 
+
+void webif_account_status_counts(int *disabled, int *expired)
+{
+    int d = 0, e = 0;
+    time_t now = time(NULL);
+    pthread_rwlock_rdlock(&g_cfg.acc_lock);
+    for (S_ACCOUNT *a = g_cfg.accounts; a; a = a->next) {
+        if (!a->enabled) d++;
+        if (a->expirationdate > 0 && now > a->expirationdate) e++;
+    }
+    pthread_rwlock_unlock(&g_cfg.acc_lock);
+    if (disabled) *disabled = d;
+    if (expired) *expired = e;
+}
+
 static S_ACCOUNT *find_account_locked(const char *user)
 {
     for (S_ACCOUNT *a = g_cfg.accounts; a; a = a->next) {

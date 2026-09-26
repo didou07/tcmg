@@ -261,22 +261,28 @@ void req_free(s_http_req *req)
 
 int buf_printf(char **dst, int *dstsz, int pos, const char *fmt, ...)
 {
+	if (!dst || !*dst || !dstsz || *dstsz <= 0 || pos < 0 || pos >= *dstsz) return pos;
+
 	va_list ap;
-	int     needed;
-
 	va_start(ap, fmt);
-	needed = vsnprintf(NULL, 0, fmt, ap);
+	int avail = *dstsz - pos;
+	int n = vsnprintf(*dst + pos, (size_t)avail, fmt, ap);
 	va_end(ap);
-	if (needed < 0) return pos;
-
-	if (pos + needed + 1 >= *dstsz) {
-		int newsz = *dstsz * 2;
-		if (newsz < pos + needed + 8192) newsz = pos + needed + 8192;
-		char *nb = (char *)realloc(*dst, (size_t)newsz);
-		if (!nb) return pos;
-		*dst   = nb;
-		*dstsz = newsz;
+	if (n < 0) {
+		return pos;
 	}
+	if (n < avail) {
+		return pos + n;
+	}
+
+	int needed = n;
+	int newsz = *dstsz * 2;
+	if (newsz < pos + needed + 2048) newsz = pos + needed + 2048;
+	char *nb = (char *)realloc(*dst, (size_t)newsz);
+	if (!nb) return pos;
+	*dst = nb;
+	*dstsz = newsz;
+
 	va_start(ap, fmt);
 	vsnprintf(*dst + pos, (size_t)(*dstsz - pos), fmt, ap);
 	va_end(ap);
@@ -805,15 +811,23 @@ int emit_header(char **buf, int *bsz, int pos,
 
 static unsigned long webif_memory_kb(void)
 {
+    static _Atomic unsigned long cached_kb = 0;
+    static _Atomic time_t cached_at = 0;
+    time_t now = time(NULL);
+    time_t at = atomic_load_explicit(&cached_at, memory_order_relaxed);
+    unsigned long cached = atomic_load_explicit(&cached_kb, memory_order_relaxed);
+    if (cached && now - at < 2) return cached;
 #ifndef TCMG_OS_WINDOWS
 #if defined(__linux__)
     FILE *fp = fopen("/proc/self/status", "r");
     if (fp) {
-        char line[128];
+        char line[96];
         while (fgets(line, sizeof(line), fp)) {
             unsigned long kb = 0;
             if (sscanf(line, "VmRSS: %lu kB", &kb) == 1) {
                 fclose(fp);
+                atomic_store_explicit(&cached_kb, kb, memory_order_relaxed);
+                atomic_store_explicit(&cached_at, now, memory_order_relaxed);
                 return kb;
             }
         }
@@ -823,13 +837,16 @@ static unsigned long webif_memory_kb(void)
     struct rusage ru;
     if (getrusage(RUSAGE_SELF, &ru) == 0) {
 #if defined(__APPLE__)
-        return (unsigned long)(ru.ru_maxrss / 1024UL);
+        unsigned long kb = (unsigned long)(ru.ru_maxrss / 1024UL);
 #else
-        return (unsigned long)ru.ru_maxrss;
+        unsigned long kb = (unsigned long)ru.ru_maxrss;
 #endif
+        atomic_store_explicit(&cached_kb, kb, memory_order_relaxed);
+        atomic_store_explicit(&cached_at, now, memory_order_relaxed);
+        return kb;
     }
 #endif
-    return 0;
+    return cached;
 }
 
 int emit_footer(char **buf, int *bsz, int pos)

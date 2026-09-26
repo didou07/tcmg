@@ -20,11 +20,11 @@ const S_DBLEVEL_NAME g_dblevel_names[MAX_DEBUG_LEVELS] = {
 
 #define LOG_FILE_MAX_BYTES  (10u * 1024u * 1024u)
 #define USR_FILE_MAX_BYTES  (5u  * 1024u * 1024u)
-#define LOG_LINE_MAX        1280
+#define LOG_LINE_MAX        1120
 #define LOG_BODY_MAX        1024
 #define LOG_HEX_INPUT_CAP   512
 #define LOG_PREFIX_MAX      12
-#define WQ_SIZE             8192
+#define WQ_SIZE             2048
 
 #define ANSI_RESET   "\x1b[0m"
 #define ANSI_BOLD    "\x1b[1m"
@@ -61,7 +61,7 @@ static int color_enabled(void)
 typedef struct {
 	char line[LOG_LINE_MAX];
 	char usr[CFGKEY_LEN];
-	char usr_line[LOG_LINE_MAX];
+	char usr_line[192];
 	int8_t has_usr_line;
 } S_WQ_ENTRY;
 
@@ -723,40 +723,33 @@ void log_cw_result(uint16_t caid, uint16_t sid, int32_t len,
 void   log_ecm_set(int8_t on) { s_ecm_log = on ? 1 : 0; }
 int8_t log_ecm_get(void)      { return s_ecm_log; }
 
-int32_t log_ring_since(int32_t from_id, char **out_lines, char **out_users,
-                       int32_t max_lines, int32_t *out_next)
-{
-	int32_t count = 0;
-	pthread_mutex_lock(&s_ring_mtx);
-
-	int32_t oldest = s_ring_total - LOG_RING_MAX;
-	if (oldest < 0) oldest = 0;
-	if (from_id < oldest) from_id = oldest;
-
-	for (int32_t i = from_id; i < s_ring_total && count < max_lines; i++) {
-		int32_t     slot = i % LOG_RING_MAX;
-		const char *src  = s_ring[slot].line;
-		const char *usr  = s_ring[slot].usr;
-
-		out_lines[count] = strdup(src);
-		if (!out_lines[count]) break;
-
-		if (out_users) {
-			out_users[count] = strdup(usr[0] ? usr : "");
-			if (!out_users[count]) { free(out_lines[count]); break; }
-		}
-		count++;
-	}
-
-	*out_next = s_ring_total;
-	pthread_mutex_unlock(&s_ring_mtx);
-	return count;
-}
-
 int32_t log_ring_total(void)
 {
 	pthread_mutex_lock(&s_ring_mtx);
 	int32_t t = s_ring_total;
 	pthread_mutex_unlock(&s_ring_mtx);
 	return t;
+}
+
+int32_t log_ring_foreach(int32_t from_id, int32_t max_lines, log_ring_iter_cb cb, void *ctx, int32_t *out_next)
+{
+	if (!cb || max_lines <= 0) {
+		if (out_next) *out_next = log_ring_total();
+		return 0;
+	}
+	pthread_mutex_lock(&s_ring_mtx);
+	int32_t oldest = s_ring_total - LOG_RING_MAX;
+	if (oldest < 0) oldest = 0;
+	if (from_id < oldest) from_id = oldest;
+	int32_t total = s_ring_total;
+	int32_t count = 0;
+	for (int32_t i = from_id; i < total && count < max_lines; i++) {
+		int32_t slot = i % LOG_RING_MAX;
+		S_RING_ENTRY *e = &s_ring[slot];
+		if (cb(i, e->line, e->usr, ctx) < 0) break;
+		count++;
+	}
+	if (out_next) *out_next = s_ring_total;
+	pthread_mutex_unlock(&s_ring_mtx);
+	return count;
 }

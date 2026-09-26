@@ -57,8 +57,8 @@ void    log_cw_result(uint16_t caid, uint16_t sid, int32_t len,
                       const uint8_t *cw, bool hit, bool from_cache,
                       int32_t ms, const char *user);
 
-int32_t log_ring_since(int32_t from_id, char **out_lines, char **out_users,
-                       int32_t max, int32_t *out_next);
 int32_t log_ring_total(void);
+typedef int (*log_ring_iter_cb)(int32_t id, const char *line, const char *usr, void *ctx);
+int32_t log_ring_foreach(int32_t from_id, int32_t max_lines, log_ring_iter_cb cb, void *ctx, int32_t *out_next);
 
 #endif

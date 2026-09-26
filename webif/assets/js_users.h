@@ -15,36 +15,13 @@
 	"  function pad2(n) { return (n < 10 ? '0' : '') + n; }\n" \
 	"  function ymd(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }\n" \
 	"\n" \
-	"  \n" \
-	"\n" \
 	"  function netErr(e) {\n" \
 	"    if (e && e.message === 'unauthorized') return;\n" \
 	"    toast('Request failed \\u2014 check the connection', 'err');\n" \
 	"  }\n" \
 	"\n" \
-	"  var toastBox = null;\n" \
-	"  function toast(msg, kind) {\n" \
-	"    if (!toastBox) {\n" \
-	"      toastBox = document.createElement('div');\n" \
-	"      toastBox.className = 'toasts';\n" \
-	"      toastBox.setAttribute('role', 'status');\n" \
-	"      toastBox.setAttribute('aria-live', 'polite');\n" \
-	"      document.body.appendChild(toastBox);\n" \
-	"    }\n" \
-	"    var t = document.createElement('div');\n" \
-	"    t.className = 'toast ' + (kind || '');\n" \
-	"    t.textContent = msg;\n" \
-	"    toastBox.appendChild(t);\n" \
-	"    setTimeout(function () {\n" \
-	"      t.style.transition = 'opacity .25s';\n" \
-	"      t.style.opacity = '0';\n" \
-	"      setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 260);\n" \
-	"    }, kind === 'err' ? 5000 : 2600);\n" \
-	"  }\n" \
-	"\n" \
 	"  function flash(msg) { try { sessionStorage.setItem('tcmg_u_flash', msg); } catch (e) {} }\n" \
 	"\n" \
-	"  \n" \
 	"  var stack = [];\n" \
 	"  function lock() { document.body.classList.toggle('mo-open', stack.length > 0); }\n" \
 	"\n" \
@@ -89,7 +66,6 @@
 	"    }\n" \
 	"  });\n" \
 	"\n" \
-	"  \n" \
 	"  function ask(o) {\n" \
 	"    return new Promise(function (resolve) {\n" \
 	"      var ov = document.createElement('div');\n" \
@@ -126,8 +102,6 @@
 	"    });\n" \
 	"  }\n" \
 	"\n" \
-	"  \n" \
-	"\n" \
 	"  var view = { q: '', f: 'all', k: '', d: 1, p: 1 };\n" \
 	"  var limit = 50;\n" \
 	"  try { var lv = parseInt(localStorage.getItem('tcmg.users.limit'), 10); if (lv >= 10 && lv <= 500) limit = lv; } catch (e) {}\n" \
@@ -146,9 +120,6 @@
 	"    } catch (e) {}\n" \
 	"  }\n" \
 	"\n" \
-	"  \n" \
-	"\n" \
-	"  \n" \
 	"  var KEYS = {\n" \
 	"    user:  { a: 'user', str: true, d0: 1 },\n" \
 	"    en:    { a: 'en', d0: -1 },\n" \
@@ -204,7 +175,6 @@
 	"    $('pageStat').textContent = pages > 1 ? 'Page ' + view.p + ' of ' + pages : '';\n" \
 	"  }\n" \
 	"\n" \
-	"  \n" \
 	"  function applyFilter() {\n" \
 	"    var rows = rowsAll(), matched = [];\n" \
 	"    rows.forEach(function (r) { if (matches(r)) matched.push(r); });\n" \
@@ -453,7 +423,6 @@
 	"\n" \
 	"  window.tcmgSoftRefresh = softRefresh;\n" \
 	"\n" \
-	"  \n" \
 	"  function setEnabled(tr, en) {\n" \
 	"    tr.dataset.en = en ? '1' : '0';\n" \
 	"    tr.dataset.state = !en ? 'disabled' : (tr.dataset.expd === '1' ? 'expired' : 'active');\n" \
@@ -508,8 +477,6 @@
 	"      }).catch(netErr);\n" \
 	"    });\n" \
 	"  }\n" \
-	"\n" \
-	"  \n" \
 	"\n" \
 	"  var um = $('uModal');\n" \
 	"\n" \
@@ -662,8 +629,6 @@
 	"    });\n" \
 	"  }\n" \
 	"\n" \
-	"  \n" \
-	"\n" \
 	"  function setSort(k) {\n" \
 	"    if (view.k === k) {\n" \
 	"      if (view.d === KEYS[k].d0) view.d = -view.d;\n" \
@@ -731,7 +696,6 @@
 	"    applyFilter();\n" \
 	"  });\n" \
 	"\n" \
-	"  \n" \
 	"  loadView();\n" \
 	"  $('usrSearch').value = view.q;\n" \
 	"  sortRows();\n" \

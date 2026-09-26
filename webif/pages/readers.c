@@ -9,29 +9,32 @@
 static void reader_caid_text(const S_WEBIF_READER_VIEW *r, char *out, size_t sz)
 {
     tcmg_strlcpy(out, r->caids, sz);
-    if (!strcasecmp(r->protocol, "emu") && r->ecmkeys[0]) {
-        char tmp[WEBIF_TEXT_8192];
-        tcmg_strlcpy(tmp, r->ecmkeys, sizeof(tmp));
-        char *save = NULL, *line = strtok_r(tmp, "\r\n", &save);
-        while (line) {
-            char *eq = strchr(line, '=');
-            if (eq && eq != line) {
-                char caid[8];
-                size_t n = (size_t)(eq - line); if (n >= sizeof(caid)) n = sizeof(caid) - 1;
-                memcpy(caid, line, n); caid[n] = 0;
-                if (!strstr(out, caid)) {
-                    if (out[0]) tcmg_strlcat(out, ",", sz);
-                    tcmg_strlcat(out, caid, sz);
-                }
+    if (strcasecmp(r->protocol, "emu") != 0 || !r->ecmkeys[0]) return;
+    const char *p = r->ecmkeys;
+    while (*p) {
+        const char *line = p;
+        const char *nl = strpbrk(p, "\r\n");
+        const char *end = nl ? nl : p + strlen(p);
+        const char *eq = memchr(line, '=', (size_t)(end - line));
+        if (eq && eq > line) {
+            char caid[8];
+            size_t n = (size_t)(eq - line);
+            if (n >= sizeof(caid)) n = sizeof(caid) - 1;
+            memcpy(caid, line, n);
+            caid[n] = '\0';
+            if (!strstr(out, caid)) {
+                if (out[0]) tcmg_strlcat(out, ",", sz);
+                tcmg_strlcat(out, caid, sz);
             }
-            line = strtok_r(NULL, "\r\n", &save);
         }
+        p = nl ? nl + 1 : end;
+        while (*p == '\r' || *p == '\n') p++;
     }
 }
 
 void send_page_readers(int fd)
 {
-    PAGE_INIT(65536)
+    PAGE_INIT(24576)
     pos = emit_header(&buf, &bsz, pos, "Readers", "readers");
     int n = webif_reader_count();
     S_WEBIF_READER_VIEW *reader = calloc(1, sizeof(*reader));

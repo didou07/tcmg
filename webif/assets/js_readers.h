@@ -17,22 +17,6 @@
 	"  function $(id) { return document.getElementById(id); }\n" \
 	"  function kindLabel(k) { return k === 'card' ? 'Card' : k === 'emu' ? 'EMU' : k === 'network' ? 'Network' : 'Other'; }\n" \
 	"\n" \
-	"  function toast(message, kind) {\n" \
-	"    var box = document.querySelector('.toasts');\n" \
-	"    if (!box) {\n" \
-	"      box = document.createElement('div');\n" \
-	"      box.className = 'toasts';\n" \
-	"      box.setAttribute('role', 'status');\n" \
-	"      box.setAttribute('aria-live', 'polite');\n" \
-	"      document.body.appendChild(box);\n" \
-	"    }\n" \
-	"    var item = document.createElement('div');\n" \
-	"    item.className = 'toast ' + (kind || '');\n" \
-	"    item.textContent = message;\n" \
-	"    box.appendChild(item);\n" \
-	"    setTimeout(function () { if (item.parentNode) item.parentNode.removeChild(item); }, 2800);\n" \
-	"  }\n" \
-	"\n" \
 	"  function matches(reader) {\n" \
 	"    if (state.f === 'enabled' && !reader.enabled) return false;\n" \
 	"    if (state.f === 'disabled' && reader.enabled) return false;\n" \
@@ -144,7 +128,6 @@
 	"      tr.appendChild(cell);\n" \
 	"    });\n" \
 	"\n" \
-	"\n" \
 	"    var actions = document.createElement('td');\n" \
 	"    actions.className = 'c-btn';\n" \
 	"    var buttons = document.createElement('div');\n" \
@@ -240,7 +223,9 @@
 	"    $('rGroup').value = 1;\n" \
 	"    $('rWl').value = '37';\n" \
 	"    ['rPoll', 'rSerialPoll'].forEach(function (id) { $(id).value = 250; });\n" \
-	"    $('rFast').value = 0;\n    $('rInternalFast').value = 0;\n    $('rSerialFast').value = 0;\n" \
+	"    $('rFast').value = 0;\n" \
+"    $('rInternalFast').value = 0;\n" \
+"    $('rSerialFast').value = 0;\n" \
 	"    $('rEnabled').checked = true;\n" \
 	"    $('rDoEcm').checked = true;\n" \
 	"    $('rInternalDoEcm').checked = true;\n" \
@@ -271,8 +256,11 @@
 	"      $('rCaid').value = data.caid || '';\n" \
 	"      $('rSid').value = data.sid_whitelist || '';\n" \
 	"      $('rWl').value = data.ecmwhitelist || '37';\n" \
-	"      $('rPoll').value = data.protocol === 'pcsc' ? (data.POLL_MS || 250) : 250; $('rSerialPoll').value = data.protocol === 'serial' ? (data.POLL_MS || 250) : 250;\n" \
-	"      $('rFast').value = data.protocol === 'pcsc' ? (data.FAST_RESET || 0) : 0; $('rInternalFast').value = data.protocol === 'internal' ? (data.FAST_RESET || 0) : 0; $('rSerialFast').value = data.protocol === 'serial' ? (data.FAST_RESET || 0) : 0;\n" \
+	"      $('rPoll').value = data.protocol === 'pcsc' ? (data.POLL_MS || 250) : 250;\n" \
+"      $('rSerialPoll').value = data.protocol === 'serial' ? (data.POLL_MS || 250) : 250;\n" \
+	"      $('rFast').value = data.protocol === 'pcsc' ? (data.FAST_RESET || 0) : 0;\n" \
+"      $('rInternalFast').value = data.protocol === 'internal' ? (data.FAST_RESET || 0) : 0;\n" \
+"      $('rSerialFast').value = data.protocol === 'serial' ? (data.FAST_RESET || 0) : 0;\n" \
 	"      $('rInternalDoEcm').checked = !!data.DO_ECM;\n" \
 	"      $('rSerialDoEcm').checked = !!data.DO_ECM;\n" \
 	"      $('rEnabled').checked = !!data.enabled;\n" \
@@ -362,7 +350,10 @@
 	"    $('rSerialDoEcm').disabled = protocol !== 'serial';\n" \
 	"    $('rKeys').disabled = protocol !== 'emu';\n" \
 	"    if (card && protocol === 'serial') loadSerialPorts();\n" \
-	"    if (protocol !== 'pcsc') $('rPoll').value = 250; if (protocol !== 'internal') $('rInternalFast').value = 0; if (protocol !== 'serial') $('rSerialPoll').value = 250; if (protocol !== 'serial') $('rSerialFast').value = 0;\n" \
+	"    if (protocol !== 'pcsc') $('rPoll').value = 250;\n" \
+"    if (protocol !== 'internal') $('rInternalFast').value = 0;\n" \
+"    if (protocol !== 'serial') $('rSerialPoll').value = 250;\n" \
+"    if (protocol !== 'serial') $('rSerialFast').value = 0;\n" \
 	"    syncCaidPlaceholder();\n" \
 	"  }\n" \
 	"\n" \

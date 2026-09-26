@@ -53,7 +53,7 @@ void send_page_failban(int fd, const char *qs)
 		tcmg_log("%s", "all bans cleared");
 	}
 
-	PAGE_INIT(16384)
+	PAGE_INIT(8192)
 
 	pos = emit_header(&buf, &bsz, pos, "Fail-Ban", "failban");
 

@@ -48,7 +48,7 @@ static void fmt_dur(long s, char *out, size_t sz)
 
 void send_page_users(int fd)
 {
-	PAGE_INIT(65536)
+	PAGE_INIT(32768)
 
 	pos = emit_header(&buf, &bsz, pos, "Users", "users");
 

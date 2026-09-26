@@ -13,7 +13,7 @@
 
 void send_page_config(int fd)
 {
-	PAGE_INIT(32768)
+	PAGE_INIT(16384)
 
 	S_WEBIF_CONFIG_VIEW cfg = {0};
 	webif_config_snapshot(&cfg);
@@ -355,7 +355,7 @@ void send_page_config(int fd)
 }
 void send_page_files(int fd)
 {
-    PAGE_INIT(65536)
+    PAGE_INIT(32768)
     pos = emit_header(&buf, &bsz, pos, "Files", "files");
 
     char cfgpath[CFGPATH_LEN];
