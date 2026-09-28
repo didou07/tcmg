@@ -38,15 +38,22 @@ void account_stats_mark_login(S_ACCOUNT *account, const char *ip)
     log_set_user(account->user);
 }
 
-void account_stats_record_ecm(S_ACCOUNT *account, bool found, int64_t elapsed_ms)
+void account_stats_record_ecm_result(S_ACCOUNT *account, E_ACCOUNT_ECM_RESULT result, int64_t elapsed_ms)
 {
     if (!account) return;
     if (elapsed_ms < 0) elapsed_ms = 0;
     pthread_mutex_lock(&account->stats.lock);
+    const time_t now = time(NULL);
     account->stats.ecm_total++;
-    atomic_store(&account->stats.last_seen, time(NULL));
+    atomic_store(&account->stats.last_seen, now);
     const bool tracked = atomic_load_explicit(&account->stats.global_tracked, memory_order_relaxed) != 0;
-    if (found) {
+    if (result == ACCOUNT_ECM_FOUND) {
+        const int slot = (int)(now % TCMG_ACCOUNT_CW_WINDOW);
+        if (account->stats.recent_cw_sec[slot] != now) {
+            account->stats.recent_cw_sec[slot] = now;
+            account->stats.recent_cw_count[slot] = 0;
+        }
+        account->stats.recent_cw_count[slot]++;
         account->stats.cw_found++;
         if (tracked) atomic_fetch_add_explicit(&s_global_cw_found, 1, memory_order_relaxed);
         account->stats.cw_time_total_ms += elapsed_ms;
@@ -54,11 +61,16 @@ void account_stats_record_ecm(S_ACCOUNT *account, bool found, int64_t elapsed_ms
             account->stats.cw_time_min_ms = elapsed_ms;
         if (elapsed_ms > account->stats.cw_time_max_ms)
             account->stats.cw_time_max_ms = elapsed_ms;
-    } else {
+    } else if (result == ACCOUNT_ECM_NOT_FOUND) {
         account->stats.cw_not++;
         if (tracked) atomic_fetch_add_explicit(&s_global_cw_not, 1, memory_order_relaxed);
     }
     pthread_mutex_unlock(&account->stats.lock);
+}
+
+void account_stats_record_ecm(S_ACCOUNT *account, bool found, int64_t elapsed_ms)
+{
+    account_stats_record_ecm_result(account, found ? ACCOUNT_ECM_FOUND : ACCOUNT_ECM_NOT_FOUND, elapsed_ms);
 }
 
 void account_stats_snapshot(const S_ACCOUNT *account, S_ACCOUNT_STATS_SNAPSHOT *out)
@@ -76,6 +88,16 @@ void account_stats_snapshot(const S_ACCOUNT *account, S_ACCOUNT_STATS_SNAPSHOT *
     out->first_login = account->stats.first_login;
     out->cw_time_min_ms = account->stats.cw_time_min_ms;
     out->cw_time_max_ms = account->stats.cw_time_max_ms;
+    const time_t now = time(NULL);
+    int64_t last_60s = 0;
+    for (int i = 0; i < TCMG_ACCOUNT_CW_WINDOW; i++) {
+        const time_t sec = account->stats.recent_cw_sec[i];
+        if (sec > 0 && now >= sec && now - sec < TCMG_ACCOUNT_CW_WINDOW)
+            last_60s += (int64_t)account->stats.recent_cw_count[i];
+    }
+    out->cw_last_60s = last_60s;
+    memcpy(out->recent_cw_sec, account->stats.recent_cw_sec, sizeof(out->recent_cw_sec));
+    memcpy(out->recent_cw_count, account->stats.recent_cw_count, sizeof(out->recent_cw_count));
     pthread_mutex_unlock((pthread_mutex_t *)&account->stats.lock);
 }
 
@@ -93,6 +115,8 @@ void account_stats_reset(S_ACCOUNT *account)
     account->stats.cw_time_total_ms = 0;
     account->stats.cw_time_min_ms = 0;
     account->stats.cw_time_max_ms = 0;
+    memset(account->stats.recent_cw_sec, 0, sizeof(account->stats.recent_cw_sec));
+    memset(account->stats.recent_cw_count, 0, sizeof(account->stats.recent_cw_count));
     account->stats.first_login = 0;
     atomic_store(&account->stats.last_seen, 0);
     account->stats.last_ip[0] = '\0';
@@ -120,6 +144,8 @@ void account_stats_copy_runtime(S_ACCOUNT *dst, const S_ACCOUNT *src)
     dst->stats.first_login = snap.first_login;
     dst->stats.cw_time_min_ms = snap.cw_time_min_ms;
     dst->stats.cw_time_max_ms = snap.cw_time_max_ms;
+    memcpy(dst->stats.recent_cw_sec, snap.recent_cw_sec, sizeof(dst->stats.recent_cw_sec));
+    memcpy(dst->stats.recent_cw_count, snap.recent_cw_count, sizeof(dst->stats.recent_cw_count));
     pthread_mutex_unlock(&dst->stats.lock);
 }
 

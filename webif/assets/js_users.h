@@ -102,9 +102,7 @@
 	"    });\n" \
 	"  }\n" \
 	"\n" \
-	"  var view = { q: '', f: 'all', k: '', d: 1, p: 1 };\n" \
-	"  var limit = 50;\n" \
-	"  try { var lv = parseInt(localStorage.getItem('tcmg.users.limit'), 10); if (lv >= 10 && lv <= 500) limit = lv; } catch (e) {}\n" \
+	"  var view = { q: '', f: 'all', k: '', d: 1 };\n" \
 	"  var VKEY = 'tcmg_u_view';\n" \
 	"\n" \
 	"  function saveView() { try { sessionStorage.setItem(VKEY, JSON.stringify(view)); } catch (e) {} }\n" \
@@ -131,7 +129,7 @@
 	"    proto: { a: 'proto', str: true, d0: 1 },\n" \
 	"    ip:    { a: 'ipn', miss: 0, d0: 1 },\n" \
 	"    idle:  { a: 'idle', miss: -1, d0: 1 },\n" \
-	"    first: { a: 'first', miss: 0, d0: 1 },\n" \
+	"    last60:{ a: 'last60', miss: 0, d0: -1 },\n" \
 	"    last:  { a: 'last', miss: 0, d0: -1 },\n" \
 	"    exp:   { a: 'exp', miss: 0, d0: 1, date: true }\n" \
 	"  };\n" \
@@ -146,44 +144,10 @@
 	"    return true;\n" \
 	"  }\n" \
 	"\n" \
-	"  function pageBtn(label, page, disabled, cur, title) {\n" \
-	"    var b = document.createElement('button');\n" \
-	"    b.type = 'button';\n" \
-	"    b.className = 'page' + (cur ? ' current' : '');\n" \
-	"    b.textContent = label;\n" \
-	"    b.title = title || '';\n" \
-	"    b.disabled = !!disabled;\n" \
-	"    b.setAttribute('data-page', page);\n" \
-	"    if (cur) b.setAttribute('aria-current', 'page');\n" \
-	"    return b;\n" \
-	"  }\n" \
-	"\n" \
-	"  function renderPager(pages) {\n" \
-	"    var box = $('pager');\n" \
-	"    box.textContent = '';\n" \
-	"    if (pages > 1) {\n" \
-	"      var cur = view.p, nums = [], i;\n" \
-	"      var start = Math.max(1, cur - 4), end = Math.min(pages, start + 8);\n" \
-	"      start = Math.max(1, end - 8);\n" \
-	"      box.appendChild(pageBtn('\\u00AB', 1, cur === 1, false, 'First page'));\n" \
-	"      box.appendChild(pageBtn('\\u2039', Math.max(1, cur - 1), cur === 1, false, 'Previous page'));\n" \
-	"      for (i = start; i <= end; i++) nums.push(i);\n" \
-	"      nums.forEach(function (n) { box.appendChild(pageBtn(String(n), n, false, n === cur, 'Page ' + n)); });\n" \
-	"      box.appendChild(pageBtn('\\u203A', Math.min(pages, cur + 1), cur === pages, false, 'Next page'));\n" \
-	"      box.appendChild(pageBtn('\\u00BB', pages, cur === pages, false, 'Last page'));\n" \
-	"    }\n" \
-	"    $('pageStat').textContent = pages > 1 ? 'Page ' + view.p + ' of ' + pages : '';\n" \
-	"  }\n" \
-	"\n" \
 	"  function applyFilter() {\n" \
 	"    var rows = rowsAll(), matched = [];\n" \
 	"    rows.forEach(function (r) { if (matches(r)) matched.push(r); });\n" \
-	"    var pages = Math.max(1, Math.ceil(matched.length / limit));\n" \
-	"    if (view.p > pages) view.p = pages;\n" \
-	"    if (view.p < 1) view.p = 1;\n" \
-	"    var from = (view.p - 1) * limit, to = from + limit;\n" \
-	"    rows.forEach(function (r) { r.hidden = true; });\n" \
-	"    matched.forEach(function (r, i) { r.hidden = !(i >= from && i < to); });\n" \
+	"    rows.forEach(function (r) { r.hidden = !matches(r); });\n" \
 	"\n" \
 	"    var total = rows.length;\n" \
 	"    var tbl = $('usrTable'), empty = $('uEmpty');\n" \
@@ -198,8 +162,6 @@
 	"      b.setAttribute('data-a', none ? 'add' : 'clear');\n" \
 	"      b.textContent = none ? 'Add User' : 'Clear filters';\n" \
 	"    }\n" \
-	"    renderPager(pages);\n" \
-	"    $('limit').value = String(limit);\n" \
 	"    document.querySelectorAll('.ust').forEach(function (t) {\n" \
 	"      var on = t.getAttribute('data-f') === view.f;\n" \
 	"      t.classList.toggle('act', on);\n" \
@@ -224,10 +186,6 @@
 	"      var e = $('cnt_' + k);\n" \
 	"      if (e) e.textContent = c[k];\n" \
 	"    });\n" \
-	"    $('uCount').innerHTML =\n" \
-	"      '<span><b>' + rows.length + '</b>' + (rows.length === 1 ? 'user' : 'users') + '</span>' +\n" \
-	"      '<span><b class=\"tg\">' + fmtN(ok) + '</b>CW OK</span>' +\n" \
-	"      '<span><b class=\"' + (nok > 0 ? 'tr' : 'dim') + '\">' + fmtN(nok) + '</b>CW NOK</span>';\n" \
 	"  }\n" \
 	"\n" \
 	"  function sortRows() {\n" \
@@ -325,6 +283,7 @@
 	"    row.dataset.proto = proto;\n" \
 	"    row.dataset.ipn = String(ipNum(ip));\n" \
 	"    row.dataset.idle = String((u.idle === null || u.idle === undefined) ? -1 : +u.idle);\n" \
+	"    row.dataset.last60 = String(+u.last_60s || 0);\n" \
 	"    row.dataset.last = String(+u.last_seen || 0);\n" \
 	"    row.dataset.vis = expd ? 'expired' : !en ? 'disabled' : stale ? 'stale' : online ? 'online' : '';\n" \
 	"    row.dataset.q = row.dataset.user + ' ' + caid + ' ' + (row.dataset.allowed || '') + ' ' + ip + ' ' + proto;\n" \
@@ -374,11 +333,19 @@
 	"      else p.textContent = proto || '\\u2014';\n" \
 	"    }\n" \
 	"    setCellText(row, 'c-idle', fmtLiveIdle(u.idle));\n" \
+	"    var last60 = +u.last_60s || 0;\n" \
+	"    var last60El = setCellText(row, 'c-last60', fmtN(last60));\n" \
+	"    if (last60El) { last60El.classList.toggle('tg', last60 > 0); last60El.classList.toggle('dim', last60 <= 0); }\n" \
 	"    var last = setCellText(row, 'c-last', fmtLiveAgo(u.last_seen));\n" \
 	"    if (last) last.title = (+u.last_seen > 0) ? new Date(+u.last_seen * 1000).toLocaleString() : '';\n" \
 	"\n" \
-	"    var cb = row.querySelector('.en-box');\n" \
-	"    if (cb) cb.checked = en;\n" \
+	"    var pwb = row.querySelector('.c-en .pw-btn');\n" \
+	"    if (pwb) {\n" \
+	"      pwb.classList.toggle('on', en);\n" \
+	"      pwb.classList.toggle('off', !en);\n" \
+	"      pwb.title = (en ? 'Disable' : 'Enable') + ' account';\n" \
+	"      pwb.setAttribute('aria-label', (en ? 'Disable' : 'Enable') + ' account');\n" \
+	"    }\n" \
 	"    return true;\n" \
 	"  }\n" \
 	"\n" \
@@ -427,21 +394,25 @@
 	"    tr.dataset.en = en ? '1' : '0';\n" \
 	"    tr.dataset.state = !en ? 'disabled' : (tr.dataset.expd === '1' ? 'expired' : 'active');\n" \
 	"    tr.dataset.vis = !en ? 'disabled' : (tr.dataset.expd === '1' ? 'expired' : '');\n" \
-	"    var cb = tr.querySelector('.en-box');\n" \
-	"    if (cb) cb.checked = en;\n" \
+	"    var pwb = tr.querySelector('.c-en .pw-btn');\n" \
+	"    if (pwb) {\n" \
+	"      pwb.classList.toggle('on', en);\n" \
+	"      pwb.classList.toggle('off', !en);\n" \
+	"      pwb.title = (en ? 'Disable' : 'Enable') + ' account';\n" \
+	"      pwb.setAttribute('aria-label', (en ? 'Disable' : 'Enable') + ' account');\n" \
+	"    }\n" \
 	"    if (!en) tr.dataset.online = '0';   \n" \
 	"  }\n" \
 	"\n" \
-	"  function toggleUser(tr, cb) {\n" \
-	"    var want = cb.checked;\n" \
-	"    cb.disabled = true;\n" \
+	"  function toggleUser(tr, btn) {\n" \
+	"    btn.disabled = true;\n" \
 	"    tcmg_api('/api/user/toggle?user=' + encodeURIComponent(tr.dataset.user), {method: 'POST'}).then(function (d) {\n" \
-	"      cb.disabled = false;\n" \
-	"      if (!d.ok) { cb.checked = !want; toast(d.msg || 'Could not change the account state', 'err'); return; }\n" \
+	"      btn.disabled = false;\n" \
+	"      if (!d.ok) { toast(d.msg || 'Could not change the account state', 'err'); return; }\n" \
 	"      setEnabled(tr, !!d.enabled);\n" \
 	"      refreshAll();\n" \
 	"      toast(tr.dataset.user + (d.enabled ? ' enabled' : ' disabled'), 'ok');\n" \
-	"    }).catch(function (e) { cb.disabled = false; cb.checked = !want; netErr(e); });\n" \
+	"    }).catch(function (e) { btn.disabled = false; netErr(e); });\n" \
 	"  }\n" \
 	"\n" \
 	"  function deleteUser(tr) {\n" \
@@ -466,7 +437,7 @@
 	"    var u = tr.dataset.user;\n" \
 	"    ask({\n" \
 	"      title: 'Reset statistics?',\n" \
-	"      msg: 'ECM counters, latency, first login and last seen of \\u201C' + u + '\\u201D will be set to zero.',\n" \
+	"      msg: 'ECM counters, latency, Last 60s and last seen of \\u201C' + u + '\\u201D will be set to zero.',\n" \
 	"      ok: 'Reset', danger: false\n" \
 	"    }).then(function (yes) {\n" \
 	"      if (!yes) return;\n" \
@@ -637,7 +608,7 @@
 	"      view.k = k;\n" \
 	"      view.d = KEYS[k].d0;\n" \
 	"    }\n" \
-	"    view.p = 1;\n" \
+	"   \n" \
 	"    saveView();\n" \
 	"    sortRows();\n" \
 	"    applyFilter();\n" \
@@ -661,17 +632,15 @@
 	"        case 'sw-as':   toggleAS(!el.classList.contains('on')); break;\n" \
 	"        case 'exp':     addDays(parseInt(el.getAttribute('data-n'), 10) || 0); break;\n" \
 	"        case 'clear':\n" \
-	"          view.q = ''; view.f = 'all'; view.p = 1; $('usrSearch').value = '';\n" \
+	"          view.q = ''; view.f = 'all'; $('usrSearch').value = '';\n" \
 	"          saveView(); applyFilter();\n" \
 	"          break;\n" \
 	"      }\n" \
 	"      return;\n" \
 	"    }\n" \
 	"    var tile = e.target.closest('.ust');\n" \
-	"    if (tile) { view.f = tile.getAttribute('data-f'); view.p = 1; saveView(); applyFilter(); return; }\n" \
-	"    var pg = e.target.closest('.page');\n" \
-	"    if (pg && !pg.disabled) { view.p = parseInt(pg.getAttribute('data-page'), 10) || 1; applyFilter(); return; }\n" \
-	"    var sb = e.target.closest('.table-sort');\n" \
+	"    if (tile) { view.f = tile.getAttribute('data-f'); saveView(); applyFilter(); return; }\n" \
+		"    var sb = e.target.closest('.table-sort');\n" \
 	"    if (sb) setSort(sb.getAttribute('data-k'));\n" \
 	"  });\n" \
 	"\n" \
@@ -684,15 +653,8 @@
 	"\n" \
 	"  $('usrSearch').addEventListener('input', function () {\n" \
 	"    view.q = this.value.trim().toLowerCase();\n" \
-	"    view.p = 1;\n" \
+	"   \n" \
 	"    saveView();\n" \
-	"    applyFilter();\n" \
-	"  });\n" \
-	"\n" \
-	"  $('limit').addEventListener('change', function () {\n" \
-	"    limit = parseInt(this.value, 10) || 50;\n" \
-	"    try { localStorage.setItem('tcmg.users.limit', String(limit)); } catch (e) {}\n" \
-	"    view.p = 1;\n" \
 	"    applyFilter();\n" \
 	"  });\n" \
 	"\n" \

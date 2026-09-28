@@ -124,6 +124,7 @@ typedef enum {
 	LC_NORMAL = 0,
 	LC_CW_HIT,
 	LC_CW_MISS,
+	LC_ECM_REJECTED,
 	LC_ERROR,
 	LC_WARN,
 	LC_WEBIF,
@@ -138,8 +139,11 @@ typedef enum {
 
 static E_LOG_COLOR classify_line(const char *body)
 {
-	if (strstr(body, "found (")   || strstr(body, ": found"))  return LC_CW_HIT;
+	/* Check negative ECM results before generic "found" so "not found"
+	 * can never be misclassified as a successful CW hit. */
+	if (strstr(body, "ECM rejected") || strstr(body, "ecm rejected")) return LC_ECM_REJECTED;
 	if (strstr(body, "not found") || strstr(body, ": miss"))   return LC_CW_MISS;
+	if (strstr(body, "found (")   || strstr(body, ": found"))  return LC_CW_HIT;
 	if (strstr(body, "FATAL")     || strstr(body, "FORCED")    ||
 	    strstr(body, "failed:")   || strstr(body, "error")     ||
 	    strstr(body, "ERROR"))                                  return LC_ERROR;
@@ -166,6 +170,7 @@ static const char *color_prefix(E_LOG_COLOR c)
 	switch (c) {
 	case LC_CW_HIT:   return ANSI_BOLD ANSI_BGREEN;
 	case LC_CW_MISS:  return ANSI_RED;
+	case LC_ECM_REJECTED: return ANSI_ORANGE;
 	case LC_ERROR:    return ANSI_BOLD ANSI_RED;
 	case LC_WARN:     return ANSI_YELLOW;
 	case LC_SHUTDOWN: return ANSI_BOLD ANSI_MAGENTA;
@@ -648,7 +653,7 @@ void log_ecm_raw(uint16_t caid, uint16_t sid, const uint8_t *data, int32_t len)
 }
 
 void log_cw_result(uint16_t caid, uint16_t sid, int32_t len,
-                   const uint8_t *cw, bool hit, bool from_cache,
+                   const uint8_t *cw, E_LOG_ECM_RESULT result, bool from_cache,
                    int32_t ms, const char *user)
 {
 	char body[512];
@@ -663,6 +668,7 @@ void log_cw_result(uint16_t caid, uint16_t sid, int32_t len,
 		char ch_buf[SRVID_NAME_MAX];
 		srvid_lookup_copy(caid, sid, ch_buf, sizeof(ch_buf));
 		const char *ch = ch_buf[0] ? ch_buf : NULL;
+		const bool hit = result == LOG_ECM_FOUND;
 
 		char cw_str[33] = "";
 		if (hit && cw) {
@@ -674,19 +680,24 @@ void log_cw_result(uint16_t caid, uint16_t sid, int32_t len,
 			cw_str[32] = '\0';
 		}
 
-		const char *result = hit ? (from_cache ? "cache" : "found") : "not found";
+		const char *result_text = result == LOG_ECM_FOUND ? (from_cache ? "cache" : "found") :
+		                          (result == LOG_ECM_REJECTED ? "ECM rejected" : "not found");
 
-		if (hit) {
+		if (result == LOG_ECM_FOUND) {
 			if (ch)
 				snprintf(body, sizeof(body),
 				         "(%04X:%04X:%02X:%s): %s (%d ms) by %s  [%s]",
-				         caid, sid, (int)len, cw_str, result, ms,
+				         caid, sid, (int)len, cw_str, result_text, ms,
 				         user ? user : "?", ch);
 			else
 				snprintf(body, sizeof(body),
 				         "(%04X:%04X:%02X:%s): %s (%d ms) by %s",
-				         caid, sid, (int)len, cw_str, result, ms,
+				         caid, sid, (int)len, cw_str, result_text, ms,
 				         user ? user : "?");
+		} else if (result == LOG_ECM_REJECTED) {
+			snprintf(body, sizeof(body),
+			         "(%04X:%04X:%02X): ECM rejected (%d ms)",
+			         caid, sid, (int)len, ms);
 		} else {
 			snprintf(body, sizeof(body),
 			         "(%04X:%04X:%02X): not found (%d ms)",
@@ -695,11 +706,13 @@ void log_cw_result(uint16_t caid, uint16_t sid, int32_t len,
 
 		usr_line[0] = '\0';
 		if (user && *user) {
+			const char *usr_result = hit ? "hit" :
+			                         (result == LOG_ECM_REJECTED ? "rejected" : "miss");
 			ts_now(ts, sizeof(ts));
 			snprintf(usr_line, sizeof(usr_line),
 			         "%s\t%s\t%04X\t%04X\t%s\t%d\t%02X\t%s",
 			         ts, user, caid, sid,
-			         hit ? "hit" : "miss",
+			         usr_result,
 			         ms, (int)len,
 			         ch ? ch : "");
 		}

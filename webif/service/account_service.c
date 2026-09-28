@@ -59,6 +59,7 @@ static void copy_account_stats_full(const S_ACCOUNT *a, S_WEBIF_ACCOUNT_VIEW *v)
     v->cw_time_total_ms = s.cw_time_total_ms;
     v->cw_time_min_ms = s.cw_time_min_ms;
     v->cw_time_max_ms = s.cw_time_max_ms;
+    v->cw_last_60s = s.cw_last_60s;
     v->first_login = s.first_login;
     v->last_seen = s.last_seen;
     tcmg_strlcpy(v->last_ip, s.last_ip, sizeof(v->last_ip));
@@ -72,6 +73,7 @@ static void copy_account_stats_user(const S_ACCOUNT *a, S_WEBIF_USER_STATS_VIEW 
     v->cw_found = s.cw_found;
     v->cw_not = s.cw_not;
     v->cw_time_total_ms = s.cw_time_total_ms;
+    v->cw_last_60s = s.cw_last_60s;
     v->last_seen = s.last_seen;
     tcmg_strlcpy(v->last_ip, s.last_ip, sizeof(v->last_ip));
 }

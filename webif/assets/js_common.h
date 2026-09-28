@@ -3,26 +3,6 @@
 
 #define TCMG_JS \
 	"\n" \
-	"function _theme_apply(pref) {\n" \
-	"  if (pref !== 'light') pref = 'dark';\n" \
-	"  var r = document.documentElement;\n" \
-	"  r.setAttribute('data-theme', pref);\n" \
-	"  r.setAttribute('data-tpref', pref);\n" \
-	"  var b = document.getElementById('thBtn');\n" \
-	"  if (b) b.title = 'Theme: ' + pref + ' (click to change)';\n" \
-	"}\n" \
-	"\n" \
-	"function _theme_cycle() {\n" \
-	"  var cur = document.documentElement.getAttribute('data-tpref') || 'dark';\n" \
-	"  var next = cur === 'dark' ? 'light' : 'dark';\n" \
-	"  try { localStorage.setItem('tcmg_theme', next); } catch (e) {}\n" \
-	"  _theme_apply(next);\n" \
-	"}\n" \
-	"\n" \
-	"document.addEventListener('DOMContentLoaded', function() {\n" \
-	"  _theme_apply(document.documentElement.getAttribute('data-tpref') || 'dark');\n" \
-	"});\n" \
-	"\n" \
 	"(function(){" \
 	"function mkq(text){" \
 	"var q=document.createElement('button');q.type='button';q.className='qtip';q.textContent='?';" \
@@ -46,61 +26,6 @@
 	"      var nav = document.querySelector('.tnav');\n" \
 	"      if (nav) nav.classList.remove('open');\n" \
 	"    });\n" \
-	"  });\n" \
-	"});\n" \
-	"\n" \
-	"var ACCENTS = [\n" \
-	"  { id: 'blue',   p: '#147bd1', p2: '#106fbe' },\n" \
-	"  { id: 'purple', p: '#7c3aed', p2: '#6d28d9' },\n" \
-	"  { id: 'teal',   p: '#0e9488', p2: '#0c7e73' },\n" \
-	"  { id: 'green',  p: '#16a34a', p2: '#128a3e' },\n" \
-	"  { id: 'rose',   p: '#db2777', p2: '#be185d' },\n" \
-	"  { id: 'amber',  p: '#d97706', p2: '#b96204' }\n" \
-	"];\n" \
-	"function _accentRgba(hex, a) {\n" \
-	"  var n = parseInt(hex.slice(1), 16);\n" \
-	"  return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';\n" \
-	"}\n" \
-	"function applyAccent(id, persist) {\n" \
-	"  var preset = null;\n" \
-	"  for (var i = 0; i < ACCENTS.length; i++) if (ACCENTS[i].id === id) preset = ACCENTS[i];\n" \
-	"  if (!preset) preset = ACCENTS[0];\n" \
-	"  var r = document.documentElement.style;\n" \
-	"  r.setProperty('--p', preset.p);\n" \
-	"  r.setProperty('--p2', preset.p2);\n" \
-	"  r.setProperty('--ps', _accentRgba(preset.p, .10));\n" \
-	"  r.setProperty('--pg', _accentRgba(preset.p, .22));\n" \
-	"  if (persist !== false) { try { localStorage.setItem('tcmg_accent', preset.id); } catch (e) {} }\n" \
-	"  document.querySelectorAll('.ac-swatch').forEach(function (b) {\n" \
-	"    b.classList.toggle('cur', b.dataset.accent === preset.id);\n" \
-	"  });\n" \
-	"}\n" \
-	"document.addEventListener('DOMContentLoaded', function () {\n" \
-	"  var btn = document.getElementById('acBtn'), pop = document.getElementById('acPop');\n" \
-	"  if (!btn || !pop) return;\n" \
-	"  pop.innerHTML = ACCENTS.map(function (p) {\n" \
-	"    return \"<button type='button' class='ac-swatch' data-accent='\" + p.id + \"'\" +\n" \
-	"      \" style='background:\" + p.p + \"' title='Accent color' aria-label='Accent color'\" +\n" \
-	"      \" role='menuitemradio'></button>\";\n" \
-	"  }).join('');\n" \
-	"  var saved = 'blue';\n" \
-	"  try { saved = localStorage.getItem('tcmg_accent') || 'blue'; } catch (e) {}\n" \
-	"  applyAccent(saved, false);\n" \
-	"  btn.addEventListener('click', function (e) {\n" \
-	"    e.stopPropagation();\n" \
-	"    pop.hidden = !pop.hidden;\n" \
-	"    btn.setAttribute('aria-expanded', String(!pop.hidden));\n" \
-	"  });\n" \
-	"  pop.addEventListener('click', function (e) {\n" \
-	"    var sw = e.target.closest ? e.target.closest('.ac-swatch') : null;\n" \
-	"    if (!sw) return;\n" \
-	"    applyAccent(sw.dataset.accent);\n" \
-	"  });\n" \
-	"  document.addEventListener('click', function (e) {\n" \
-	"    if (!pop.hidden && !e.target.closest('#acp')) {\n" \
-	"      pop.hidden = true;\n" \
-	"      btn.setAttribute('aria-expanded', 'false');\n" \
-	"    }\n" \
 	"  });\n" \
 	"});\n" \
 	"\n" \
@@ -176,7 +101,12 @@
 	"  }\n" \
 	"  var item = document.createElement('div');\n" \
 	"  item.className = 'toast ' + (kind || '');\n" \
-	"  item.textContent = message;\n" \
+	"  var ico = document.createElement('span');\n" \
+	"  ico.className = 'toast-ico';\n" \
+	"  ico.setAttribute('aria-hidden','true');\n" \
+	"  ico.innerHTML = (kind === 'err') ? \"<svg viewBox='0 0 24 24'><circle cx='12' cy='12' r='9'></circle><path d='M12 7v6M12 17h.01'></path></svg>\" : \"<svg viewBox='0 0 24 24'><path d='M5 12.5l4 4L19 7.5'></path></svg>\";\n" \
+	"  var txt = document.createElement('span'); txt.textContent = message;\n" \
+	"  item.appendChild(ico); item.appendChild(txt);\n" \
 	"  box.appendChild(item);\n" \
 	"  setTimeout(function () {\n" \
 	"    item.style.transition = 'opacity .25s';\n" \
@@ -398,13 +328,13 @@
 	"      '<td><span class=\"flagcol\" aria-label=\"\"></span></td>'\n" \
 	"      + '<td class=\"bold\">' + _esc(cl.user) + '</td>'\n" \
 	"      + '<td class=\"mono\">' + _esc(cl.ip) + '</td>'\n" \
-	"      + '<td class=\"mono\"><span class=\"badge bbl c-caid\">' + _esc(cl.caid) + '</span></td>'\n" \
+	"      + '<td class=\"mono c-caid\">' + _esc(cl.caid) + '</td>'\n" \
 	"      + '<td class=\"mono c-sid\">' + _esc(cl.sid) + '</td>'\n" \
 	"      + '<td class=\"c-ch\">' + (cl.channel ? _esc(cl.channel) : '&mdash;') + '</td>'\n" \
 	"      + '<td class=\"mono tm c-con\">' + _esc(cl.connected) + '</td>'\n" \
 	"      + '<td class=\"mono tm c-idl\">' + _esc(cl.idle) + '</td>'\n" \
 	"      + '<td><button class=\"kb\" data-tid=\"' + _esc(cl.thread_id) + '\" data-user=\"' + _esc(cl.user)\n" \
-	"        + '\" title=\"Disconnect\" aria-label=\"Disconnect\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4\"/><polyline points=\"16 17 21 12 16 7\"/><line x1=\"21\" y1=\"12\" x2=\"9\" y2=\"12\"/></svg></button></td>';\n" \
+	"        + '\" title=\"Disconnect\" aria-label=\"Disconnect\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\"><use href=\"#i-user-x\"/></svg></button></td>';\n" \
 	"    tb.appendChild(tr);\n" \
 	"    _load_country(cl.ip, tr.querySelector('.flagcol'));\n" \
 	"  });\n" \

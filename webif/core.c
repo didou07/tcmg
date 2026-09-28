@@ -17,10 +17,13 @@ pthread_mutex_t s_sess_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void session_gen_token(char *out)
 {
+	static const char hex[] = "0123456789abcdef";
 	uint8_t rnd[16];
 	csprng(rnd, sizeof(rnd));
-	for (int i = 0; i < 16; i++)
-		snprintf(out + i * 2, 3, "%02x", rnd[i]);
+	for (int i = 0; i < 16; i++) {
+		out[i * 2] = hex[rnd[i] >> 4];
+		out[i * 2 + 1] = hex[rnd[i] & 0x0F];
+	}
 	out[WEB_SESSION_LEN] = '\0';
 }
 
@@ -263,30 +266,40 @@ int buf_printf(char **dst, int *dstsz, int pos, const char *fmt, ...)
 {
 	if (!dst || !*dst || !dstsz || *dstsz <= 0 || pos < 0 || pos >= *dstsz) return pos;
 
-	va_list ap;
-	va_start(ap, fmt);
 	int avail = *dstsz - pos;
-	int n = vsnprintf(*dst + pos, (size_t)avail, fmt, ap);
-	va_end(ap);
-	if (n < 0) {
-		return pos;
-	}
-	if (n < avail) {
+	if (!strchr(fmt, '%')) {
+		int n = (int)strlen(fmt);
+		if (n < avail) {
+			memcpy(*dst + pos, fmt, (size_t)n + 1);
+			return pos + n;
+		}
+		int newsz = *dstsz * 2;
+		if (newsz < pos + n + 2048) newsz = pos + n + 2048;
+		char *nb = (char *)realloc(*dst, (size_t)newsz);
+		if (!nb) return pos;
+		*dst = nb;
+		*dstsz = newsz;
+		memcpy(*dst + pos, fmt, (size_t)n + 1);
 		return pos + n;
 	}
 
-	int needed = n;
+	va_list ap;
+	va_start(ap, fmt);
+	int n = vsnprintf(*dst + pos, (size_t)avail, fmt, ap);
+	va_end(ap);
+	if (n < 0) return pos;
+	if (n < avail) return pos + n;
+
 	int newsz = *dstsz * 2;
-	if (newsz < pos + needed + 2048) newsz = pos + needed + 2048;
+	if (newsz < pos + n + 2048) newsz = pos + n + 2048;
 	char *nb = (char *)realloc(*dst, (size_t)newsz);
 	if (!nb) return pos;
 	*dst = nb;
 	*dstsz = newsz;
-
 	va_start(ap, fmt);
 	vsnprintf(*dst + pos, (size_t)(*dstsz - pos), fmt, ap);
 	va_end(ap);
-	return pos + needed;
+	return pos + n;
 }
 
 int buf_json_string(char **dst, int *dstsz, int pos, const char *src)
@@ -438,14 +451,41 @@ int html_escape(const char *src, char *dst, int dstsz)
 	return o;
 }
 
+static size_t html_escape_inplace(char *buf, size_t len, size_t cap)
+{
+	size_t src = len;
+	size_t dst = cap;
+	while (src > 0) {
+		unsigned char c = (unsigned char)buf[--src];
+		const char *rep = NULL;
+		switch (c) {
+		case '<': rep = "&lt;"; break;
+		case '>': rep = "&gt;"; break;
+		case '&': rep = "&amp;"; break;
+		case '"': rep = "&quot;"; break;
+		case '\'': rep = "&#39;"; break;
+		default: buf[--dst] = (char)c; continue;
+		}
+		size_t n = strlen(rep);
+		while (n) buf[--dst] = rep[--n];
+	}
+	size_t outlen = cap - dst;
+	memmove(buf, buf + dst, outlen);
+	buf[outlen] = '\0';
+	return outlen;
+}
+
 char *html_escape_alloc(const char *src, int maxbytes, int *truncated)
 {
-	int   srclen = (int)strlen(src);
-	if (truncated) *truncated = (srclen > maxbytes);
-	if (srclen > maxbytes) srclen = maxbytes;
-	char *out = (char *)malloc(srclen * 6 + 8);
+	if (maxbytes < 0) maxbytes = 0;
+	size_t srclen = strlen(src);
+	if (truncated) *truncated = srclen > (size_t)maxbytes;
+	if (srclen > (size_t)maxbytes) srclen = (size_t)maxbytes;
+	size_t cap = srclen * 6 + 1;
+	char *out = (char *)malloc(cap);
 	if (!out) return NULL;
-	html_escape(src, out, srclen * 6 + 8);
+	if (srclen) memcpy(out, src, srclen);
+	html_escape_inplace(out, srclen, cap);
 	return out;
 }
 
@@ -458,16 +498,31 @@ char *file_read_escaped(const char *path, int maxbytes, int *truncated)
 		if (empty) empty[0] = '\0';
 		return empty;
 	}
-	char *raw = (char *)malloc(maxbytes + 1);
-	if (!raw) { fclose(fp); return NULL; }
-	int n = (int)fread(raw, 1, maxbytes, fp);
-	raw[n] = '\0';
-	if (truncated) *truncated = (n == maxbytes && fgetc(fp) != EOF);
+	struct stat st;
+	if (fstat(fileno(fp), &st) != 0 || st.st_size < 0) {
+		fclose(fp);
+		char *empty = (char *)malloc(1);
+		if (empty) empty[0] = '\0';
+		return empty;
+	}
+	size_t limit = (size_t)st.st_size;
+	if (limit > (size_t)maxbytes) {
+		limit = (size_t)maxbytes;
+		if (truncated) *truncated = 1;
+	}
+	size_t cap = limit * 6 + 1;
+	char *buf = (char *)malloc(cap);
+	if (!buf) { fclose(fp); return NULL; }
+	size_t n = fread(buf, 1, limit, fp);
+	if (ferror(fp)) { fclose(fp); free(buf); return NULL; }
 	fclose(fp);
-
-	char *out = html_escape_alloc(raw, n, NULL);
-	free(raw);
-	return out;
+	if (n < limit && st.st_size > (off_t)n) {
+		if ((size_t)n < (size_t)maxbytes) {
+			if (truncated) *truncated = 0;
+		}
+	}
+	html_escape_inplace(buf, n, cap);
+	return buf;
 }
 
 int json_escape(const char *src, char *dst, int dstsz)
@@ -611,7 +666,7 @@ void send_webif_asset(int fd, const char *path)
 	                 "Server: %s\r\n"
 	                 "Content-Type: %s\r\n"
 	                 "Content-Length: %d\r\n"
-	                 "Cache-Control: private, max-age=86400\r\n"
+	                 "Cache-Control: private, max-age=31536000, immutable\r\n"
 	                 "X-Content-Type-Options: nosniff\r\n"
 	                 "Connection: close\r\n\r\n",
 	                 WEB_SERVER_NAME, ctype, len);
@@ -649,19 +704,11 @@ void handle_reset_stats(void)
 #pragma GCC diagnostic ignored "-Woverlength-strings"
 
 #define ICO_LOGO \
- "<svg width='16' height='16' viewBox='0 0 24 24' fill='none'>" \
- "<path d='M12 2L2 7l10 5 10-5-10-5z' stroke='var(--p)' stroke-width='1.8' stroke-linejoin='round'/>" \
- "<path d='M2 17l10 5 10-5' stroke='var(--p)' stroke-width='1.8' stroke-linejoin='round'/>" \
- "<path d='M2 12l10 5 10-5' stroke='var(--cy)' stroke-width='1.8' stroke-linejoin='round'/>" \
+ "<svg width='18' height='18' viewBox='0 0 24 24' fill='none' aria-hidden='true'>" \
+ "<rect x='3' y='4' width='18' height='16' rx='3' stroke='var(--p)' stroke-width='1.8'/>" \
+ "<rect x='7' y='8' width='5' height='5' rx='1' stroke='var(--cy)' stroke-width='1.5'/>" \
+ "<path d='M14.5 9.5h3M14.5 12h3M7 16h10' stroke='var(--p)' stroke-width='1.5' stroke-linecap='round'/>" \
  "</svg>"
-
-#define ICO_THEME_BTN \
- "<button id='thBtn' class='thb' type='button' onclick='_theme_cycle()'" \
- " title='Theme' aria-label='Change theme'>" \
- "<svg class='ti-d i' viewBox='0 0 24 24'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'/></svg>" \
- "<svg class='ti-l i' viewBox='0 0 24 24'><circle cx='12' cy='12' r='4.5'/>" \
- "<path d='M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41'/></svg>" \
- "</button>"
 
 #define ICO_MENU \
  "<svg width='16' height='16' viewBox='0 0 24 24' fill='none'" \
@@ -681,16 +728,16 @@ int emit_header(char **buf, int *bsz, int pos,
     int refresh = webif_max_refresh();
 
     pos = buf_printf(buf, bsz, pos,
-        "<!DOCTYPE html><html lang='en' data-theme='dark' data-tpref='dark'><head>"
+        "<!DOCTYPE html><html lang='en'><head>"
         "<meta charset='UTF-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
         "<title>TCMG &mdash; %s</title>"
-        "<link rel='stylesheet' href='/assets/app.css?v=%s-20260926'>"
-        "<script>" WEB_THEME_INIT_JS WEB_ACCENT_INIT_JS "window.TCMG_WEB_POLL=%d;</script>"
-        "<script src='/assets/app.js?v=%s-20260926' defer></script>"
+        "<link rel='stylesheet' href='/assets/app.css?v=%s'>"
+        "<script>window.TCMG_WEB_POLL=%d;</script>"
+        "<script src='/assets/app.js?v=%s' defer></script>"
         "</head><body class='pg-%s'>"
         GLOBAL_ICON_SPRITE,
-        title, TCMG_VERSION, refresh, TCMG_VERSION, active);
+        title, TCMG_ASSET_REV, refresh, TCMG_ASSET_REV, active);
 
     pos = buf_printf(buf, bsz, pos,
         "<nav id='tb'>"
@@ -699,54 +746,32 @@ int emit_header(char **buf, int *bsz, int pos,
         "  <span class='lt'>TCMG</span>"
         "  <span class='lv'>" TCMG_VERSION "</span>"
         "</div>"
-        "<button id='mnuBtn' "
-        "onclick='document.querySelector(\".tnav\").classList.toggle(\"open\")'>"
+        "<span class='mpt' aria-live='polite'>%s</span>"
+        "<button id='mnuBtn' type='button' aria-label='Open menu' aria-controls='mobile-nav' aria-expanded='false' "
+        "onclick='toggleMobileNav(this)'>"
         ICO_MENU
         "</button>"
-        "<div class='tnav'>");
+        "<div class='tnav' id='mobile-nav'>",
+        title);
 
     typedef struct { int sep; const char *id, *href, *icon, *label; } t_nav;
 
-    static const char s_ico_status[] =
-        "<svg class='ni' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'>"
-        "<polyline points='22 12 18 12 15 21 9 3 6 12 2 12'/></svg>";
-    static const char s_ico_log[] =
-        "<svg class='ni' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'>"
-        "<path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/>"
-        "<polyline points='14 2 14 8 20 8'/>"
-        "<line x1='8' y1='13' x2='16' y2='13'/><line x1='8' y1='17' x2='16' y2='17'/></svg>";
-    static const char s_ico_users[] =
-        "<svg class='ni' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'>"
-        "<path d='M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2'/>"
-        "<circle cx='9' cy='7' r='4'/>"
-        "<path d='M23 21v-2a4 4 0 0 0-3-3.87'/><path d='M16 3.13a4 4 0 0 1 0 7.75'/></svg>";
-    static const char s_ico_ban[] =
-        "<svg class='ni' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'>"
-        "<circle cx='12' cy='12' r='10'/>"
-        "<line x1='4.93' y1='4.93' x2='19.07' y2='19.07'/></svg>";
-    static const char s_ico_cfg[] =
-        "<svg class='ni' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'>"
-        "<circle cx='12' cy='12' r='3'/>"
-        "<path d='M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14'/></svg>";
-    static const char s_ico_files[] =
-        "<svg class='ni' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'>"
-        "<path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/>"
-        "<polyline points='14 2 14 8 20 8'/>"
-        "<line x1='8' y1='13' x2='16' y2='13'/><line x1='8' y1='17' x2='12' y2='17'/></svg>";
-    static const char s_ico_power[] =
-        "<svg class='ni' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'>"
-        "<path d='M18.36 6.64a9 9 0 1 1-12.73 0'/>"
-        "<line x1='12' y1='2' x2='12' y2='12'/></svg>";
-    static const char s_ico_tvcas[] =
-        "<svg class='ni' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'>"
-        "<path d='M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'/></svg>";
+    static const char s_ico_status[] = "<svg class='ni' viewBox='0 0 24 24'><use href='#i-activity'/></svg>";
+    static const char s_ico_log[]    = "<svg class='ni' viewBox='0 0 24 24'><use href='#i-terminal'/></svg>";
+    static const char s_ico_users[]  = "<svg class='ni' viewBox='0 0 24 24'><use href='#i-users'/></svg>";
+    static const char s_ico_ban[]    = "<svg class='ni' viewBox='0 0 24 24'><use href='#i-ban'/></svg>";
+    static const char s_ico_reader[] = "<svg class='ni' viewBox='0 0 24 24'><use href='#i-server'/></svg>";
+    static const char s_ico_cfg[]    = "<svg class='ni' viewBox='0 0 24 24'><use href='#i-sliders'/></svg>";
+    static const char s_ico_files[]  = "<svg class='ni' viewBox='0 0 24 24'><use href='#i-file-text'/></svg>";
+    static const char s_ico_power[]  = "<svg class='ni' viewBox='0 0 24 24'><use href='#i-power'/></svg>";
+    static const char s_ico_tvcas[]  = "<svg class='ni' viewBox='0 0 24 24'><use href='#i-shield'/></svg>";
 
     static const t_nav nav[] = {
         {0, "status",  "/status",  s_ico_status, "Dashboard"},
         {0, "livelog", "/livelog", s_ico_log,    "Live Log"},
         {1, NULL, NULL, NULL, NULL},
         {0, "users",   "/users",   s_ico_users,  "Users"},
-        {0, "readers", "/readers", s_ico_cfg,    "Readers"},
+        {0, "readers", "/readers", s_ico_reader, "Readers"},
         {0, "config",  "/config",  s_ico_cfg,    "Config"},
         {0, "failban", "/failban", s_ico_ban,    "Fail-Ban"},
         {1, NULL, NULL, NULL, NULL},
@@ -765,7 +790,7 @@ int emit_header(char **buf, int *bsz, int pos,
         }
         const char *cls = (strcmp(nav[i].id, nav_active) == 0) ? " act" : "";
         pos = buf_printf(buf, bsz, pos,
-            "<a href='%s' class='%s'>%s%s</a>",
+            "<a href='%s' class='%s' onclick='closeMobileNav()'>%s<span class='nav-label'>%s</span></a>",
             nav[i].href, cls, nav[i].icon, nav[i].label);
     }
 
@@ -784,22 +809,9 @@ int emit_header(char **buf, int *bsz, int pos,
         "    <input id='ps_' type='text' value='%d' readonly>"
         "    <button onclick='_ap(1)'>+</button>"
         "  </div>"
-        "  <div class='acp' id='acp'>"
-        "    <button id='acBtn' class='thb' type='button' aria-haspopup='true' aria-expanded='false'"
-        "     title='Accent color' aria-label='Accent color'>"
-        "      <svg class='i' viewBox='0 0 24 24'>"
-        "        <circle cx='13.5' cy='6.5' r='.5' fill='currentColor'/>"
-        "        <circle cx='17.5' cy='10.5' r='.5' fill='currentColor'/>"
-        "        <circle cx='8.5' cy='7.5' r='.5' fill='currentColor'/>"
-        "        <circle cx='6.5' cy='12.5' r='.5' fill='currentColor'/>"
-        "        <path d='M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.4-.3-.4-.5-.9-.5-1.4"
-        "0-1.1.9-2 2-2h2.4c2.3 0 4.1-1.8 4.1-4.1C21.5 6 17.2 2 12 2z'/>"
-        "      </svg>"
-        "    </button>"
-        "    <div class='acpop' id='acPop' hidden role='menu' aria-label='Accent color'></div>"
-        "  </div>"
-        ICO_THEME_BTN
         "</div>"
+        "</div>"
+        "<script>function toggleMobileNav(b){var n=document.getElementById('mobile-nav');if(!n)return;var o=!n.classList.contains('open');n.classList.toggle('open',o);document.body.classList.toggle('nav-open',o);if(b){b.setAttribute('aria-expanded',o?'true':'false');b.setAttribute('aria-label',o?'Close menu':'Open menu');}}function closeMobileNav(){var n=document.getElementById('mobile-nav'),b=document.getElementById('mnuBtn');if(n)n.classList.remove('open');document.body.classList.remove('nav-open');if(b){b.setAttribute('aria-expanded','false');b.setAttribute('aria-label','Open menu');}}document.addEventListener('keydown',function(e){if(e.key==='Escape')closeMobileNav();});</script>"
         "</nav>"
         "<div id='mn'><div id='ct'>",
         header_stats.active_conns,

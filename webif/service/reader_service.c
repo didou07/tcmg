@@ -90,6 +90,57 @@ int webif_reader_snapshot_all(S_WEBIF_READER_VIEW *out, size_t cap)
     return n;
 }
 
+static void copy_reader_list(const S_READER *r, int idx, S_WEBIF_READER_LIST_VIEW *v)
+{
+    memset(v, 0, sizeof(*v));
+    v->index = idx;
+    v->enabled = r->enabled;
+    tcmg_strlcpy(v->label, r->label, sizeof(v->label));
+    tcmg_strlcpy(v->protocol, r->protocol, sizeof(v->protocol));
+    tcmg_strlcpy(v->device, r->device, sizeof(v->device));
+    for (int i = 0; i < r->ngroups && i < MAX_GROUPS_PER_READER; i++) {
+        char item[24];
+        if (i) tcmg_strlcat(v->groups, ",", sizeof(v->groups));
+        snprintf(item, sizeof(item), "%d", r->groups[i]);
+        tcmg_strlcat(v->groups, item, sizeof(v->groups));
+    }
+    for (int i = 0; i < r->ncaids && i < MAX_CAIDS_PER_READER; i++) {
+        char item[8];
+        if (i) tcmg_strlcat(v->caids, ",", sizeof(v->caids));
+        snprintf(item, sizeof(item), "%04X", r->caids[i]);
+        tcmg_strlcat(v->caids, item, sizeof(v->caids));
+    }
+    if (!strcasecmp(r->protocol, "emu")) {
+        for (int i = 0; i < r->nkeys && i < MAX_ECMKEYS_PER_ACC; i++) {
+            char item[8];
+            snprintf(item, sizeof(item), "%04X", r->keys[i].caid);
+            if (!strstr(v->caids, item)) {
+                if (v->caids[0]) tcmg_strlcat(v->caids, ",", sizeof(v->caids));
+                tcmg_strlcat(v->caids, item, sizeof(v->caids));
+            }
+        }
+    }
+    S_READER_STATS_SNAPSHOT stats;
+    reader_stats_snapshot(idx, &stats);
+    v->cw_ok = stats.cw_ok;
+    v->cw_nok = stats.cw_nok;
+    v->active = r->enabled && stats.active;
+}
+
+int webif_reader_list_snapshot_all(S_WEBIF_READER_LIST_VIEW *out, size_t cap)
+{
+    int n = 0;
+    if (!out || !cap) return 0;
+    pthread_rwlock_rdlock(&g_cfg.acc_lock);
+    for (int i = 0; i < MAX_READERS && (size_t)n < cap; i++) {
+        if (!g_cfg.readers[i].in_use) continue;
+        copy_reader_list(&g_cfg.readers[i], i, &out[n]);
+        n++;
+    }
+    pthread_rwlock_unlock(&g_cfg.acc_lock);
+    return n;
+}
+
 bool webif_reader_get(int index, S_WEBIF_READER_VIEW *out)
 {
     if (!out || index < 0 || index >= MAX_READERS) return false;
@@ -192,7 +243,7 @@ bool webif_reader_save(const S_WEBIF_READER_EDIT *e)
         }
         value.newcamd_key[i] = (uint8_t)strtoul(b, NULL, 16);
     }
-    char ek[WEBIF_TEXT_8192]; tcmg_strlcpy(ek, e->ecmkeys, sizeof(ek)); save = NULL; tok = strtok_r(ek, "\r\n;", &save);
+    char ek[WEBIF_ECMKEYS_LEN]; tcmg_strlcpy(ek, e->ecmkeys, sizeof(ek)); save = NULL; tok = strtok_r(ek, "\r\n;", &save);
     while (tok) {
         if (value.nkeys >= MAX_ECMKEYS_PER_ACC) return false;
         char *eq = strchr(tok, '='); if (!eq) return false; *eq++ = 0; char *end = NULL; unsigned long caid = strtoul(tok, &end, 16); if (end==tok||*end||caid>0xFFFF||strlen(eq)!=64) return false;

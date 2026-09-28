@@ -74,11 +74,9 @@ int webif_ban_snapshot(S_WEBIF_BAN_VIEW *out, size_t cap, S_WEBIF_BAN_STATS *sta
             if (b->until <= now) continue;
             if (stats) {
                 stats->active_bans++;
-                stats->total_fails += b->fails;
             }
             if (out && (size_t)n < cap) {
                 tcmg_strlcpy(out[n].ip, b->ip, sizeof(out[n].ip));
-                out[n].fails = b->fails;
                 out[n].until = b->until;
                 n++;
             }

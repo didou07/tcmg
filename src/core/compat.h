@@ -19,6 +19,7 @@
 #  include <ws2tcpip.h>
 #  include <windows.h>
 #  include <io.h>
+#  include <sys/stat.h>
 #  define close(fd)    closesocket(fd)
 #  define MSG_NOSIGNAL 0
 #  define ssize_t      int

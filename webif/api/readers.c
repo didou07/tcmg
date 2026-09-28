@@ -19,11 +19,11 @@ typedef struct {
     char password[CFGKEY_LEN];
     char key[32];
     char inactivity[16];
-    char caid[128];
-    char sid[512];
+    char caid[WEBIF_CAID_LIST_LEN];
+    char sid[WEBIF_SID_LIST_LEN];
     char ecmwl[8];
-    char groups[256];
-    char ecmkeys[WEBIF_TEXT_8192];
+    char groups[WEBIF_GROUPS_LEN];
+    char ecmkeys[WEBIF_ECMKEYS_LEN];
     char do_ecm[8];
     char fast_reset[16];
     char poll_ms[16];
@@ -141,8 +141,8 @@ static const char *parse_reader_form(const char *body, reader_form *f, int index
         char *e = NULL; unsigned long x = strtoul(f->ecmwl, &e, 16);
         if (e == f->ecmwl || *e || x > 0xFF) return "ecmwhitelist must be 00-FF";
     }
-    if (validate_u16_list(f->caid, MAX_CAIDS_PER_READER, 256) < 0) return "invalid CAID list";
-    if (validate_u16_list(f->sid, MAX_SID_WHITELIST, 1024) < 0) return "invalid SID whitelist";
+    if (validate_u16_list(f->caid, MAX_CAIDS_PER_READER, WEBIF_CAID_LIST_LEN) < 0) return "invalid CAID list";
+    if (validate_u16_list(f->sid, MAX_SID_WHITELIST, WEBIF_SID_LIST_LEN) < 0) return "invalid SID whitelist";
     if (validate_groups(f->groups) < 0) return "group is required";
 
     if (protocol->kind == READER_PROTOCOL_EMU) {
@@ -238,32 +238,43 @@ void send_api_readers(int fd)
 {
     int bsz = 8192, pos = 0;
     char *buf = malloc((size_t)bsz);
-    S_WEBIF_READER_VIEW *reader = calloc(1, sizeof(*reader));
-    if (!buf || !reader) {
-        free(buf); free(reader);
+    S_WEBIF_READER_LIST_VIEW readers[MAX_READERS];
+    int nreaders = webif_reader_list_snapshot_all(readers, MAX_READERS);
+    if (!buf) {
         send_json_error(fd, 503, "Service Unavailable", "out of memory");
         return;
     }
-    pos = buf_printf(&buf, &bsz, pos, "{\"ok\":true,\"count\":%d,\"readers\":[", webif_reader_count());
-    int emitted = 0;
-    for (int idx = 0; idx < MAX_READERS; idx++) {
-        if (!webif_reader_get(idx, reader)) continue;
-        int before = pos;
-        if (emitted) pos = buf_printf(&buf, &bsz, pos, ",");
-        pos = buf_printf(&buf, &bsz, pos, "{");
-        pos = view_json(&buf, &bsz, pos, reader, 0);
-        if (pos >= 0) pos = buf_printf(&buf, &bsz, pos, "}");
-        if (pos < 0) {
-            pos = before;
-            free(reader); free(buf);
-            send_json_error(fd, 503, "Service Unavailable", "out of memory");
-            return;
-        }
-        emitted++;
+    pos = buf_printf(&buf, &bsz, pos, "{\"ok\":true,\"count\":%d,\"readers\":[", nreaders);
+    for (int i = 0; i < nreaders; i++) {
+        if (i) pos = buf_printf(&buf, &bsz, pos, ",");
+        pos = buf_printf(&buf, &bsz, pos, "{\"index\":%d,\"label\":", readers[i].index);
+        pos = buf_printf(&buf, &bsz, pos, "\"");
+        pos = buf_json_string(&buf, &bsz, pos, readers[i].label);
+        pos = buf_printf(&buf, &bsz, pos, "\",\"protocol\":");
+        pos = buf_printf(&buf, &bsz, pos, "\"");
+        pos = buf_json_string(&buf, &bsz, pos, readers[i].protocol);
+        pos = buf_printf(&buf, &bsz, pos, "\",\"device\":");
+        pos = buf_printf(&buf, &bsz, pos, "\"");
+        pos = buf_json_string(&buf, &bsz, pos, readers[i].device);
+        pos = buf_printf(&buf, &bsz, pos, "\",\"groups\":");
+        pos = buf_printf(&buf, &bsz, pos, "\"");
+        pos = buf_json_string(&buf, &bsz, pos, readers[i].groups);
+        pos = buf_printf(&buf, &bsz, pos, "\",\"caid\":");
+        pos = buf_printf(&buf, &bsz, pos, "\"");
+        pos = buf_json_string(&buf, &bsz, pos, readers[i].caids);
+        const S_READER_PROTOCOL *protocol = reader_protocol_find(readers[i].protocol);
+        const char *kind = protocol ? (protocol->kind == READER_PROTOCOL_CARD ? "card" : protocol->kind == READER_PROTOCOL_EMU ? "emu" : "network") : "other";
+        pos = buf_printf(&buf, &bsz, pos, "\",\"kind\":\"%s\",\"enabled\":%d,\"cw_ok\":%lld,\"cw_nok\":%lld,\"active\":%d}", kind, readers[i].enabled, (long long)readers[i].cw_ok, (long long)readers[i].cw_nok, readers[i].active);
+        if (pos < 0) break;
+    }
+    if (pos < 0) {
+        free(buf);
+        send_json_error(fd, 503, "Service Unavailable", "out of memory");
+        return;
     }
     pos = buf_printf(&buf, &bsz, pos, "]}");
     send_response(fd, 200, "OK", "application/json", buf, pos);
-    free(reader); free(buf);
+    free(buf);
 }
 
 void send_api_reader_get(int fd, const char *qs)
@@ -360,7 +371,7 @@ void send_api_serial_ports(int fd)
         send_json_error(fd, 503, "Service Unavailable", "out of memory");
         return;
     }
-    int pos = snprintf(buf, cap, "{\"ok\":true,\"count\":%zu,\"transport\":\"serial\",\"ports\":[", n);
+    int pos = snprintf(buf, cap, "{\"ok\":true,\"count\":%llu,\"transport\":\"serial\",\"ports\":[", (unsigned long long)n);
     for (size_t i = 0; i < n && pos >= 0 && (size_t)pos < cap; i++) {
         char esc[TCMG_SERIAL_PORT_LEN * 2 + 8];
         json_escape(ports[i], esc, sizeof(esc));

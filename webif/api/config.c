@@ -6,6 +6,7 @@
 #include "../../src/log/log.h"
 #include "../internal/proto.h"
 #include "../internal/form.h"
+#include <sys/stat.h>
 
 void send_api_config_get(int fd)
 {
@@ -236,15 +237,19 @@ static char *api_read_file(const char *path, size_t max, size_t *out_len, bool *
 {
     FILE *fp = fopen(path, "rb");
     if (!fp) return NULL;
-    char *buf = malloc(max + 1);
+    struct stat st;
+    if (fstat(fileno(fp), &st) != 0 || st.st_size < 0) { fclose(fp); return NULL; }
+    size_t limit = (size_t)st.st_size;
+    bool cut = false;
+    if (limit > max) { limit = max; cut = true; }
+    char *buf = malloc(limit + 1);
     if (!buf) { fclose(fp); return NULL; }
-    size_t n = fread(buf, 1, max, fp);
+    size_t n = fread(buf, 1, limit, fp);
     int ferr = ferror(fp);
-    int extra = fgetc(fp);
     fclose(fp);
     if (ferr) { free(buf); return NULL; }
     if (out_len) *out_len = n;
-    if (truncated) *truncated = (extra != EOF);
+    if (truncated) *truncated = cut;
     buf[n] = '\0';
     return buf;
 }
@@ -275,8 +280,8 @@ void send_api_file_get(int fd, const char *qs)
     char *out = malloc(out_cap);
     if (!out) { free(esc); free(content); send_json_error(fd, 503, "Service Unavailable", "out of memory"); return; }
     int n = snprintf(out, out_cap,
-        "{\"ok\":true,\"file\":\"%s\",\"label\":\"%s\",\"size\":%zu,\"truncated\":%s,\"content\":\"%s\"}",
-        kind, label, len, truncated ? "true" : "false", esc);
+        "{\"ok\":true,\"file\":\"%s\",\"label\":\"%s\",\"size\":%llu,\"truncated\":%s,\"content\":\"%s\"}",
+        kind, label, (unsigned long long)len, truncated ? "true" : "false", esc);
     free(esc);
     free(content);
     send_response(fd, 200, "OK", "application/json", out, n);

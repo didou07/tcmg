@@ -58,8 +58,8 @@ void send_page_status(int fd)
 		snprintf(conn_val, sizeof(conn_val), "%d", st.active_conns);
 		snprintf(conn_sub, sizeof(conn_sub), "of <span id='p_acc'>%d</span> accounts", st.naccounts);
 		pos = emit_stat_card(&buf, &bsz, pos,
-		    st.active_conns > 0 ? "gr" : "bl", ICO_USERS2,
-		    "Connections", "p_conn", conn_val, conn_sub, NULL);
+		    "gr", ICO_USERS2,
+		    "Active Sessions", "p_conn", conn_val, conn_sub, NULL);
 	}
 
 	{
@@ -68,63 +68,63 @@ void send_page_status(int fd)
 		snprintf(exp_val, sizeof(exp_val), "%d", exp_cnt);
 
 		pos = emit_stat_card(&buf, &bsz, pos,
-		    dis_cnt > 0 ? "or" : "bl", ICO_KEY,
-		    "Disabled", "p_dis", dis_val, "accounts", NULL);
+		    "am", ICO_KEY,
+		    "Disabled Users", "p_dis", dis_val, "accounts", NULL);
 
 		pos = emit_stat_card(&buf, &bsz, pos,
-		    exp_cnt > 0 ? "re" : "bl", ICO_WARN,
-		    "Expired", "p_exp", exp_val, "accounts expired", NULL);
+		    "pk", ICO_WARN,
+		    "Expired Users", "p_exp", exp_val, "accounts", NULL);
 	}
 
 	{
 		char ecm_val[24];
 		snprintf(ecm_val, sizeof(ecm_val), "%lld", (long long)st.ecm_total);
 		pos = emit_stat_card(&buf, &bsz, pos, "vi", ICO_ZAP,
-		    "ECM Total", "p_ecm", ecm_val, "requests", NULL);
+		    "ECM Requests", "p_ecm", ecm_val, "total requests", NULL);
 	}
 
 	{
 		char cw_val[24];
 		snprintf(cw_val, sizeof(cw_val), "%lld", (long long)st.cw_found);
-		pos = emit_stat_card(&buf, &bsz, pos, "gr", ICO_CHECK,
-		    "CW Found", "p_hit", cw_val, "cache hits", NULL);
+		pos = emit_stat_card(&buf, &bsz, pos, "te", ICO_CHECK,
+		    "CW Found", "p_hit", cw_val, "successful replies", NULL);
 	}
 
 	{
 		char miss_val[24];
 		snprintf(miss_val, sizeof(miss_val), "%lld", (long long)st.cw_not);
 		pos = emit_stat_card(&buf, &bsz, pos,
-		    st.cw_not > 0 ? "re" : "bl", ICO_X,
-		    "CW Miss", "p_miss", miss_val, "not found", NULL);
+		    "re", ICO_X,
+		    "CW Miss", "p_miss", miss_val, "no CW returned", NULL);
 	}
 
 	pos = emit_stat_card(&buf, &bsz, pos, "cy", ICO_PERCENT,
-	    "Hit Rate", "p_hr", hrstr, "", hbf_extra);
+	    "Hit Rate", "p_hr", hrstr, "successful ECMs", hbf_extra);
 
 	{
 		char ban_val[8];
 		snprintf(ban_val, sizeof(ban_val), "%d", st.nbans);
 		pos = emit_stat_card(&buf, &bsz, pos,
-		    st.nbans > 0 ? "or" : "bl", ICO_SHIELD,
+		    "or", ICO_SHIELD,
 		    "Banned IPs", "p_ban", ban_val,
 		    "<a href='/failban' style='color:inherit;opacity:.7;font-size:11px'>view list &rarr;</a>",
 		    NULL);
 	}
 
 	pos = buf_printf(&buf, &bsz, pos,
-		"<div class='sc bl'>"
+		"<div class='sc ind'>"
 		"<div class='si_'>"
 		"<svg width='22' height='22' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'>"
 		"<polyline points='1 4 1 10 7 10'/>"
 		"<path d='M3.51 15a9 9 0 1 0 .49-4.08'/>"
 		"</svg></div>"
 		"<div class='sb_'>"
-		"  <div class='sl_'>Actions</div>"
-		"  <div class='sv' style='font-size:13px;font-weight:600'>"
+		"  <div class='sl_'>Statistics</div>"
+		"  <div class='sv action-value'>"
 		"    <a href='#' onclick=\"if(confirm('Reset all stats?')){tcmg_api('/api/resetstats',{method:'POST'}).then(function(){if(typeof _poll==='function')_poll();}).catch(function(){});}return false\""
-		"       style='color:inherit;text-decoration:none'>Reset Stats</a>"
+		"       style='color:inherit;text-decoration:none'>Reset stats</a>"
 		"  </div>"
-		"  <div class='sd'>clear counters</div>"
+		"  <div class='sd'>clear all counters</div>"
 		"</div><div class='sg'></div></div>");
 
 	pos = buf_printf(&buf, &bsz, pos, "</div>");
@@ -135,7 +135,7 @@ void send_page_status(int fd)
 		"    <svg width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='var(--p)' stroke-width='1.8' style='flex-shrink:0'>"
 		"      <rect x='2' y='3' width='20' height='14' rx='2'/>"
 		"      <line x1='8' y1='21' x2='16' y2='21'/><line x1='12' y1='17' x2='12' y2='21'/>"
-		"    </svg>Active Connections"
+		"    </svg>Active Sessions"
 		"  </div>"
 		"</div>"
 		"<div class='tw cm auto'><table>"

@@ -4,6 +4,9 @@
 #include "core/constants.h"
 #include <stdint.h>
 
+#define READER_RESULT_NOT_FOUND (-2)
+#define READER_RESULT_REJECTED  (-3)
+
 typedef struct {
     int32_t status;
     int32_t reader_index;

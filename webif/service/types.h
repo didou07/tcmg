@@ -11,7 +11,15 @@
 #define WEBIF_TEXT_256 256
 #define WEBIF_TEXT_512 512
 #define WEBIF_TEXT_1024 1024
-#define WEBIF_TEXT_8192 8192
+#define WEBIF_GROUPS_LEN 128
+#define WEBIF_CAID_LIST_LEN 64
+#define WEBIF_SID_LIST_LEN 384
+#define WEBIF_ECMKEYS_LEN 1024
+
+_Static_assert(WEBIF_GROUPS_LEN >= MAX_GROUPS_PER_READER * 6, "WEBIF_GROUPS_LEN too small");
+_Static_assert(WEBIF_CAID_LIST_LEN >= MAX_CAIDS_PER_READER * 5, "WEBIF_CAID_LIST_LEN too small");
+_Static_assert(WEBIF_SID_LIST_LEN >= MAX_SID_WHITELIST * 5, "WEBIF_SID_LIST_LEN too small");
+_Static_assert(WEBIF_ECMKEYS_LEN >= MAX_ECMKEYS_PER_ACC * 70, "WEBIF_ECMKEYS_LEN too small");
 
 #ifndef MAX_ACTIVE_CLIENTS
 #define MAX_ACTIVE_CLIENTS 64
@@ -24,8 +32,8 @@
 typedef struct {
     char user[CFGKEY_LEN];
     char pass[CFGKEY_LEN];
-    char groups[256];
-    char caids[128];
+    char groups[WEBIF_GROUPS_LEN];
+    char caids[WEBIF_CAID_LIST_LEN];
     int enabled;
     int max_connections;
     int active;
@@ -42,6 +50,7 @@ typedef struct {
     int64_t cw_time_total_ms;
     int64_t cw_time_min_ms;
     int64_t cw_time_max_ms;
+    int64_t cw_last_60s;
     time_t first_login;
     time_t last_seen;
     char last_ip[MAXIPLEN];
@@ -54,10 +63,10 @@ typedef struct {
     char user[CFGKEY_LEN];
     char password[CFGKEY_LEN];
     char key[32];
-    char groups[256];
-    char caids[256];
-    char sid_whitelist[512];
-    char ecmkeys[WEBIF_TEXT_8192];
+    char groups[WEBIF_GROUPS_LEN];
+    char caids[WEBIF_CAID_LIST_LEN];
+    char sid_whitelist[WEBIF_SID_LIST_LEN];
+    char ecmkeys[WEBIF_ECMKEYS_LEN];
     int index;
     int enabled;
     int inactivitytimeout;
@@ -72,14 +81,28 @@ typedef struct {
 
 typedef struct {
     char user[CFGKEY_LEN];
-    char caids[128];
+    char caids[WEBIF_CAID_LIST_LEN];
     int enabled;
     int64_t cw_found;
     int64_t cw_not;
     int64_t cw_time_total_ms;
+    int64_t cw_last_60s;
     time_t last_seen;
     char last_ip[MAXIPLEN];
 } S_WEBIF_USER_STATS_VIEW;
+
+typedef struct {
+    char label[READER_LABEL_LEN];
+    char protocol[READER_PROTOCOL_LEN];
+    char device[CFGVAL_LEN];
+    char groups[WEBIF_GROUPS_LEN];
+    char caids[WEBIF_CAID_LIST_LEN];
+    int index;
+    int enabled;
+    int active;
+    int64_t cw_ok;
+    int64_t cw_nok;
+} S_WEBIF_READER_LIST_VIEW;
 
 typedef struct {
     char user[CFGKEY_LEN];
@@ -176,8 +199,8 @@ typedef struct {
 typedef struct {
     char user[CFGKEY_LEN];
     char pass[CFGKEY_LEN];
-    char groups[256];
-    char caid[128];
+    char groups[WEBIF_GROUPS_LEN];
+    char caid[WEBIF_CAID_LIST_LEN];
     int has_caid;
     int has_max_connections;
     int max_connections;
@@ -206,11 +229,11 @@ typedef struct {
     char password[CFGKEY_LEN];
     char key[32];
     char inactivitytimeout[16];
-    char caid[256];
-    char sid_whitelist[512];
+    char caid[WEBIF_CAID_LIST_LEN];
+    char sid_whitelist[WEBIF_SID_LIST_LEN];
     char ecmwhitelist[16];
-    char group[256];
-    char ecmkeys[WEBIF_TEXT_8192];
+    char group[WEBIF_GROUPS_LEN];
+    char ecmkeys[WEBIF_ECMKEYS_LEN];
     char enabled[8];
     char do_ecm[8];
     char fast_reset[16];
@@ -220,13 +243,11 @@ typedef struct {
 
 typedef struct {
     char ip[MAXIPLEN];
-    int fails;
     time_t until;
 } S_WEBIF_BAN_VIEW;
 
 typedef struct {
     int active_bans;
-    int total_fails;
     int max_fails;
     int ban_secs;
 } S_WEBIF_BAN_STATS;

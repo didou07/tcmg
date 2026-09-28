@@ -39,11 +39,12 @@ void send_page_tvcas(int fd)
 		"textarea.tv-inp{resize:vertical;min-height:56px;line-height:1.6}"
 
 		".tv-btn{display:inline-flex;align-items:center;gap:6px;"
-		"background:var(--p);border:none;border-radius:var(--rsm);color:#fff;"
+		"background:rgba(56,189,248,.08);border:1.5px solid var(--p);border-radius:var(--rsm);color:var(--p);"
 		"font-family:var(--sans);font-size:13px;font-weight:600;"
 		"padding:9px 22px;cursor:pointer;margin-top:12px;"
 		"transition:background .18s,box-shadow .18s;letter-spacing:.02em}"
-		".tv-btn:hover{background:var(--p2);box-shadow:0 0 0 3px var(--pg)}"
+		".tv-btn:hover{background:rgba(56,189,248,.16);box-shadow:0 0 14px -2px rgba(56,189,248,.4)}"
+		".tv-btn:active{background:rgba(56,189,248,.22)}"
 
 		".tv-res{background:var(--s2);border:1px solid var(--bd);"
 		"border-radius:var(--rsm);overflow:hidden;min-height:48px}"

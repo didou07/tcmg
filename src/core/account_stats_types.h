@@ -8,6 +8,8 @@
 #include <stdatomic.h>
 #include <time.h>
 
+#define TCMG_ACCOUNT_CW_WINDOW 60
+
 typedef struct {
     uint64_t ecm_total;
     int64_t  cw_found;
@@ -18,6 +20,9 @@ typedef struct {
     time_t   first_login;
     int64_t  cw_time_min_ms;
     int64_t  cw_time_max_ms;
+    int64_t  cw_last_60s;
+    time_t   recent_cw_sec[TCMG_ACCOUNT_CW_WINDOW];
+    uint32_t recent_cw_count[TCMG_ACCOUNT_CW_WINDOW];
 } S_ACCOUNT_STATS_SNAPSHOT;
 
 typedef struct {
@@ -32,6 +37,8 @@ typedef struct {
     time_t          first_login;
     int64_t         cw_time_min_ms;
     int64_t         cw_time_max_ms;
+    time_t          recent_cw_sec[TCMG_ACCOUNT_CW_WINDOW];
+    uint32_t        recent_cw_count[TCMG_ACCOUNT_CW_WINDOW];
 } S_ACCOUNT_STATS;
 
 #endif

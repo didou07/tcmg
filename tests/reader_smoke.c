@@ -70,7 +70,38 @@ int main(int argc, char **argv) {
             overall = 1;
         }
     }
-    else for (int round=1; round<=3; round++) {
+    else {
+        int configured_readers = 0;
+        int first_reader = -1;
+        for (int i = 0; i < MAX_READERS; i++) {
+            if (!g_cfg.readers[i].in_use) continue;
+            g_cfg.readers[i].enabled = 1;
+            g_cfg.readers[i].ecm_whitelist = 1;
+            if (first_reader < 0) first_reader = i;
+            configured_readers++;
+        }
+        if (configured_readers > 0) {
+            unsigned char rejected_cw[16] = {0};
+            S_READER_RESULT rejected_result;
+            req.caid=0x0B00; req.sid=0x0064; req.provid=0; req.ecm=ecm;
+            req.ecm_len=sizeof(ecm); req.cw=rejected_cw;
+            int32_t rejected_rc = reader_dispatch_ecm(&req, &rejected_result);
+            S_READER_STATS_SNAPSHOT rejected_stats;
+            reader_stats_snapshot(first_reader, &rejected_stats);
+            if (rejected_rc != READER_RESULT_REJECTED ||
+                rejected_result.status != READER_RESULT_REJECTED ||
+                rejected_stats.cw_nok != 0) {
+                fprintf(stderr,"FAIL whitelist rejection rc=%d status=%d cw_nok=%lld\n",
+                        rejected_rc, rejected_result.status, (long long)rejected_stats.cw_nok);
+                overall = 1;
+            }
+
+            for (int i = 0; i < MAX_READERS; i++) {
+                if (g_cfg.readers[i].in_use) g_cfg.readers[i].ecm_whitelist = 0;
+            }
+        }
+
+        for (int round=1; round<=3; round++) {
         unsigned char cw[16]={0};
         S_READER_RESULT result; int rc; req.caid=0x0B00; req.sid=0x0064; req.provid=0; req.ecm=ecm; req.ecm_len=sizeof(ecm); req.cw=cw; rc=reader_dispatch_ecm(&req,&result);
         printf("round=%d rc=%d ng=%d\n",round,rc,result.ngroups);
@@ -79,6 +110,7 @@ int main(int argc, char **argv) {
             fprintf(stderr,"FAIL round=%d\n",round);
             overall = 1;
         }
+    }
     }
     account_release(acc);
     reader_shutdown(); cfg_accounts_free(&g_cfg); pthread_rwlock_destroy(&g_cfg.acc_lock); pthread_mutex_destroy(&g_cfg.ban_lock);

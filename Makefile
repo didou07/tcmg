@@ -63,6 +63,7 @@ endif
 
 TCMG_ARCH_FLAGS ?=
 TCMG_SANITIZE ?=
+TCMG_ASSET_REV ?= $(shell date +%Y%m%d%H%M%S)
 # Cross-toolchain linker extras: --sysroot=..., -static, a custom dynamic
 # linker path, etc. Applied after every other LDFLAGS so it can override them.
 TCMG_ARCH_LDFLAGS ?=
@@ -127,7 +128,7 @@ endif
 
 BASE_FLAGS := -std=c11 -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Wno-unused-parameter \
               -Wno-overlength-strings \
-              -I. -Isrc -D_FORTIFY_SOURCE=2 \
+              -I. -Isrc -D_FORTIFY_SOURCE=2 -DTCMG_ASSET_REV=\"$(TCMG_ASSET_REV)\" \
               $(TCMG_ARCH_FLAGS) \
               $(TCMG_SANITIZE)
 
@@ -172,7 +173,7 @@ else
   endif
 endif
 
-.PHONY: all clean debug release test-config test-network test-reader-registry test-proto-registry test-account-core test-session test-ecm-pipeline test-cache test-webif-service test-config-runtime-access test-account-state test-antishare check
+.PHONY: all clean debug release test-config test-network test-reader-rules test-reader-registry test-proto-registry test-account-core test-session test-ecm-pipeline test-cache test-webif-service test-config-runtime-access test-account-state test-antishare test-internal test-internal-t0 test-internal-ui test-serial check
 
 # Browser assets (CSS / JS) are plain C headers in webif/assets/*.h -- edited by hand,
 # no generator step.  Every object is rebuilt when one of them changes.
@@ -190,6 +191,11 @@ test-network: $(TARGET)
 	@mkdir -p $(BUILD_DIR)
 	$(CC) $(TEST_COMMON_CFLAGS) tests/reader_smoke.c $(filter-out $(OBJ_DIR)/src/main.o,$(OBJS)) -o $(BUILD_DIR)/test_reader_smoke $(LDFLAGS)
 	TCMG_NETWORK_BUILD_DIR="$(abspath $(BUILD_DIR))" bash ./tests/network_matrix.sh
+
+test-reader-rules: $(TARGET)
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(TEST_COMMON_CFLAGS) tests/reader_rules_smoke.c $(filter-out $(OBJ_DIR)/src/main.o,$(OBJS)) -o $(BUILD_DIR)/test_reader_rules $(LDFLAGS)
+	$(BUILD_DIR)/test_reader_rules
 
 test-reader-registry: $(TARGET)
 	@mkdir -p $(BUILD_DIR)
@@ -240,11 +246,18 @@ test-internal: $(TARGET)
 	$(CC) $(TEST_COMMON_CFLAGS) tests/internal_smoke.c $(filter-out $(OBJ_DIR)/src/main.o,$(OBJS)) -o $(BUILD_DIR)/test_internal $(LDFLAGS)
 	$(BUILD_DIR)/test_internal
 
+test-internal-t0: $(TARGET)
+	$(CC) $(TEST_COMMON_CFLAGS) tests/internal_t0_smoke.c $(OBJ_DIR)/src/internal/internal_t0.o -o $(BUILD_DIR)/test_internal_t0 $(LDFLAGS)
+	$(BUILD_DIR)/test_internal_t0
+
+test-internal-ui: $(TARGET)
+	bash tests/internal_ui_smoke.sh
+
 test-serial: $(TARGET)
 	$(CC) $(TEST_COMMON_CFLAGS) tests/serial_smoke.c $(filter-out $(OBJ_DIR)/src/main.o,$(OBJS)) -o $(BUILD_DIR)/test_serial $(LDFLAGS)
 	$(BUILD_DIR)/test_serial
 
-test: test-config test-network test-reader-registry test-proto-registry test-account-core test-session test-ecm-pipeline test-cache test-webif-service test-config-runtime-access test-account-state test-antishare test-internal test-serial
+test: test-config test-network test-reader-rules test-reader-registry test-proto-registry test-account-core test-session test-ecm-pipeline test-cache test-webif-service test-config-runtime-access test-account-state test-antishare test-internal test-internal-t0 test-internal-ui test-serial
 
 check: $(ASSET_HDRS)
 	@set -e; \

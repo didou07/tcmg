@@ -6,7 +6,7 @@
 
 static void fmt_int(long long v, char *out, size_t sz)
 {
-	char tmp[32], o[48];
+	char tmp[8], o[48];
 	int  n = snprintf(tmp, sizeof(tmp), "%lld", v < 0 ? 0 : v), k = 0;
 	for (int i = 0; i < n; i++) {
 		if (i && (n - i) % 3 == 0) o[k++] = ',';
@@ -80,8 +80,8 @@ void send_page_users(int fd)
 		"<input id='usrSearch' type='search' placeholder='Search users&hellip;' title='Search user, CAID, IP or protocol (press / )'"
 		" autocomplete='off' spellcheck='false' aria-label='Search users'></div>"
 		"<div class='tgrp'>"
-		"<button type='button' class='tool' data-a='refresh'>" ICON("i-refresh") "Refresh</button>"
-		"<button type='button' class='tool pri' data-a='add'>" ICON("i-plus") "Add User</button>"
+		"<button type='button' class='tool' data-a='refresh'>" ICON("i-refresh-cw") "Refresh</button>"
+		"<button type='button' class='tool pri' data-a='add'>" ICON("i-user-plus") "Add User</button>"
 		"</div></section>",
 		total_u, active_u, online_u, disabled_u, expired_u);
 
@@ -99,18 +99,30 @@ void send_page_users(int fd)
 		TH("c-nok",  "nok",  "CW NOK")
 		TH("c-proto","proto","Proto")
 		TH("c-idle", "idle", "Idle")
-		TH("c-first","first","First login")
+		TH("c-last60","last60","Last 60s")
 		TH("c-last", "last", "Last seen")
 		TH("c-exp",  "exp",  "Expiry")
 		"<th class='c-btn'>Actions</th>"
 		"</tr></thead><tbody id='usrBody'>");
 #undef TH
 
-	S_WEBIF_CLIENT_VIEW *snaps = calloc(MAX_ACTIVE_CLIENTS, sizeof(*snaps));
-	int nsnaps = snaps ? webif_client_snapshot_all(snaps, MAX_ACTIVE_CLIENTS) : 0;
+	S_WEBIF_CLIENT_VIEW snap_local[8];
+	S_WEBIF_CLIENT_VIEW *snaps = snap_local;
+	int nsnaps = webif_client_snapshot_all(snap_local, 32);
+	int snaps_heap = 0;
+	if (nsnaps == 32) {
+		snaps = NULL;
+		nsnaps = webif_client_snapshot_alloc(&snaps);
+		snaps_heap = 1;
+	}
+	if (nsnaps < 0) {
+		free(accounts);
+		free(buf);
+		send_json_error(fd, 503, "Service Unavailable", "out of memory");
+		return;
+	}
 
 	int row = 0;
-	int64_t tot_ok = 0, tot_nok = 0;
 
 	for (int ai = 0; ai < naccounts; ai++, row++) {
 		S_WEBIF_ACCOUNT_VIEW *a = &accounts[ai];
@@ -118,7 +130,6 @@ void send_page_users(int fd)
 		const char *state = !a->enabled ? "disabled" : expired ? "expired" : "active";
 
 		int64_t ok = a->cw_found, nok = a->cw_not;
-		tot_ok += ok; tot_nok += nok;
 		long long avg = ok > 0 ? (long long)(a->cw_time_total_ms / ok) : -1;
 
 		int    nsess = 0;
@@ -148,7 +159,7 @@ void send_page_users(int fd)
 			}
 		}
 
-		char allowed[128];
+		char allowed[WEBIF_CAID_LIST_LEN];
 		tcmg_strlcpy(allowed, a->caids, sizeof(allowed));
 		long idle_s = (nsess > 0 && last_ecm_t > 0) ? (long)(now - last_ecm_t) : -1;
 		if (nsess > 0 && idle_s < 0) idle_s = 0;
@@ -161,7 +172,7 @@ void send_page_users(int fd)
 		{ unsigned o[4]; if (sscanf(ip_str, "%u.%u.%u.%u", &o[0], &o[1], &o[2], &o[3]) == 4)
 			ipn = ((o[0] & 255u) << 24) | ((o[1] & 255u) << 16) | ((o[2] & 255u) << 8) | (o[3] & 255u); }
 
-		char esc_user[256], esc_ip[64], esc_flag_ip[64], esc_proto[32], q_raw[512], q_esc[1400];
+		char esc_user[256], esc_ip[64], esc_flag_ip[64], esc_proto[8], q_raw[512], q_esc[1400];
 		html_escape(a->user, esc_user, sizeof(esc_user));
 		html_escape(ip_str, esc_ip, sizeof(esc_ip));
 		html_escape(flag_ip, esc_flag_ip, sizeof(esc_flag_ip));
@@ -173,7 +184,7 @@ void send_page_users(int fd)
 
 		char allowed_esc[256];
 		html_escape(allowed, allowed_esc, sizeof(allowed_esc));
-		char ok_s[32], nok_s[32];
+		char ok_s[8], nok_s[8];
 		fmt_int(ok,  ok_s,  sizeof(ok_s));
 		fmt_int(nok, nok_s, sizeof(nok_s));
 
@@ -192,17 +203,16 @@ void send_page_users(int fd)
 			"<tr class='urow' data-i='%d' data-user='%s' data-state='%s' data-vis='%s' data-en='%d' data-expd='%d'"
 			" data-online='%d' data-active='%d' data-caid='%u' data-ok='%lld' data-nok='%lld'"
 			" data-avg='%lld' data-proto='%s' data-ipn='%u' data-idle='%ld'"
-			" data-first='%lld' data-last='%lld' data-exp='%lld' data-allowed='%s' data-q='%s'>",
+			" data-last60='%lld' data-last='%lld' data-exp='%lld' data-allowed='%s' data-q='%s'>",
 			row, esc_user, state, vis, (int)a->enabled, expired,
 			a->active > 0 ? 1 : 0, (int)a->active, live_caid,
 			(long long)ok, (long long)nok, avg, esc_proto, ipn, idle_s,
-			(long long)a->first_login, (long long)a->last_seen, (long long)a->expirationdate, allowed_esc, q_esc);
+			(long long)a->cw_last_60s, (long long)a->last_seen, (long long)a->expirationdate, allowed_esc, q_esc);
 
 		pos = buf_printf(&buf, &bsz, pos,
-			"<td class='c-en'><input type='checkbox' class='en-box' data-a='tg'%s"
-			" title='Enable / disable' aria-label='Account enabled'></td>"
+			"<td class='c-en'><button type='button' class='pw-btn %s' data-a='tg' title='%s account' aria-label='%s account'>" ICON("i-toggle") "</button></td>"
 			"<td class='c-user'><button type='button' class='ulink' data-a='edit' title='%s'>%s</button></td>",
-			a->enabled ? " checked" : "", esc_user, esc_user);
+			a->enabled ? "on" : "off", a->enabled ? "Disable" : "Enable", a->enabled ? "Disable" : "Enable", esc_user, esc_user);
 
 		char maxc[16];
 		if (a->max_connections <= 0) tcmg_strlcpy(maxc, "&infin;", sizeof(maxc));
@@ -265,15 +275,13 @@ void send_page_users(int fd)
 		}
 
 		{
-			char seen[40], seen_full[32], first_d[32];
+			char seen[40], seen_full[8], last60_s[16];
 			fmt_ago(a->last_seen, now, seen, sizeof(seen));
 			format_time((time_t)a->last_seen, seen_full, sizeof(seen_full));
-			if (a->first_login > 0) {
-				fmt_date((time_t)a->first_login, first_d, sizeof(first_d));
-				pos = buf_printf(&buf, &bsz, pos, "<td class='c-first mono'>%s</td>", first_d);
-			} else {
-				pos = buf_printf(&buf, &bsz, pos, "<td class='c-first dim'>&mdash;</td>");
-			}
+			fmt_int(a->cw_last_60s, last60_s, sizeof(last60_s));
+			pos = buf_printf(&buf, &bsz, pos,
+				"<td class='c-last60 mono %s' title='Successful CWs in the last 60 seconds'>%s</td>",
+				a->cw_last_60s > 0 ? "tg" : "dim", last60_s);
 			if (a->last_seen > 0)
 				pos = buf_printf(&buf, &bsz, pos, "<td class='c-last' title='%s'>%s</td>", seen_full, seen);
 			else
@@ -282,63 +290,39 @@ void send_page_users(int fd)
 
 		if (a->expirationdate > 0) {
 			char ed[16], sub[48];
-			const char *dot;
 			fmt_date(a->expirationdate, ed, sizeof(ed));
 			if (expired) {
 				char ago[24];
 				fmt_ago(a->expirationdate, now, ago, sizeof(ago));
 				snprintf(sub, sizeof(sub), "Expired %s", ago);
-				dot = "expired";
 			} else {
 				long days = (long)((a->expirationdate - now + 86399) / 86400);
 				if (days < 1) days = 1;
 				snprintf(sub, sizeof(sub), days == 1 ? "Expires in 1 day" : "Expires in %ld days", days);
-				dot = days <= 7 ? "expiring" : "valid";
 			}
 			pos = buf_printf(&buf, &bsz, pos,
-				"<td class='c-exp mono' title='%s'>%s<span class='sdot %s' aria-hidden='true'></span></td>",
-				sub, ed, dot);
+				"<td class='c-exp mono' title='%s'>%s</td>",
+				sub, ed);
 		} else {
 			pos = buf_printf(&buf, &bsz, pos, "<td class='c-exp dim' title='No expiry'>&mdash;</td>");
 		}
 
 		pos = buf_printf(&buf, &bsz, pos,
 			"<td class='c-btn'><div class='ba'>"
-			"<button type='button' class='act-b ed' data-a='edit' title='Edit' aria-label='Edit user'>" ICON("i-edit") "</button>"
-			"<button type='button' class='act-b rs' data-a='reset' title='Reset statistics' aria-label='Reset statistics'>" ICON("i-reset") "</button>"
-			"<button type='button' class='act-b dl' data-a='del' title='Delete' aria-label='Delete user'>" ICON("i-trash") "</button>"
+			"<button type='button' class='act-b ed' data-a='edit' title='Edit' aria-label='Edit user'>" ICON("i-user-pen") "</button>"
+			"<button type='button' class='act-b rs' data-a='reset' title='Reset statistics' aria-label='Reset statistics'>" ICON("i-rotate-ccw") "</button>"
+			"<button type='button' class='act-b dl' data-a='del' title='Delete' aria-label='Delete user'>" ICON("i-trash-2") "</button>"
 			"</div></td></tr>");
 	}
-	free(snaps);
+	if (snaps_heap) free(snaps);
 	free(accounts);
 
-	{
-		char ok_s[32], nok_s[32];
-		fmt_int(tot_ok,  ok_s,  sizeof(ok_s));
-		fmt_int(tot_nok, nok_s, sizeof(nok_s));
-
-		pos = buf_printf(&buf, &bsz, pos,
-			"</tbody></table>"
-			"<div class='uempty' id='uEmpty' hidden>" ICON("i-users")
-			"<b id='ueT'>No users</b><span id='ueS'></span><br>"
-			"<button type='button' class='tool pri' id='ueB' data-a='add'>Add User</button></div>"
-			"</section>"
-			"<footer class='ufoot'>"
-			"<div class='ucount' id='uCount'>"
-			"<span><b>%d</b>%s</span>"
-			"<span><b class='tg'>%s</b>CW OK</span>"
-			"<span><b class='%s'>%s</b>CW NOK</span>"
-			"</div>"
-			"<div class='pager-wrap'><div class='pager' id='pager' aria-label='Pagination'></div>"
-			"<span class='pstat' id='pageStat' aria-live='polite'></span></div>"
-			"<label class='per-page'><select id='limit' aria-label='Users per page'>"
-			"<option>30</option><option>50</option><option>100</option><option>200</option></select>"
-			"<span>per page</span></label>"
-			"</footer>",
-			row, row == 1 ? "user" : "users",
-			ok_s,
-			tot_nok > 0 ? "tr" : "dim", nok_s);
-	}
+	pos = buf_printf(&buf, &bsz, pos,
+		"</tbody></table>"
+		"<div class='uempty' id='uEmpty' hidden>" ICON("i-users-round")
+		"<b id='ueT'>No users</b><span id='ueS'></span><br>"
+		"<button type='button' class='tool pri' id='ueB' data-a='add'>Add User</button></div>"
+		"</section>");
 
 	pos = buf_printf(&buf, &bsz, pos,
 		"<div class='mo' id='uModal' hidden>"
@@ -395,7 +379,7 @@ void send_page_users(int fd)
 		"<button type='button' class='sw on' id='em_enabled' role='switch' aria-checked='true' aria-label='Account enabled' data-a='sw'><i></i></button>"
 		"</label></div>"
 
-		"<div id='em_err' class='le' hidden>" ICON("i-alert") "<span id='em_err_msg'>Error</span></div>"
+		"<div id='em_err' class='le' hidden>" ICON("i-circle-alert") "<span id='em_err_msg'>Error</span></div>"
 		"</div>"
 		"<div class='mf'>"
 		"<button type='button' class='btn bg' data-a='close'>Cancel</button>"
@@ -403,7 +387,7 @@ void send_page_users(int fd)
 		"</div></div></div>");
 
 	pos = buf_printf(&buf, &bsz, pos,
-		"<script src='/assets/users.js?v='" TCMG_VERSION " defer></script>");
+		"<script src='/assets/users.js?v=" TCMG_ASSET_REV "' defer></script>");
 
 	pos = emit_footer(&buf, &bsz, pos);
 	PAGE_SEND_AND_FREE(fd);

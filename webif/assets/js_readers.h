@@ -51,12 +51,6 @@
 	"      var el = $('rcnt_' + name);\n" \
 	"      if (el) el.textContent = counts[name];\n" \
 	"    });\n" \
-	"    var footer = $('rCount');\n" \
-	"    if (footer) {\n" \
-	"      footer.innerHTML = '<span><b>' + rows.length + '</b> ' + (rows.length === 1 ? 'reader' : 'readers') + '</span>' +\n" \
-	"        '<span><b class=\"tg\">' + enabled + '</b> Enabled</span>' +\n" \
-	"        '<span><b class=\"dim\">' + (rows.length - enabled) + '</b> Disabled</span>';\n" \
-	"    }\n" \
 	"  }\n" \
 	"\n" \
 	"  function setEmpty(show, filtered) {\n" \
@@ -91,7 +85,7 @@
 	"\n" \
 	"    var stateCell = document.createElement('td');\n" \
 	"    stateCell.className = 'c-rstate';\n" \
-	"    stateCell.innerHTML = '<span class=\"rdot ' + (reader.active ? 'on' : (reader.enabled ? 'on' : 'off')) + '\"></span><span class=\"rstate\">' + (reader.active ? 'Active' : (reader.enabled ? 'Enabled' : 'Disabled')) + '</span>';\n" \
+	"    stateCell.innerHTML = '<button type=\"button\" class=\"pw-btn ' + (reader.enabled ? 'on' : 'off') + '\" data-a=\"toggle\" title=\"' + (reader.enabled ? 'Disable' : 'Enable') + ' reader\" aria-label=\"' + (reader.enabled ? 'Disable' : 'Enable') + ' reader\"><svg class=\"i\" viewBox=\"0 0 24 24\"><use href=\"#i-toggle\"/></svg></button>';\n" \
 	"    tr.appendChild(stateCell);\n" \
 	"\n" \
 	"    var labelCell = document.createElement('td');\n" \
@@ -132,7 +126,6 @@
 	"    actions.className = 'c-btn';\n" \
 	"    var buttons = document.createElement('div');\n" \
 	"    buttons.className = 'ba';\n" \
-	"    buttons.appendChild(button('i-power', 'toggle', reader.enabled ? 'Disable reader' : 'Enable reader', reader.enabled ? 'on' : 'off'));\n" \
 	"    buttons.appendChild(button('i-edit', 'edit', 'Edit reader', 'ed'));\n" \
 	"    buttons.appendChild(button('i-trash', 'delete', 'Delete reader', 'dl'));\n" \
 	"    actions.appendChild(buttons);\n" \
@@ -147,7 +140,6 @@
 	"    var fragment = document.createDocumentFragment();\n" \
 	"    visible.forEach(function (reader) { fragment.appendChild(makeRow(reader)); });\n" \
 	"    body.appendChild(fragment);\n" \
-	"    $('rViewStat').textContent = visible.length + ' shown';\n" \
 	"    setEmpty(visible.length === 0, rows.length > 0);\n" \
 	"\n" \
 	"    document.querySelectorAll('#rStats .ust').forEach(function (buttonEl) {\n" \
@@ -181,7 +173,6 @@
 	"    tcmg_api('/api/readers').then(function (data) {\n" \
 	"      rows = Array.isArray(data.readers) ? data.readers : [];\n" \
 	"      render(false);\n" \
-	"      $('rSync').textContent = 'Updated ' + new Date().toLocaleTimeString();\n" \
 	"    }).catch(function (error) {\n" \
 	"      if (!error || error.message !== 'unauthorized') toast('Reader refresh failed', 'err');\n" \
 	"    }).finally(function () {\n" \

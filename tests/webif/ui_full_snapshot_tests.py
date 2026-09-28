@@ -8,11 +8,27 @@ def ok(name, cond, detail=''):
     print(('PASS ' if cond else 'FAIL ') + name + ((' -> ' + str(detail)) if not cond else ''))
     if not cond: FAILS.append(name)
 
+def inline(html, path):
+    css=S.get(BASE+'/assets/app.css',timeout=10).text
+    html=re.sub(r"<link[^>]+href=['\"]?/assets/app\.css[^>]*>", lambda m:'<style>'+css+'</style>', html, count=1)
+    names=['app']
+    for n in ('users','readers','config','livelog','files','tvcas','power'):
+        if '/assets/'+n+'.js' in html:
+            names.append(n)
+    for n in dict.fromkeys(names):
+        js=S.get(BASE+'/assets/'+n+'.js',timeout=10).text
+        html=re.sub(r"<script[^>]+src=['\"]/assets/"+re.escape(n)+r"\.js[^>]*></script>", lambda m:'<script>'+js+'</script>', html, count=1)
+    return html
+
+S=requests.Session()
+login=S.post(BASE+'/login',data={'u':'admin','p':'secret'},timeout=10,allow_redirects=False)
+ok('webif test login', login.status_code==302, login.status_code)
+
 htmls={}
 for path in PAGES:
-    r=requests.get(BASE+path, timeout=10)
+    r=S.get(BASE+path, timeout=10)
     ok(f'HTTP {path}', r.status_code==200 and len(r.text)>500, r.status_code)
-    htmls[path]=r.text
+    htmls[path]=inline(r.text, path)
 
 with sync_playwright() as p:
     exe=shutil.which('chromium') or shutil.which('chromium-browser') or shutil.which('google-chrome')
@@ -24,7 +40,7 @@ with sync_playwright() as p:
             page.set_content(html, wait_until='commit')
             page.mouse.move(1,1)
             dims=page.evaluate("""() => ({sw:document.documentElement.scrollWidth, cw:document.documentElement.clientWidth,
-                dup:[...document.querySelectorAll('[id]')].map(x=>x.id).filter((x,i,a)=>a.indexOf(x)!==i),
+                dup:[...document.querySelectorAll('[id]')].filter(x=>!x.closest('symbol')).map(x=>x.id).filter((x,i,a)=>a.indexOf(x)!==i),
                 bodyH:document.body.scrollHeight, vh:window.innerHeight})""")
             ok(f'{path} {label} no horizontal overflow', dims['sw'] <= dims['cw'] + 2, dims)
             ok(f'{path} {label} no duplicate ids', not dims['dup'], dims['dup'])

@@ -97,34 +97,62 @@ static void send_json_401(int fd)
 
 void handle_request(int fd, const char *client_ip)
 {
-	char *raw = (char *)malloc(WEB_BUF_SIZE);
-	if (!raw) return;
-	int  rlen = 0;
+	char raw_small[4096];
+	char *raw = raw_small;
+	int raw_cap = (int)sizeof(raw_small);
+	int raw_heap = 0;
+	int rlen = 0;
 	net_set_timeout(fd, WEB_READ_TIMEOUT_S);
 
-	while (rlen < WEB_BUF_SIZE - 1) {
+	for (;;) {
+		if (rlen >= raw_cap - 1) {
+			if (strstr(raw, "\r\n\r\n")) break;
+			if (raw_cap >= WEB_BUF_SIZE) {
+				send_json_error(fd, 431, "Request Header Fields Too Large", "headers too large");
+				if (raw_heap) free(raw);
+				return;
+			}
+			int next_cap = raw_cap * 2;
+			if (next_cap > WEB_BUF_SIZE) next_cap = WEB_BUF_SIZE;
+			char *nb = (char *)malloc((size_t)next_cap);
+			if (!nb) {
+				send_json_error(fd, 503, "Service Unavailable", "out of memory");
+				if (raw_heap) free(raw);
+				return;
+			}
+			memcpy(nb, raw, (size_t)rlen);
+			if (raw_heap) free(raw);
+			raw = nb;
+			raw_cap = next_cap;
+			raw_heap = 1;
+		}
+
 		int n = (int)recv(fd, RECV_CAST(raw + rlen),
-		                  (size_t)(WEB_BUF_SIZE - 1 - rlen), 0);
-		if (n <= 0) break;
+		                  (size_t)(raw_cap - 1 - rlen), 0);
+		if (n <= 0) {
+			if (raw_heap) free(raw);
+			return;
+		}
 		rlen += n;
 		raw[rlen] = '\0';
 		if (strstr(raw, "\r\n\r\n")) break;
 	}
-	if (rlen < 10) { free(raw); return; }
-	raw[rlen] = '\0';
 
-	if (!strstr(raw, "\r\n\r\n") && rlen >= WEB_BUF_SIZE - 1) {
-		free(raw);
-		send_json_error(fd, 431, "Request Header Fields Too Large", "headers too large");
+	if (rlen < 10) {
+		if (raw_heap) free(raw);
 		return;
 	}
+	raw[rlen] = '\0';
 
 	s_http_req req;
-	if (!req_parse(&req, fd, raw, rlen)) { free(raw); return; }
+	if (!req_parse(&req, fd, raw, rlen)) {
+		if (raw_heap) free(raw);
+		return;
+	}
 	if (req.status) {
 		int st = req.status;
-		free(raw);
 		req_free(&req);
+		if (raw_heap) free(raw);
 		send_json_error(fd, st,
 			st == 413 ? "Payload Too Large" : st == 414 ? "URI Too Long" :
 			st == 503 ? "Service Unavailable" : "Bad Request",
@@ -140,7 +168,6 @@ void handle_request(int fd, const char *client_ip)
 	char sess_tok[WEB_SESSION_LEN + 1];
 	int  authed = request_is_authed(raw, client_ip, sess_tok);
 	int  csrf   = authed && is_state_changing(req.method, req.path, req.qs) && csrf_blocked(raw);
-	free(raw); raw = NULL;
 
 	const char *p  = req.path;
 	const char *qs = req.qs;
@@ -152,6 +179,7 @@ void handle_request(int fd, const char *client_ip)
 		if (ban_is_banned(client_ip)) {
 			send_login_page(fd, 2);
 			req_free(&req);
+			if (raw_heap) free(raw);
 			return;
 		}
 		if (check_credentials(u, pw)) {
@@ -166,6 +194,7 @@ void handle_request(int fd, const char *client_ip)
 			send_login_page(fd, 1);
 		}
 		req_free(&req);
+		if (raw_heap) free(raw);
 		return;
 	}
 
@@ -176,6 +205,7 @@ void handle_request(int fd, const char *client_ip)
 		}
 		send_redirect_clear_cookie(fd, "/login");
 		req_free(&req);
+		if (raw_heap) free(raw);
 		return;
 	}
 
@@ -188,16 +218,18 @@ void handle_request(int fd, const char *client_ip)
 			send_redirect(fd, "/login");
 		}
 		req_free(&req);
+		if (raw_heap) free(raw);
 		return;
 	}
 
 	if (strcmp(p, "/login") == 0)
-		{ send_redirect(fd, "/status"); req_free(&req); return; }
+		{ send_redirect(fd, "/status"); req_free(&req); if (raw_heap) free(raw); return; }
 
 	if (csrf) {
 		tcmg_log("cross-site request blocked: %s %s from=%s", req.method, p, client_ip);
 		send_json_error(fd, 403, "Forbidden", "cross-site request blocked");
 		req_free(&req);
+		if (raw_heap) free(raw);
 		return;
 	}
 
@@ -274,14 +306,15 @@ void handle_request(int fd, const char *client_ip)
 			"<html><body style='background:#090d14;color:#e8f0fe;"
 			"font-family:monospace;display:flex;align-items:center;"
 			"justify-content:center;height:100vh'>"
-			"<div><h1 style='color:#3b82f6'>404</h1><p>Not Found</p>"
-			"<a href='/status' style='color:#60a5fa'>&#8592; Back to Status</a>"
+			"<div><h1 style='color:#1fb8a3'>404</h1><p>Not Found</p>"
+			"<a href='/status' style='color:#1fb8a3'>&#8592; Back to Status</a>"
 			"</div></body></html>";
 		send_response(fd, 404, "Not Found", "text/html",
 		              not_found, (int)strlen(not_found));
 	}
 
 	req_free(&req);
+	if (raw_heap) free(raw);
 }
 
 static void *http_server_thread(void *arg)

@@ -29,9 +29,24 @@ int32_t reader_dispatch_ecm(const S_ECM_REQUEST *request, S_READER_RESULT *resul
     }
     pthread_rwlock_unlock(&g_cfg.acc_lock);
 
+    bool attempted = false;
+    bool whitelist_rejected = false;
+
     for (int i = 0; i < n; i++) {
-        if (!reader_allows(&readers[i], request->account,
-                           request->caid, request->sid, request->ecm_len)) continue;
+        E_READER_RULE_RESULT rule = reader_rule_check(&readers[i], request->account,
+                                                       request->caid, request->sid,
+                                                       request->ecm_len);
+        if (rule != READER_RULE_ALLOW) {
+            if (rule == READER_RULE_ECM_WHITELIST) {
+                whitelist_rejected = true;
+                tcmg_log_dbg(D_READER,
+                             "ECM rejected reader='%s' caid=%04X sid=%04X len=%d whitelist=%d",
+                             readers[i].label, request->caid, request->sid,
+                             request->ecm_len, readers[i].ecm_whitelist);
+            }
+            continue;
+        }
+        attempted = true;
 
         const S_READER_PROTOCOL *protocol = reader_protocol_find(readers[i].protocol);
         if (!protocol || !protocol->do_ecm) {
@@ -71,7 +86,9 @@ int32_t reader_dispatch_ecm(const S_ECM_REQUEST *request, S_READER_RESULT *resul
                      request->caid, request->sid, rc);
     }
 
-    return -2;
+    int32_t final_result = (!attempted && whitelist_rejected) ? READER_RESULT_REJECTED : READER_RESULT_NOT_FOUND;
+    if (result) result->status = final_result;
+    return final_result;
 }
 
 void reader_shutdown(void)

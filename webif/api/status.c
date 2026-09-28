@@ -31,8 +31,20 @@ void send_api_status(int fd, const char *qs)
     S_SERVER_STATS st = collect_stats();
     webif_config_snapshot(&cfg);
     time_t now = time(NULL);
-    S_WEBIF_CLIENT_VIEW clients[MAX_ACTIVE_CLIENTS];
-    int nclients = webif_client_snapshot_all(clients, MAX_ACTIVE_CLIENTS);
+    S_WEBIF_CLIENT_VIEW client_local[8];
+    S_WEBIF_CLIENT_VIEW *clients = client_local;
+    int nclients = webif_client_snapshot_all(client_local, 32);
+    int clients_heap = 0;
+    if (nclients == 32) {
+        clients = NULL;
+        nclients = webif_client_snapshot_alloc(&clients);
+        clients_heap = 1;
+    }
+    if (nclients < 0) {
+        free(buf);
+        send_json_error(fd, 503, "Service Unavailable", "out of memory");
+        return;
+    }
 
     pos = buf_printf(&buf, &bsz, pos,
         "{"
@@ -86,12 +98,13 @@ void send_api_status(int fd, const char *qs)
 
     pos = buf_printf(&buf, &bsz, pos, "]}");
     send_response(fd, 200, "OK", "application/json", buf, pos);
+    if (clients_heap) free(clients);
     free(buf);
 }
 
 void handle_api_client_kill(int fd, const char *qs)
 {
-    char tid_s[32] = "", user[CFGKEY_LEN] = "";
+    char tid_s[8] = "", user[CFGKEY_LEN] = "";
     get_param(qs, "tid", tid_s, sizeof(tid_s));
     get_param(qs, "user", user, sizeof(user));
     if (!tid_s[0]) { send_json_error(fd, 400, "Bad Request", "tid is required"); return; }

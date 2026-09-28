@@ -27,12 +27,14 @@ void webif_account_reset_all_stats(void);
 int webif_reader_count(void);
 bool webif_reader_first_free(int *index);
 int webif_reader_snapshot_all(S_WEBIF_READER_VIEW *out, size_t cap);
+int webif_reader_list_snapshot_all(S_WEBIF_READER_LIST_VIEW *out, size_t cap);
 bool webif_reader_get(int index, S_WEBIF_READER_VIEW *out);
 bool webif_reader_save(const S_WEBIF_READER_EDIT *edit);
 bool webif_reader_delete(int index);
 bool webif_reader_toggle(int index, int *enabled);
 
 int webif_client_snapshot_all(S_WEBIF_CLIENT_VIEW *out, size_t cap);
+int webif_client_snapshot_alloc(S_WEBIF_CLIENT_VIEW **out);
 int webif_active_connection_count(void);
 void webif_client_kill_by_tid(uint32_t tid);
 void webif_client_kill_by_user(const char *user);

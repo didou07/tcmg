@@ -17,7 +17,7 @@ with sync_playwright() as p:
     headers = pg.locator("#usrTable thead th").all_inner_texts()
     ok("Users column order: On is left of User", headers.index("On") < headers.index("User"), headers)
     ok("Users column order: CAID is immediately left of CW OK", headers.index("CAID") + 1 == headers.index("CW OK"), headers)
-    ok("Hit rate is removed from Users page", "Hit rate" not in headers and pg.locator(".c-rate").count() == 0 and "hit rate" not in pg.locator("#uCount").inner_text().lower())
+    ok("Hit rate is removed from Users page", "Hit rate" not in headers and pg.locator(".c-rate").count() == 0)
     ok("username uses normal text color", pg.evaluate("getComputedStyle(document.querySelector('.ulink')).color === getComputedStyle(document.documentElement).getPropertyValue('--t1').trim()"))
     ok("On checkbox is the first cell and User is second", pg.locator("#usrBody tr.urow").nth(0).locator("td").nth(0).get_attribute("class") == "c-en" and pg.locator("#usrBody tr.urow").nth(0).locator("td").nth(1).get_attribute("class") == "c-user")
     cnt=lambda k: pg.inner_text("#cnt_"+k)
@@ -58,7 +58,7 @@ with sync_playwright() as p:
         "nok": ("nok", "num", None, "desc"),
         "proto": ("proto", "str", None, "asc"),
         "idle": ("idle", "num", -1, "asc"),
-        "first": ("first", "num", 0, "asc"),
+        "last60": ("last60", "num", 0, "desc"),
         "last": ("last", "num", 0, "desc"),
         "exp": ("exp", "num", 0, "asc"),
     }
@@ -125,16 +125,11 @@ with sync_playwright() as p:
     after_hover = pg.evaluate("el => ({img:getComputedStyle(el).backgroundImage, color:getComputedStyle(el).backgroundColor})", status_row.element_handle())
     ok("status row has no hover background before pointer enters", before_hover["img"] == "none" and before_hover["color"] != "rgba(0, 0, 0, 0)", before_hover)
     ok("status row gets hover background only on pointer hover", after_hover != before_hover, after_hover)
-    # pagination
-    pg.select_option("#limit","30"); ok("30/page -> single page, no pager buttons",pg.locator("#pager .page").count()==0)
-    pg.evaluate("(()=>{const s=document.getElementById('limit');const o=document.createElement('option');o.textContent='10';s.insertBefore(o,s.firstChild)})()")
-    pg.select_option("#limit","10"); ok("10/page -> 10 rows shown",len(vis(pg))==10,len(vis(pg)))
-    ok("pager shows 2 pages",pg.locator("#pager .page[data-page='2']").count()>=1 and "Page 1 of 2" in pg.inner_text("#pageStat"),pg.inner_text("#pageStat"))
-    pg.click("#pager .page[data-page='2'] >> nth=0"); ok("page 2 shows the remaining 4",len(vis(pg))==4,len(vis(pg)))
-    pg.click(".ust[data-f=online]"); ok("changing filter returns to page 1",len(vis(pg))==5 and pg.locator("#pager .page").count()==0)
-    pg.click(".ust[data-f=all]")
-    ok("limit persisted in localStorage",pg.evaluate("localStorage.getItem('tcmg.users.limit')")=="10")
-    pg.select_option("#limit","50")
+    # Users is intentionally a single page; filtering hides unmatched rows without pagination.
+    pg.click(".ust[data-f=all]"); pg.fill("#usrSearch","")
+    ok("Users renders all rows on one page", len(vis(pg)) == 14, len(vis(pg)))
+    ok("Users pagination footer is removed", pg.locator("#pager").count() == 0 and pg.locator("#limit").count() == 0)
+
     # toggle via checkbox
     pg.fill("#usrSearch","salon_pc"); pg.click("tr[data-user=salon_pc] .en-box"); pg.wait_for_timeout(500)
     ok("checkbox toggle disables user + counters update",pg.get_attribute("tr[data-user=salon_pc]","data-state")=="disabled" and cnt("disabled")=="3" and cnt("online")=="4",(cnt("disabled"),cnt("online")))

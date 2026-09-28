@@ -29,7 +29,7 @@ def rawsock(payload,read=True):
 for pg in ["/status","/users","/readers","/livelog","/config","/failban","/files","/tvcas","/power?action=restart"]:
     st,hd,b=req("GET",pg); ok("page "+pg,st==200 and len(b)>500,st)
 for asset,ctype in [("/assets/app.css","text/css"),("/assets/app.js","application/javascript"),("/assets/users.js","application/javascript")]:
-    st,hd,b=req("GET",asset,raw=True); ok("asset "+asset,st==200 and ctype in hd.get("content-type","") and "max-age=86400" in hd.get("cache-control","") and len(b)>100,(st,hd,len(b)))
+    st,hd,b=req("GET",asset,raw=True); ok("asset "+asset,st==200 and ctype in hd.get("content-type","") and "max-age=31536000" in hd.get("cache-control","") and len(b)>100,(st,hd,len(b)))
 st,hd,b=req("GET","/users")
 ok("security headers",hd.get("x-frame-options")=="DENY" and hd.get("x-content-type-options")=="nosniff" and "frame-ancestors" in hd.get("content-security-policy",""),hd)
 ok("users page has rows",b.count("class='urow'")>0,b.count("class='urow'"))

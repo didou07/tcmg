@@ -5,6 +5,21 @@
 #include "../../src/log/log.h"
 #include "../internal/proto.h"
 
+static void fmt_ban_duration(long s, char *out, size_t sz)
+{
+	if (s < 0) s = 0;
+	long d = s / 86400;
+	s %= 86400;
+	long h = s / 3600;
+	s %= 3600;
+	long m = s / 60;
+	long sec = s % 60;
+	if (d > 0) snprintf(out, sz, "%ldd %ldh %ldm %lds", d, h, m, sec);
+	else if (h > 0) snprintf(out, sz, "%ldh %ldm %lds", h, m, sec);
+	else if (m > 0) snprintf(out, sz, "%ldm %lds", m, sec);
+	else snprintf(out, sz, "%lds", sec);
+}
+
 static int failban_clear(const char *clearip)
 {
 	if (clearip && clearip[0]) return webif_ban_clear(clearip);
@@ -63,9 +78,10 @@ void send_page_failban(int fd, const char *qs)
 	S_WEBIF_BAN_VIEW *bans = calloc((size_t)ban_cap, sizeof(*bans));
 	int nbans = bans ? webif_ban_snapshot(bans, (size_t)ban_cap, &bstats) : 0;
 	int total_bans = bstats.active_bans;
-	int total_fails = bstats.total_fails;
 	int max_fails = bstats.max_fails;
 	int ban_secs = bstats.ban_secs;
+	char ban_duration[64];
+	fmt_ban_duration(ban_secs, ban_duration, sizeof(ban_duration));
 	time_t now = time(NULL);
 
 	pos = buf_printf(&buf, &bsz, pos,
@@ -80,53 +96,45 @@ void send_page_failban(int fd, const char *qs)
 		"<div class='sbar' id='fbStats'>"
 		"<div class='sbar-item'><div class='sbl'>Active Bans</div>"
 		"  <div class='sbv%s'>%d</div></div>"
-		"<div class='sbar-item'><div class='sbl'>Total Fails</div>"
-		"  <div class='sbv%s sm'>%d</div></div>"
 		"<div class='sbar-item'><div class='sbl'>Max Fails</div>"
 		"  <div class='sbv sm'>%d</div></div>"
 		"<div class='sbar-item'><div class='sbl'>Ban Duration</div>"
-		"  <div class='sbv sm'>%ds</div></div>"
+		"  <div class='sbv sm'>%s</div></div>"
 		"</div>",
 		total_bans > 0 ? " tr" : " tg", total_bans,
-		total_fails > 0 ? " to" : "", total_fails,
 		max_fails,
-		ban_secs);
+		ban_duration);
 
 	pos = buf_printf(&buf, &bsz, pos,
 		"<div class='tw cm auto'><table>"
 		"<thead><tr>"
-		"<th>IP Address</th><th>Fail Count</th>"
-		"<th>Expires At</th><th>Remaining</th><th>Action</th>"
+		"<th>IP Address</th><th>Country</th><th>Remaining</th><th>Action</th>"
 		"</tr></thead><tbody id='fbBody'>");
 
 	int shown = 0;
 	for (int bi = 0; bi < nbans; bi++) {
 		S_WEBIF_BAN_VIEW *b = &bans[bi];
 		if (b->until <= now) continue;
-		char exp[32];
-		struct tm tm_s;
-		localtime_r(&b->until, &tm_s);
-		strftime(exp, sizeof(exp), "%H:%M:%S", &tm_s);
 		long secs_left = (long)(b->until - now);
-		char esc_ip[128];
+		char esc_ip[128], left_txt[64];
 		html_escape(b->ip, esc_ip, sizeof(esc_ip));
+		fmt_ban_duration(secs_left, left_txt, sizeof(left_txt));
 		pos = buf_printf(&buf, &bsz, pos,
 			"<tr class='fbrow' data-ip='%s'>"
-			"<td class='mono bold'>%s</td>"
-			"<td><span class='badge bban'>%d fails</span></td>"
-			"<td class='mono tm'>%s</td>"
-			"<td class='mono to fbcd' data-left='%ld'>%lds</td>"
-			"<td><button type='button' class='tool sm' data-a='unban'>"
+			"<td class='fbc-value fbc-ip'><span class='fbc-label'>IP</span><span class='mono bold'>%s</span></td>"
+			"<td class='fbc-value fbc-country'><span class='fbc-label'>Country</span><span class='flg fbflag' data-ip='%s' title=''></span><span class='fbcountry-name'></span></td>"
+			"<td class='fbc-value fbc-left'><span class='fbc-label'>Left</span><span class='mono to fbcd' data-left='%ld'>%s</span></td>"
+			"<td class='fbc-action'><button type='button' class='tool sm' data-a='unban'>"
 			ICON("i-unban") "Unban</button></td>"
 			"</tr>",
-			esc_ip, esc_ip, b->fails, exp, secs_left, secs_left);
+			esc_ip, esc_ip, esc_ip, secs_left, left_txt);
 		shown++;
 	}
 	free(bans);
 
 	if (!shown)
 		pos = buf_printf(&buf, &bsz, pos,
-			"<tr class='erow'><td colspan='5'>"
+			"<tr class='erow'><td colspan='4'>"
 			"<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='var(--gr)' stroke-width='1.8'"
 			" style='vertical-align:-3px;margin-right:6px'>"
 			"<path d='M22 11.08V12a10 10 0 1 1-5.93-9.14'/>"
@@ -151,7 +159,9 @@ void send_page_failban(int fd, const char *qs)
 		"    }"
 		"    var t=document.createElement('div');"
 		"    t.className='toast '+(kind||'');"
-		"    t.textContent=msg;"
+		"    var ic=document.createElement('span'); ic.className='toast-ico'; ic.setAttribute('aria-hidden','true');"
+		"    ic.innerHTML=(kind==='err')?\"<svg viewBox='0 0 24 24'><circle cx='12' cy='12' r='9'></circle><path d='M12 7v6M12 17h.01'></path></svg>\":\"<svg viewBox='0 0 24 24'><path d='M5 12.5l4 4L19 7.5'></path></svg>\";" \
+		"    var tx=document.createElement('span'); tx.textContent=msg; t.appendChild(ic); t.appendChild(tx);"
 		"    tbox.appendChild(t);"
 		"    setTimeout(function(){"
 		"      t.style.transition='opacity .25s';t.style.opacity='0';"
@@ -159,6 +169,14 @@ void send_page_failban(int fd, const char *qs)
 		"    },kind==='err'?5000:2600);"
 		"  }"
 
+		"  function fmtDur(v){"
+		"    v=Math.max(0,parseInt(v,10)||0);var d=Math.floor(v/86400);v%%=86400;var h=Math.floor(v/3600);v%%=3600;var m=Math.floor(v/60);var s=v%%60;"
+		"    if(d) return d+'d '+h+'h '+m+'m '+s+'s';"
+		"    if(h) return h+'h '+m+'m '+s+'s';"
+		"    if(m) return m+'m '+s+'s';"
+		"    return s+'s';"
+		"  }"
+		"  function applyFlags(){var els=body.querySelectorAll('.fbflag');for(var i=0;i<els.length;i++){var el=els[i],ip=el.getAttribute('data-ip'),name=el.parentNode?el.parentNode.querySelector('.fbcountry-name'):null;if(typeof _load_country==='function')_load_country(ip,el,name);}}"
 		"  function tickCountdown(){"
 		"    var rows=body.querySelectorAll('.fbcd');"
 		"    for(var i=0;i<rows.length;i++){"
@@ -166,11 +184,12 @@ void send_page_failban(int fd, const char *qs)
 		"      if(isNaN(v)) v=0;"
 		"      if(v>0) v--;"
 		"      el.setAttribute('data-left',v);"
-		"      el.textContent=v+'s';"
+		"      el.textContent=fmtDur(v);"
 		"      if(v===0&&el.parentNode) el.parentNode.classList.add('dim');"
 		"    }"
 		"    setTimeout(tickCountdown,1000);"
 		"  }"
+		"  applyFlags();"
 		"  setTimeout(tickCountdown,1000);"
 
 		"  function softRefresh(){"
@@ -186,7 +205,7 @@ void send_page_failban(int fd, const char *qs)
 		"        if(!html) return;"
 		"        var doc=new DOMParser().parseFromString(html,'text/html');"
 		"        var nb=doc.getElementById('fbBody');"
-		"        if(nb) body.innerHTML=nb.innerHTML;"
+		"        if(nb){body.innerHTML=nb.innerHTML;applyFlags();}"
 		"        var ns=doc.getElementById('fbStats'), cs=document.getElementById('fbStats');"
 		"        if(ns&&cs) cs.innerHTML=ns.innerHTML;"
 		"        var ca=document.getElementById('fbClearAll');"

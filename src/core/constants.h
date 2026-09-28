@@ -2,11 +2,14 @@
 #define TCMG_CONSTANTS_H_
 
 #ifndef TCMG_VERSION
-#  define TCMG_VERSION    "5.9"
+#  define TCMG_VERSION    "6.0"
 #endif
 #define TCMG_BANNER       "tcmg v" TCMG_VERSION
 #ifndef TCMG_BUILD_TIME
 #  define TCMG_BUILD_TIME __DATE__ " " __TIME__
+#endif
+#ifndef TCMG_ASSET_REV
+#  define TCMG_ASSET_REV "dev"
 #endif
 
 #ifndef CS_CONFDIR

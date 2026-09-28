@@ -62,15 +62,22 @@ int32_t ecm_process(S_CLIENT *client, uint16_t caid, uint16_t sid, uint32_t prov
     }
 
     elapsed = (long)tcmg_elapsed_ms(start);
+    E_ACCOUNT_ECM_RESULT stats_result =
+        (res == EMU_OK) ? ACCOUNT_ECM_FOUND :
+        (reader_result.status == READER_RESULT_REJECTED ? ACCOUNT_ECM_REJECTED : ACCOUNT_ECM_NOT_FOUND);
+    E_LOG_ECM_RESULT log_result =
+        (res == EMU_OK) ? LOG_ECM_FOUND :
+        (reader_result.status == READER_RESULT_REJECTED ? LOG_ECM_REJECTED : LOG_ECM_NOT_FOUND);
+
     if (res == EMU_OK) {
         antishare_record_success(request.account, client->identity.thread_id, caid, sid, cw);
         if (anti_delay_ms > 0) tcmg_sleep_ms(anti_delay_ms);
-    } else {
+    } else if (stats_result == ACCOUNT_ECM_NOT_FOUND) {
         antishare_record_failure(request.account, client->identity.thread_id, caid, sid);
     }
-    account_stats_record_ecm(request.account, res == EMU_OK, elapsed);
+    account_stats_record_ecm_result(request.account, stats_result, elapsed);
 
-    log_cw_result(caid, sid, ecm_len, cw, res == EMU_OK, cache_hit,
+    log_cw_result(caid, sid, ecm_len, cw, log_result, cache_hit,
                   (int32_t)elapsed, request.user);
     secure_zero(ecm_md5, sizeof(ecm_md5));
     if (result) {

@@ -38,23 +38,18 @@ void send_page_config(int fd)
 
 	pos = buf_printf(&buf, &bsz, pos,
 		"<style>"
-		".cfg-page{max-width:1160px;margin:0 auto;padding-bottom:16px}"
-		".cfg-intro{margin-bottom:16px;padding:14px 16px;background:var(--s2);"
-		"border:1px solid var(--bd);border-radius:var(--r);color:var(--t1);"
-		"font-size:12px;line-height:1.6}"
-		".cfg-intro strong{color:var(--t0)}"
+		".cfg-page{max-width:920px;margin:0 auto;padding-bottom:16px}"
 		".cfg-card{background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);"
 		"margin-bottom:14px;overflow:hidden}"
 		".cfg-head{padding:14px 18px;background:var(--s2);border-bottom:1px solid var(--bd);"
 		"display:flex;align-items:center;justify-content:space-between;gap:14px}"
 		".cfg-head-main{min-width:0}"
 		".cfg-title{font-size:14px;font-weight:700;color:var(--t0)}"
-		".cfg-sub{margin-top:2px;font-size:11px;color:var(--t2)}"
 		".cfg-body{padding:16px 18px}"
-		".cfg-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 12px}"
-		".cfg-grid.one{grid-template-columns:minmax(0,1fr)}"
-		".cfg-field{min-width:0}"
-		".cfg-label{display:block;margin-bottom:5px;font-size:11px;font-weight:650;"
+		".cfg-grid{display:flex;flex-direction:column;gap:0}"
+		".cfg-grid.one{display:flex;flex-direction:column}"
+		".cfg-field{min-width:0;display:grid;grid-template-columns:190px minmax(0,1fr);align-items:center;gap:16px;padding:8px 0;border-bottom:1px solid rgba(56,58,65,.65)}"
+		".cfg-label{display:block;margin:0;font-size:11px;font-weight:650;"
 		"letter-spacing:.04em;color:var(--t1)}"
 		".cfg-input{width:100%%;padding:9px 11px;background:var(--s2);border:1px solid var(--bd2);"
 		"border-radius:var(--rsm);color:var(--t0);font-family:var(--sans);font-size:13px;"
@@ -65,8 +60,7 @@ void send_page_config(int fd)
 		".cfg-input[type=date]{width:132px;max-width:100%%}"
 		".cfg-input:focus{border-color:var(--p);box-shadow:0 0 0 3px var(--ps)}"
 		".cfg-input:disabled{opacity:.48;cursor:not-allowed}"
-		".cfg-help{margin-top:4px;font-size:10.5px;color:var(--t2);line-height:1.45}"
-		".cfg-toggle-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:13px}"
+		".cfg-toggle-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px;padding-top:2px}"
 		".cfg-toggle{display:inline-flex;align-items:center;gap:7px;padding:8px 10px;"
 		"background:var(--s2);border:1px solid var(--bd);border-radius:var(--rsm);"
 		"font-size:12px;color:var(--t0);font-weight:600}"
@@ -78,10 +72,11 @@ void send_page_config(int fd)
 		".cfg-msg.err{border:1px solid var(--re);color:var(--re);background:var(--res)}"
 		".cfg-save{display:flex;justify-content:center;margin:20px 0 4px}"
 		".cfg-save button{min-width:190px;justify-content:center}"
-		"@media(min-width:1100px){.cfg-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.cfg-grid.one{grid-template-columns:minmax(0,1fr)}}"
+		"@media(min-width:1100px){.cfg-page{max-width:920px}}"
 		"@media(max-width:720px){"
 		".cfg-page{padding:0 2px 20px}"
-		".cfg-grid{grid-template-columns:minmax(0,1fr)}"
+		".cfg-grid{display:flex;flex-direction:column}"
+		".cfg-field{grid-template-columns:1fr;gap:5px;padding:9px 0}"
 		".cfg-body{padding:14px}"
 		".cfg-head{padding:13px 14px}"
 		".cfg-toggle-row{display:grid;grid-template-columns:minmax(0,1fr)}"
@@ -90,17 +85,20 @@ void send_page_config(int fd)
 		"</style>"
 		"<div class='cfg-page'>"
 		"<div id='cfgMsg' class='cfg-msg' role='status' aria-live='polite'></div>"
-		"<div class='cfg-intro'>"
-		"<strong>Server configuration</strong><br>"
-		"Only the settings shown here are changed by this page. Values are validated before they are saved, "
-		"and a successful save triggers a configuration reload."
-		"</div>");
+		"<div class='cfg-tabs' role='tablist' aria-label='Configuration sections'>"
+		"<button type='button' class='cfg-tab act' id='cfgTab-network' role='tab' aria-selected='true' aria-controls='cfgPanel-network' data-cfg-tab='network'>" ICON("i-server") "Connections</button>"
+		"<button type='button' class='cfg-tab' id='cfgTab-web' role='tab' aria-selected='false' aria-controls='cfgPanel-web' data-cfg-tab='web'>" ICON("i-terminal") "WebIF</button>"
+		"<button type='button' class='cfg-tab' id='cfgTab-log' role='tab' aria-selected='false' aria-controls='cfgPanel-log' data-cfg-tab='log'>" ICON("i-activity") "Logging</button>"
+		"<button type='button' class='cfg-tab' id='cfgTab-system' role='tab' aria-selected='false' aria-controls='cfgPanel-system' data-cfg-tab='system'>" ICON("i-sliders") "System</button>"
+		"<button type='button' class='cfg-tab' id='cfgTab-security' role='tab' aria-selected='false' aria-controls='cfgPanel-security' data-cfg-tab='security'>" ICON("i-shield") "Security</button>"
+		"</div><div class='cfg-panels'>"
+		"<section class='cfg-panel' id='cfgPanel-network' role='tabpanel' aria-labelledby='cfgTab-network'>"
+		);
 
 	pos = buf_printf(&buf, &bsz, pos,
 		"<section class='cfg-card'>"
 		"<div class='cfg-head'><div class='cfg-head-main'>"
 		"<div class='cfg-title'>Newcamd / MGcamd / CCcam / CS378X</div>"
-		"<div class='cfg-sub'>Incoming protocol listeners and common socket options</div>"
 		"</div></div>"
 		"<div class='cfg-body'>"
 		"<div class='cfg-grid'>"
@@ -108,49 +106,47 @@ void send_page_config(int fd)
 		"<div class='cfg-field'>"
 		"<label class='cfg-label' for='cf_newcamd_port'>Newcamd port</label>"
 		"<input class='cfg-input mono' id='cf_newcamd_port' type='number' min='0' max='65535' value='%d'>"
-		"<div class='cfg-help'>0 disables the Newcamd listener.</div></div>"
+		"</div>"
 
 		"<div class='cfg-field'>"
 		"<label class='cfg-label' for='cf_cccam_port'>CCcam port</label>"
 		"<input class='cfg-input mono' id='cf_cccam_port' type='number' min='0' max='65535' value='%d'>"
-		"<div class='cfg-help'>0 disables the CCcam listener.</div></div>"
+		"</div>"
 
 		"<div class='cfg-field'>"
 		"<label class='cfg-label' for='cf_cs378x_port'>CS378X port</label>"
 		"<input class='cfg-input mono' id='cf_cs378x_port' type='number' min='0' max='65535' value='%d'>"
-		"<div class='cfg-help'>CS378X/camd35 TCP listener; 0 disables it.</div></div>"
+		"</div>"
 
 		"<div class='cfg-field'>"
 		"<label class='cfg-label' for='cf_cs378x_bindaddr'>CS378X bind address</label>"
 		"<input class='cfg-input mono' id='cf_cs378x_bindaddr' placeholder='0.0.0.0' value='%s'>"
-		"<div class='cfg-help'>Leave empty to listen on all local IPv4 interfaces.</div></div>"
+		"</div>"
 
 		"<div class='cfg-field'>"
 		"<label class='cfg-label' for='cf_newcamd_bindaddr'>Newcamd bind address</label>"
 		"<input class='cfg-input mono' id='cf_newcamd_bindaddr' placeholder='0.0.0.0' value='%s'>"
-		"<div class='cfg-help'>Leave empty to use the default local address.</div></div>"
+		"</div>"
 
 		"<div class='cfg-field'>"
 		"<label class='cfg-label' for='cf_sock_timeout'>Socket timeout</label>"
 		"<input class='cfg-input mono' id='cf_sock_timeout' type='number' min='5' max='600' value='%d'>"
-		"<div class='cfg-help'>Maximum wait for network input when no server heartbeat is due.</div></div>"
+		"</div>"
 
 		"<div class='cfg-field'>"
 		"<label class='cfg-label' for='cf_server_keepalive'>Server keepalive</label>"
 		"<input class='cfg-input mono' id='cf_server_keepalive' type='number' min='0' max='3600' value='%d'>"
-		"<div class='cfg-help'>Server sends an application heartbeat after this many idle seconds. 0 disables it.</div></div>"
+		"</div>"
 
 		"<div class='cfg-field'>"
 		"<label class='cfg-label' for='cf_server_keepalive_misses'>Keepalive misses</label>"
 		"<input class='cfg-input mono' id='cf_server_keepalive_misses' type='number' min='1' max='20' value='%d'>"
-		"<div class='cfg-help'>Disconnect after this many unanswered heartbeats.</div></div>"
+		"</div>"
 
 		"<div class='cfg-field'>"
 		"<label class='cfg-label' for='cf_newcamd_key'>Newcamd DES key</label>"
 		"<input class='cfg-input mono' id='cf_newcamd_key' maxlength='28' spellcheck='false' "
 		"autocomplete='off' value='%s'>"
-		"<div class='cfg-help'>28 hexadecimal characters.</div></div>"
-
 		"</div>"
 		"<div class='cfg-toggle-row'>"
 		"<label class='cfg-toggle'><input type='checkbox' id='cf_keepalive'%s> Keepalive</label>"
@@ -168,12 +164,13 @@ void send_page_config(int fd)
 		key_hex,
 		cfg.newcamd_keepalive ? " checked" : "",
 		cfg.newcamd_mgclient ? " checked" : "");
+	pos = buf_printf(&buf, &bsz, pos, "</section><section class='cfg-panel' id='cfgPanel-web' role='tabpanel' aria-labelledby='cfgTab-web' hidden>");
+
 
 	pos = buf_printf(&buf, &bsz, pos,
 		"<section class='cfg-card'>"
 		"<div class='cfg-head'><div class='cfg-head-main'>"
 		"<div class='cfg-title'>Web Interface</div>"
-		"<div class='cfg-sub'>HTTP port, bind address and administrator login</div>"
 		"</div></div>"
 		"<div class='cfg-body'>"
 		"<div class='cfg-grid'>"
@@ -201,7 +198,6 @@ void send_page_config(int fd)
 		"<div class='cfg-field'>"
 		"<label class='cfg-label' for='cf_webif_refresh'>Auto-refresh</label>"
 		"<input class='cfg-input mono' id='cf_webif_refresh' type='number' min='0' max='3600' value='%d'>"
-		"<div class='cfg-help'>0 disables automatic page refresh.</div></div>"
 
 		"</div>"
 		"</div></section>",
@@ -210,18 +206,19 @@ void send_page_config(int fd)
 		esc_wi_user,
 		esc_wi_pass,
 		cfg.webif_refresh);
+	pos = buf_printf(&buf, &bsz, pos, "</section><section class='cfg-panel' id='cfgPanel-log' role='tabpanel' aria-labelledby='cfgTab-log' hidden>");
+
 
 	pos = buf_printf(&buf, &bsz, pos,
 		"<section class='cfg-card'>"
 		"<div class='cfg-head'><div class='cfg-head-main'>"
 		"<div class='cfg-title'>Logging</div>"
-		"<div class='cfg-sub'>ECM logging and log file location</div>"
 		"</div></div>"
 		"<div class='cfg-body'>"
 		"<div class='cfg-grid'>"
 		"<div class='cfg-field'>"
 		"<label class='cfg-label' for='cf_logfile'>Log file</label>"
-		"<input class='cfg-input mono' id='cf_logfile' placeholder='Leave empty to disable file logging' value='%s'>"
+		"<input class='cfg-input mono' id='cf_logfile' value='%s'>"
 		"</div>"
 		"</div>"
 		"<div class='cfg-toggle-row'>"
@@ -230,28 +227,29 @@ void send_page_config(int fd)
 		"</div></section>",
 		esc_logfile,
 		cfg.ecm_log ? " checked" : "");
+	pos = buf_printf(&buf, &bsz, pos, "</section><section class='cfg-panel' id='cfgPanel-system' role='tabpanel' aria-labelledby='cfgTab-system' hidden>");
+
 
 	pos = buf_printf(&buf, &bsz, pos,
 		"<section class='cfg-card'>"
 		"<div class='cfg-head'><div class='cfg-head-main'>"
 		"<div class='cfg-title'>Scheduled restart</div>"
-		"<div class='cfg-sub'>Restart TCMG every day at the selected local time. Active connections are dropped immediately.</div>"
 		"</div></div>"
 		"<div class='cfg-body'><div class='cfg-grid'>"
 		"<div class='cfg-field'>"
 		"<label class='cfg-label' for='cf_restart_time'>Restart time</label>"
 		"<input class='cfg-input mono' id='cf_restart_time' type='time' step='60' value='%s'>"
-		"<div class='cfg-help'>Uses the device local time. Default: 04:00.</div></div>"
 		"</div><div class='cfg-toggle-row'>"
 		"<label class='cfg-toggle'><input type='checkbox' id='cf_restart_enabled'%s> Enable daily restart</label>"
 		"</div></div></section>",
 		cfg.scheduled_restart_time, cfg.scheduled_restart_enabled ? " checked" : "");
+	pos = buf_printf(&buf, &bsz, pos, "</section><section class='cfg-panel' id='cfgPanel-security' role='tabpanel' aria-labelledby='cfgTab-security' hidden>");
+
 
 	pos = buf_printf(&buf, &bsz, pos,
 		"<section class='cfg-card'>"
 		"<div class='cfg-head'><div class='cfg-head-main'>"
 		"<div class='cfg-title'>Security</div>"
-		"<div class='cfg-sub'>Temporary protection against repeated failed logins</div>"
 		"</div></div>"
 		"<div class='cfg-body'>"
 		"<div class='cfg-toggle-row'>"
@@ -260,8 +258,7 @@ void send_page_config(int fd)
 		"<div class='cfg-grid'>"
 		"<div class='cfg-field'>"
 		"<label class='cfg-label' for='cf_failban_allowlist'>Allowlist</label>"
-		"<input class='cfg-input mono' id='cf_failban_allowlist' value='%s' placeholder='192.168.1.10, 10.0.0.0/24'>"
-		"<div class='cfg-help'>These IPs/CIDRs never accumulate failures and are never banned. Separate entries with commas or spaces.</div>"
+		"<input class='cfg-input mono' id='cf_failban_allowlist' value='%s'>"
 		"</div>"
 		"<div class='cfg-field'>"
 		"<label class='cfg-label' for='cf_failban_max_fails'>Maximum failed attempts</label>"
@@ -269,8 +266,7 @@ void send_page_config(int fd)
 		"</div>"
 		"<div class='cfg-field'>"
 		"<label class='cfg-label' for='cf_failban_ban_secs'>Ban duration</label>"
-		"<input class='cfg-input mono' id='cf_failban_ban_secs' type='number' min='10' max='604800' value='%d'>"
-		"<div class='cfg-help'>Duration in seconds. An IP is blocked after the configured number of failed logins.</div>"
+		"<input class='cfg-input mono' id='cf_failban_ban_secs' type='number' min='10' max='604800' step='1' value='%d'>"
 		"</div>"
 		"</div>"
 		"</div></section>",
@@ -278,6 +274,8 @@ void send_page_config(int fd)
 		esc_failban_allow,
 		cfg.failban_max_fails,
 		cfg.failban_ban_secs);
+
+	pos = buf_printf(&buf, &bsz, pos, "</section></div>");
 
 	pos = buf_printf(&buf, &bsz, pos,
 		"<div class='cfg-save'>"
@@ -296,6 +294,11 @@ void send_page_config(int fd)
 		"  e.style.display='flex';"
 		"}"
 
+		"function cfgTab(name){"
+		"  document.querySelectorAll('.cfg-tab').forEach(function(b){var a=b.dataset.cfgTab===name;b.classList.toggle('act',a);b.setAttribute('aria-selected',a?'true':'false');b.tabIndex=a?0:-1;});"
+		"  document.querySelectorAll('.cfg-panel').forEach(function(p){p.hidden=p.id!=='cfgPanel-'+name;});"
+		"}"
+		"document.querySelectorAll('.cfg-tab').forEach(function(b){b.addEventListener('click',function(){cfgTab(b.dataset.cfgTab);});b.addEventListener('keydown',function(e){var a=[].slice.call(document.querySelectorAll('.cfg-tab')),i=a.indexOf(b),n=i;if(e.key==='ArrowRight'||e.key==='ArrowDown')n=(i+1)%%a.length;else if(e.key==='ArrowLeft'||e.key==='ArrowUp')n=(i+a.length-1)%%a.length;else if(e.key==='Home')n=0;else if(e.key==='End')n=a.length-1;else return;e.preventDefault();a[n].focus();cfgTab(a[n].dataset.cfgTab);});});"
 		"function cfgHex28(s){return /^[0-9a-fA-F]{28}$/.test(s);}"
 		"function cfgValidate(){"
 		"  var nk=cfgEl('cf_newcamd_key').value.trim();"
@@ -333,7 +336,7 @@ void send_page_config(int fd)
 		"  p.set(\'failban_enabled\',cfgEl(\'cf_failban_enabled\').checked?\'1\':\'0\');"
 		"  p.set(\'failban_allowlist\',cfgEl(\'cf_failban_allowlist\').value);"
 		"  p.set(\'failban_max_fails\',cfgEl(\'cf_failban_max_fails\').value);"
-		"  p.set('failban_ban_secs',cfgEl('cf_failban_ban_secs').value);"
+		"  var fbs=Math.max(10,Math.min(604800,parseInt(cfgEl('cf_failban_ban_secs').value,10)||300)); cfgEl('cf_failban_ban_secs').value=String(fbs); p.set('failban_ban_secs',String(fbs));"
 		"  tcmg_api('/api/config/save',{method:'POST',body:p.toString(),headers:{'Content-Type':'application/x-www-form-urlencoded'}})"
 		"  .then(function(d){"
 		"    if(d&&d.ok){cfgSetMessage(true,'Configuration saved. Reload has been triggered.');}"
@@ -385,7 +388,7 @@ void send_page_files(int fd)
         "<div id='fileWarn' class='ew' style='display:%s'></div>"
         "<textarea class='ea' id='fileArea' spellcheck='false' autocomplete='off'%s>%s</textarea>"
         "<div class='ef2 file-actions'>"
-        "  <div class='file-info'><span id='fileSize'>%zu bytes</span><span class='file-dot'>·</span><span id='fileMode'>Validated on save</span></div>"
+        "  <div class='file-info'><span id='fileSize'>%llu bytes</span><span class='file-dot'>·</span><span id='fileMode'>Validated on save</span></div>"
         "  <div class='file-buttons'>"
         "    <button type='button' class='tool sm' onclick='reloadFile()'>Reload</button>"
         "    <button type='button' class='tool sm' onclick='downloadCurrentFile()'>Download</button>"
@@ -395,7 +398,7 @@ void send_page_files(int fd)
         cfg_trunc ? FILE_TRUNC_BANNER : "",
         cfg_trunc ? "flex" : "none",
         cfg_trunc ? " readonly" : "", cfgesc,
-        (size_t)cfg_len, cfg_trunc ? "disabled" : "");
+        (unsigned long long)cfg_len, cfg_trunc ? "disabled" : "");
     free(cfgesc);
 
     pos = buf_printf(&buf, &bsz, pos,

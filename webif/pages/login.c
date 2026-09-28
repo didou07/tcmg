@@ -13,30 +13,20 @@ void send_login_page(int fd, int failed)
 	if (!buf) { send_json_error(fd, 503, "Service Unavailable", "out of memory"); return; }
 
 	pos = buf_printf(&buf, &bsz, pos,
-		"<!DOCTYPE html><html lang='en' data-theme='dark' data-tpref='dark'><head>"
+		"<!DOCTYPE html><html lang='en'><head>"
 		"<meta charset='UTF-8'>"
 		"<meta name='viewport' content='width=device-width,initial-scale=1'>"
 		"<title>TCMG &mdash; Login</title>"
 		"<style>%s</style>"
-		"<script>" WEB_THEME_INIT_JS WEB_ACCENT_INIT_JS "</script>"
+		
 		"</head><body>",
 		TCMG_CSS);
 
 	pos = buf_printf(&buf, &bsz, pos,
-		"<div class='lb'><div class='lcard'>"
-		"<div class='ll'>"
-		"  <div class='lli'>"
-		"    <svg width='26' height='26' viewBox='0 0 24 24' fill='none'>"
-		"      <path d='M12 2L2 7l10 5 10-5-10-5z' stroke='var(--p)' stroke-width='1.8' stroke-linejoin='round'/>"
-		"      <path d='M2 17l10 5 10-5' stroke='var(--p)' stroke-width='1.8' stroke-linejoin='round'/>"
-		"      <path d='M2 12l10 5 10-5' stroke='var(--cy)' stroke-width='1.8' stroke-linejoin='round'/>"
-		"    </svg>"
-		"  </div>"
-		"  <div>"
-		"    <div class='llt'>TCMG</div>"
-		"    <div class='llv'>" TCMG_VERSION " &bull; Web Interface</div>"
-		"  </div>"
-		"</div>");
+		"<div class='lb'><div class='lwrap'>"
+		"<div class='lformpanel'>"
+		"<div class='llt2'>Welcome back</div>"
+		"<div class='lls'>Sign in to continue to the control panel</div>");
 
 	if (failed)
 		pos = buf_printf(&buf, &bsz, pos,
@@ -68,7 +58,7 @@ void send_login_page(int fd, int failed)
 		"</svg>"
 		"Sign In</button>"
 		"</form>"
-		"</div></div>"
+		"</div></div></div>"
 		"</body></html>");
 
 	if (failed == 2) send_response(fd, 429, "Too Many Requests", "text/html", buf, pos);

@@ -15,7 +15,7 @@ typedef struct {
 	int      ncaidv;
 	int    maxc, en;
 	int    has_as, as_en, as_sids, as_ecm, as_ecm_window_s, as_channel_timeout_s, as_switch_delay_s;
-	char   groups[256];
+	char   groups[WEBIF_GROUPS_LEN];
 	int32_t groupv[MAX_GROUPS_PER_ACC];
 	int32_t ngroups;
 	time_t exp;
@@ -105,7 +105,7 @@ static int parse_caid_list(const char *s, acct_form *f)
 
 static const char *parse_account_form(const char *body, acct_form *f)
 {
-	char caid_s[128], max_s[16], en_s[8], exp_s[24];
+	char caid_s[WEBIF_CAID_LIST_LEN], max_s[16], en_s[8], exp_s[24];
 	char as_en_s[8], as_sids_s[8], as_ecm_s[16], as_ecm_window_s[8], as_channel_timeout_s[8], as_switch_delay_s[8];
 	memset(f, 0, sizeof(*f));
 	if (webif_form_copy(body, "user",    f->user, sizeof(f->user))    < 0) return "username too long (max 63 characters)";
@@ -241,10 +241,10 @@ void send_api_userstats(int fd)
 
         pos = buf_printf(&buf, &bsz, pos,
             "%s{\"user\":\"%s\",\"enabled\":%d,\"active\":%d,\"ok\":%lld,\"nok\":%lld,"
-            "\"avg\":%lld,\"ip\":\"%s\",\"ipn\":%u,\"proto\":\"%s\",\"caid\":\"%04X\","
+            "\"avg\":%lld,\"last_60s\":%lld,\"ip\":\"%s\",\"ipn\":%u,\"proto\":\"%s\",\"caid\":\"%04X\","
             "\"sid\":\"%04X\",\"channel\":\"%s\",\"idle\":%ld,\"last_seen\":%lld,\"caids\":\"%s\"}",
             i ? "," : "", eu, a->enabled ? 1 : 0, active,
-            (long long)a->cw_found, (long long)a->cw_not, avg,
+            (long long)a->cw_found, (long long)a->cw_not, avg, (long long)a->cw_last_60s,
             eip, ipn, eproto, caid, sid, echan, idle_s, (long long)last_seen, ecaids);
     }
     pos = buf_printf(&buf, &bsz, pos, "]}");

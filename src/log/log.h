@@ -53,8 +53,14 @@ void    log_ecm_set(int8_t on);
 int8_t  log_ecm_get(void);
 
 void    log_ecm_raw(uint16_t caid, uint16_t sid, const uint8_t *data, int32_t len);
+typedef enum {
+    LOG_ECM_NOT_FOUND = 0,
+    LOG_ECM_FOUND = 1,
+    LOG_ECM_REJECTED = 2,
+} E_LOG_ECM_RESULT;
+
 void    log_cw_result(uint16_t caid, uint16_t sid, int32_t len,
-                      const uint8_t *cw, bool hit, bool from_cache,
+                      const uint8_t *cw, E_LOG_ECM_RESULT result, bool from_cache,
                       int32_t ms, const char *user);
 
 int32_t log_ring_total(void);
