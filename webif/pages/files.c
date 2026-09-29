@@ -12,27 +12,31 @@ typedef struct {
 
 static int emit_livelog_line(int32_t id, const char *line, const char *usr, void *ctx)
 {
-	(void)usr;
+	(void)id; (void)usr;
 	s_log_emit_ctx *c = (s_log_emit_ctx *)ctx;
-	char esc[8192];
-	html_escape(line, esc, (int)sizeof(esc));
-	c->pos = buf_printf(c->buf, c->bsz, c->pos,
-		"<span data-r=\"%s\">%s</span>", esc, esc);
-	if (c->pos < 0) c->failed = 1;
-	return c->failed ? -1 : 0;
+	int p = buf_printf(c->buf, c->bsz, c->pos, "<span data-r=\"");
+	p = buf_html_string(c->buf, c->bsz, p, line);
+	if (p < 0) { c->failed = 1; return -1; }
+	p = buf_printf(c->buf, c->bsz, p, "\">");
+	p = buf_html_string(c->buf, c->bsz, p, line);
+	if (p < 0) { c->failed = 1; return -1; }
+	c->pos = buf_printf(c->buf, c->bsz, p, "</span>");
+	return 0;
 }
 
 static int emit_logpoll_line(int32_t id, const char *line, const char *usr, void *ctx)
 {
 	s_log_emit_ctx *c = (s_log_emit_ctx *)ctx;
-	char esc_line[8192], esc_usr[512];
-	json_escape(line, esc_line, sizeof(esc_line));
-	json_escape(usr && usr[0] ? usr : "", esc_usr, sizeof(esc_usr));
-	c->pos = buf_printf(c->buf, c->bsz, c->pos,
-		"%s{\"id\":%d,\"usr\":\"%s\",\"line\":\"%s\"}",
-		c->pos > 0 && (*c->buf)[c->pos - 1] != '[' ? "," : "", id, esc_usr, esc_line);
-	if (c->pos < 0) c->failed = 1;
-	return c->failed ? -1 : 0;
+	int p = buf_printf(c->buf, c->bsz, c->pos,
+		"%s{\"id\":%d,\"usr\":\"",
+		c->pos > 0 && (*c->buf)[c->pos - 1] != '[' ? "," : "", id);
+	p = buf_json_string(c->buf, c->bsz, p, usr && usr[0] ? usr : "");
+	if (p < 0) { c->failed = 1; return -1; }
+	p = buf_printf(c->buf, c->bsz, p, "\",\"line\":\"");
+	p = buf_json_string(c->buf, c->bsz, p, line);
+	if (p < 0) { c->failed = 1; return -1; }
+	c->pos = buf_printf(c->buf, c->bsz, p, "\"}");
+	return 0;
 }
 
 void send_page_livelog(int fd)
@@ -107,7 +111,17 @@ void send_logpoll(int fd, const char *qs)
 		long v = strtol(since_s, &end, 10);
 		if (errno == 0 && end && *end == '\0' && v > 0 && v <= INT32_MAX) from_id = (int32_t)v;
 	}
-	int bsz = 16384, pos = 0;
+
+	int32_t total = log_ring_total();
+	if (from_id >= total) {
+		char idle[96];
+		int  in = snprintf(idle, sizeof(idle),
+		                   "{\"debug\":%u,\"next\":%d,\"lines\":[]}",
+		                   (unsigned)g_dblevel, (int)total);
+		send_response(fd, 200, "OK", "application/json", idle, in);
+		return;
+	}
+	int bsz = 4096, pos = 0;
 	char *buf = (char *)malloc((size_t)bsz);
 	if (!buf) { send_json_error(fd, 503, "Service Unavailable", "out of memory"); return; }
 	pos = buf_printf(&buf, &bsz, pos, "{\"debug\":%u,\"next\":0,\"lines\":[", (unsigned)g_dblevel);

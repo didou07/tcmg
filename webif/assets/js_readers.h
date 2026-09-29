@@ -16,7 +16,6 @@
 	"\n" \
 	"  function $(id) { return document.getElementById(id); }\n" \
 	"  function kindLabel(k) { return k === 'card' ? 'Card' : k === 'emu' ? 'EMU' : k === 'network' ? 'Network' : 'Other'; }\n" \
-	"\n" \
 	"  function matches(reader) {\n" \
 	"    if (state.f === 'enabled' && !reader.enabled) return false;\n" \
 	"    if (state.f === 'disabled' && reader.enabled) return false;\n" \
@@ -92,7 +91,7 @@
 	"    labelCell.className = 'c-rlabel';\n" \
 	"    var label = document.createElement('button');\n" \
 	"    label.type = 'button';\n" \
-	"    label.className = 'rlink';\n" \
+	"    label.className = 'rlink ' + (!reader.enabled ? 'r-disabled' : (reader.active ? 'r-active' : 'r-idle'));\n" \
 	"    label.dataset.a = 'edit';\n" \
 	"    label.title = 'Edit ' + (reader.label || ('reader' + reader.index));\n" \
 	"    label.textContent = reader.label || ('reader' + reader.index);\n" \

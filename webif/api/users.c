@@ -198,17 +198,23 @@ void send_api_userstats(int fd)
     int cap = webif_account_count();
     if (cap < 0) cap = 0;
     S_WEBIF_USER_STATS_VIEW *accounts = cap ? calloc((size_t)cap, sizeof(*accounts)) : NULL;
-    S_WEBIF_CLIENT_VIEW clients[MAX_ACTIVE_CLIENTS];
-    int naccounts = accounts ? webif_account_userstats_snapshot_all(accounts, (size_t)cap) : 0;
-    int nclients = webif_client_snapshot_all(clients, MAX_ACTIVE_CLIENTS);
     if (cap > 0 && !accounts) {
+        send_json_error(fd, 503, "Service Unavailable", "out of memory");
+        return;
+    }
+
+    S_WEBIF_CLIENT_VIEW *clients = NULL;
+    int naccounts = accounts ? webif_account_userstats_snapshot_all(accounts, (size_t)cap) : 0;
+    int nclients = webif_client_snapshot_alloc(&clients);
+    if (nclients < 0) {
+        free(accounts);
         send_json_error(fd, 503, "Service Unavailable", "out of memory");
         return;
     }
 
     int bsz = 16384, pos = 0;
     char *buf = malloc((size_t)bsz);
-    if (!buf) { free(accounts); send_json_error(fd, 503, "Service Unavailable", "out of memory"); return; }
+    if (!buf) { free(accounts); free(clients); send_json_error(fd, 503, "Service Unavailable", "out of memory"); return; }
 
     pos = buf_printf(&buf, &bsz, pos,
         "{\"ok\":true,\"active_connections\":%d,\"count\":%d,\"users\":[",
@@ -251,6 +257,7 @@ void send_api_userstats(int fd)
     send_response(fd, 200, "OK", "application/json", buf, pos);
     free(buf);
     free(accounts);
+    free(clients);
 }
 
 void handle_user_toggle(int fd, const char *qs)

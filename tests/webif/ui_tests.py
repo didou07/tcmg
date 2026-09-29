@@ -125,6 +125,16 @@ with sync_playwright() as p:
     after_hover = pg.evaluate("el => ({img:getComputedStyle(el).backgroundImage, color:getComputedStyle(el).backgroundColor})", status_row.element_handle())
     ok("status row has no hover background before pointer enters", before_hover["img"] == "none" and before_hover["color"] != "rgba(0, 0, 0, 0)", before_hover)
     ok("status row gets hover background only on pointer hover", after_hover != before_hover, after_hover)
+    # Portrait card mode must honor the hidden attribute despite !important grid display.
+    for w in (320, 390, 430):
+        pg.set_viewport_size({"width":w,"height":844})
+        pg.set_content(base_html, wait_until="commit")
+        pg.wait_for_timeout(50)
+        pg.click(".ust[data-f=online]")
+        visible = pg.evaluate("[...document.querySelectorAll('#usrBody tr.urow')].filter(r=>!r.hidden).length")
+        hidden = pg.evaluate("[...document.querySelectorAll('#usrBody tr.urow')].filter(r=>r.hidden).length")
+        ok(f"portrait Users filter hides unmatched rows at {w}px", visible == 5 and hidden == 9, (visible, hidden))
+
     # Users is intentionally a single page; filtering hides unmatched rows without pagination.
     pg.click(".ust[data-f=all]"); pg.fill("#usrSearch","")
     ok("Users renders all rows on one page", len(vis(pg)) == 14, len(vis(pg)))
@@ -166,9 +176,13 @@ with sync_playwright() as p:
     pg.keyboard.press("Escape"); pg.click(".ust[data-f=all]"); pg.evaluate("sessionStorage.clear()")
     # '/' shortcut
     pg.locator("body").click(position={"x":5,"y":400}); pg.keyboard.press("/"); ok("'/' focuses search",pg.evaluate("document.activeElement.id")=="usrSearch")
-    # layout: fits at 1440, no horizontal doc scroll
+    # layout: table stays inside the desktop viewport horizontally, while the document remains scrollable vertically.
     ok("desktop: no horizontal scrolling at 1440",pg.evaluate("document.getElementById('uTable').scrollWidth<=document.getElementById('uTable').clientWidth"))
-    ok("desktop: page itself does not scroll (fixed-height layout)",pg.evaluate("document.documentElement.scrollHeight<=window.innerHeight+1"))
+    ok("desktop: Users body is not locked to the viewport",pg.evaluate("getComputedStyle(document.body).height !== '100vh' && getComputedStyle(document.body).overflowY !== 'hidden'"))
+    pg.evaluate("window.scrollTo(0,0)")
+    pg.evaluate("(()=>{for(let i=0;i<40;i++){const r=document.querySelector('#usrBody tr.urow')?.cloneNode(true); if(r) document.querySelector('#usrBody').appendChild(r)}})()")
+    pg.mouse.wheel(0,5000); pg.wait_for_timeout(120)
+    ok("desktop: page scrolls when Users content exceeds viewport",pg.evaluate("document.documentElement.scrollHeight>window.innerHeight+1 && window.scrollY>0"))
     # ---- dashboard live table
     pg.goto(base+"/status"); pg.wait_for_timeout(1500)
     n=pg.locator("#p_clients tr[id^=row_]").count(); ok("dashboard lists live clients",n>=5 and pg.locator("#p_clients .erow").count()==0,n)

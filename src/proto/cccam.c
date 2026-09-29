@@ -1,6 +1,7 @@
 #include "stats/account_stats.h"
 #define MODULE_LOG_PREFIX "cccam"
 #include "../core/config_state.h"
+#include "../config/runtime_access.h"
 #include "../core/runtime_state.h"
 #include "../core/utils.h"
 #include "../platform/platform.h"
@@ -172,20 +173,18 @@ static void cc_send_new_card(S_CCCAM_CLIENT *cc, uint32_t card_id, uint16_t caid
 
 static void cc_send_cards(S_CCCAM_CLIENT *cc, const S_ACCOUNT *acc)
 {
+    uint16_t caids[MAX_CAIDS_PER_ACC + (MAX_READERS * MAX_CAIDS_PER_READER)];
     uint32_t zero = 0;
     uint32_t card_id = 1;
-    int      i, total = 0;
+    int32_t ncaids;
+    int32_t total = 0;
 
-    if (acc->caid) {
-        cc_send_new_card(cc, card_id++, acc->caid, &zero, 1);
+    ncaids = account_collect_caids(acc, caids,
+                                    (int32_t)(sizeof(caids) / sizeof(caids[0])));
+    for (int32_t i = 0; i < ncaids; i++) {
+        cc_send_new_card(cc, card_id++, caids[i], &zero, 1);
         total++;
     }
-
-    for (i = 0; i < acc->ncaids; i++)
-        if (acc->caids[i]) {
-            cc_send_new_card(cc, card_id++, acc->caids[i], &zero, 1);
-            total++;
-        }
 
     tcmg_log_dbg(D_CCCAM, "sent %d card(s) to user='%s'", total, acc->user);
 }
@@ -257,7 +256,7 @@ static void cc_handle_ecm(S_CCCAM_CLIENT *cc, S_CLIENT *cl,
     S_ECM_RESULT result;
 
     (void)req_seq;
-    if (!cl || !cl->auth.account || plen < 13) {
+    if (!cl || plen < 13) {
         if (cl) cc_send_msg(cc, CCCAM_CMD_ECM_NOK1, NULL, 0);
         return;
     }
@@ -292,10 +291,14 @@ static void cc_handle_ecm(S_CCCAM_CLIENT *cc, S_CLIENT *cl,
             tcmg_log("%s ECM denied: account disabled mid-session user='%s'",
                      cl->identity.ip, cl->identity.user);
             break;
-        case ECM_ACCESS_EXPIRED:
+        case ECM_ACCESS_EXPIRED: {
+            S_ACCOUNT *ea = account_session_acquire(cl);
+            long exp = ea ? (long)ea->expirationdate : 0L;
             tcmg_log("%s ECM denied: account expired mid-session user='%s' expired=%ld",
-                     cl->identity.ip, cl->identity.user, (long)cl->auth.account->expirationdate);
+                     cl->identity.ip, cl->identity.user, exp);
+            if (ea) account_release(ea);
             break;
+        }
         default:
             break;
         }
@@ -342,6 +345,7 @@ void *handle_cccam_client(void *arg)
     uint8_t         ccstr_recv[6];
     uint8_t         ack[20];
     S_ACCOUNT      *acc;
+    S_CONFIG_NETWORK_VIEW netcfg;
     char            user[CFGKEY_LEN];
     uint8_t         cmd,req_seq;
     uint8_t         payload[CCCAM_MSG_MAX];
@@ -353,14 +357,18 @@ void *handle_cccam_client(void *arg)
         session_init(&cl, &input, "cccam");
     }
     cc.fd = cl.session.fd;
-        free(args);
+    free(args);
+    if (!cfg_runtime_network_snapshot(&netcfg)) {
+        session_cleanup(&cl);
+        return NULL;
+    }
     tcmg_log_dbg(D_CONN,"%s new connection fd=%d tid=%u",
                  cl.identity.ip, cl.session.fd, cl.identity.thread_id);
 
     {
-        int recv_timeout = g_cfg.sock_timeout;
-        if (g_cfg.server_keepalive > 0 && g_cfg.server_keepalive < recv_timeout)
-            recv_timeout = g_cfg.server_keepalive;
+        int recv_timeout = netcfg.sock_timeout;
+        if (netcfg.server_keepalive > 0 && netcfg.server_keepalive < recv_timeout)
+            recv_timeout = netcfg.server_keepalive;
         net_set_timeout(cc.fd, recv_timeout);
     }
     net_tune_socket(cc.fd);
@@ -403,7 +411,6 @@ void *handle_cccam_client(void *arg)
     }
 
     acc=cc_authenticate_account(&cc,username,ccstr_recv);
-    cl.auth.account=acc;
     secure_zero(ccstr_recv,sizeof(ccstr_recv));
     secure_zero(username,sizeof(username));
 
@@ -422,6 +429,7 @@ void *handle_cccam_client(void *arg)
                          cl.identity.ip, acc->user, (long)acc->expirationdate);
             else if (status == ACCOUNT_IP_DENIED)
                 tcmg_log("%s LOGIN failed: IP not whitelisted user='%s'", cl.identity.ip, acc->user);
+            account_release(acc);
             goto cleanup;
         }
     }
@@ -435,18 +443,23 @@ void *handle_cccam_client(void *arg)
     if (account_session_open(&cl, acc) < 0) {
         tcmg_log("%s LOGIN failed: max_connections=%d reached for user='%s' active=%d",
                  cl.identity.ip, acc->max_connections, acc->user, (int)acc->active);
+        account_release(acc);
         goto cleanup;
     }
 
-    tcmg_strlcpy(cl.identity.user,acc->user,CFGKEY_LEN);
-    cl.ecm.caid=acc->caid;
-    cl.session.last_activity=time(NULL);
+    pthread_mutex_lock(&cl.state_mtx);
+    tcmg_strlcpy(cl.identity.user, acc->user, sizeof(cl.identity.user));
+    cl.ecm.caid = account_default_caid(acc);
+    cl.session.last_activity = time(NULL);
+    pthread_mutex_unlock(&cl.state_mtx);
 
     account_mark_login(acc, cl.identity.ip);
     ban_record_ok(cl.identity.ip);
 
     {
-        int card_count = acc->ncaids + (acc->caid ? 1 : 0);
+        uint16_t login_caids[MAX_CAIDS_PER_ACC + (MAX_READERS * MAX_CAIDS_PER_READER)];
+        int32_t card_count = account_collect_caids(acc, login_caids,
+                                                    (int32_t)(sizeof(login_caids) / sizeof(login_caids[0])));
         tcmg_log("%s LOGIN ok user='%s' cards=%d max_conn=%d",
                  cl.identity.ip, acc->user, card_count, acc->max_connections);
     }
@@ -462,7 +475,7 @@ void *handle_cccam_client(void *arg)
             uint8_t rcmd, rseq; uint16_t rplen;
             int rr = cc_recv_msg(&cc, &rseq, &rcmd, payload, &rplen);
             if (rr == NET_RECV_TIMEOUT) {
-                if (g_cfg.server_keepalive > 0) {
+                if (netcfg.server_keepalive > 0) {
                     if (cc_send_msg(&cc, CCCAM_CMD_KEEPALIVE, NULL, 0) < 0) goto done;
                     continue;
                 }
@@ -483,20 +496,23 @@ void *handle_cccam_client(void *arg)
     int ka_misses = 0;
     while(g_running&&!cl.session.kill_flag){
         if (session_idle_expired(&cl, time(NULL))) {
-            time_t idle=time(NULL)-(cl.session.last_activity ? cl.session.last_activity : cl.ecm.last_ecm_time);
+            time_t idle = time(NULL) - (cl.session.last_activity ? cl.session.last_activity : cl.ecm.last_ecm_time);
+            S_ACCOUNT *ia = account_session_acquire(&cl);
+            int max_idle = ia ? ia->max_idle : 0;
             tcmg_log("%s idle timeout %lds >= max_idle=%ds disconnecting user='%s'",
-                     cl.identity.ip, (long)idle, cl.auth.account->max_idle, cl.identity.user);
+                     cl.identity.ip, (long)idle, max_idle, cl.identity.user);
+            if (ia) account_release(ia);
             break;
         }
 
         int rr = cc_recv_msg(&cc,&req_seq,&cmd,payload,&plen);
         if(rr == NET_RECV_TIMEOUT){
-            if(g_cfg.server_keepalive > 0){
+            if(netcfg.server_keepalive > 0){
                 if(cc_send_msg(&cc,CCCAM_CMD_KEEPALIVE,NULL,0)<0) break;
                 ka_misses++;
                 tcmg_log_dbg(D_CCCAM, "%s SERVER_KEEPALIVE user='%s' miss=%d/%d",
-                             cl.identity.ip, cl.identity.user, ka_misses, g_cfg.server_keepalive_misses);
-                if(ka_misses >= g_cfg.server_keepalive_misses) break;
+                             cl.identity.ip, cl.identity.user, ka_misses, netcfg.server_keepalive_misses);
+                if(ka_misses >= netcfg.server_keepalive_misses) break;
                 continue;
             }
             break;
@@ -504,7 +520,11 @@ void *handle_cccam_client(void *arg)
         if(rr<0){
             if (cl.identity.user[0]) {
                 S_ACCOUNT_STATS_SNAPSHOT stats;
-                account_stats_snapshot(cl.auth.account, &stats);
+                S_ACCOUNT *sa = account_session_acquire(&cl);
+                if (sa) {
+                    account_stats_snapshot(sa, &stats);
+                    account_release(sa);
+                }
                 tcmg_log("%s disconnected user='%s' ecm_total=%llu cw_found=%lld",
                          cl.identity.ip, cl.identity.user,
                          (unsigned long long)stats.ecm_total,

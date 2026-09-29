@@ -16,6 +16,8 @@ void client_init(S_CLIENT *cl, int fd, const char *ip)
     cl->session.connect_time = time(NULL);
     cl->session.last_activity = cl->session.connect_time;
     cl->ecm.last_ecm_time = cl->session.connect_time;
+    (void)pthread_mutex_init(&cl->auth_mtx, NULL);
+    (void)pthread_mutex_init(&cl->state_mtx, NULL);
     if (ip) tcmg_strlcpy(cl->identity.ip, ip, sizeof(cl->identity.ip));
 }
 
@@ -40,20 +42,34 @@ void client_unregister(S_CLIENT *cl)
 
 void client_kill_by_tid(uint32_t tid)
 {
-	pthread_mutex_lock(&g_clients_mtx);
-	for (int i = 0; i < MAX_ACTIVE_CLIENTS; i++)
-		if (g_clients[i] && g_clients[i]->identity.thread_id == tid)
-			{ g_clients[i]->session.kill_flag = 1; break; }
-	pthread_mutex_unlock(&g_clients_mtx);
+    pthread_mutex_lock(&g_clients_mtx);
+    for (int i = 0; i < MAX_ACTIVE_CLIENTS; i++) {
+        S_CLIENT *cl = g_clients[i];
+        if (!cl) continue;
+        pthread_mutex_lock(&cl->state_mtx);
+        if (cl->identity.thread_id == tid) {
+            atomic_store_explicit(&cl->session.kill_flag, 1, memory_order_relaxed);
+            pthread_mutex_unlock(&cl->state_mtx);
+            break;
+        }
+        pthread_mutex_unlock(&cl->state_mtx);
+    }
+    pthread_mutex_unlock(&g_clients_mtx);
 }
 
 void client_kill_by_user(const char *username)
 {
-	pthread_mutex_lock(&g_clients_mtx);
-	for (int i = 0; i < MAX_ACTIVE_CLIENTS; i++)
-		if (g_clients[i] && strcmp(g_clients[i]->identity.user, username) == 0)
-			g_clients[i]->session.kill_flag = 1;
-	pthread_mutex_unlock(&g_clients_mtx);
+    if (!username) return;
+    pthread_mutex_lock(&g_clients_mtx);
+    for (int i = 0; i < MAX_ACTIVE_CLIENTS; i++) {
+        S_CLIENT *cl = g_clients[i];
+        if (!cl) continue;
+        pthread_mutex_lock(&cl->state_mtx);
+        if (strcmp(cl->identity.user, username) == 0)
+            atomic_store_explicit(&cl->session.kill_flag, 1, memory_order_relaxed);
+        pthread_mutex_unlock(&cl->state_mtx);
+    }
+    pthread_mutex_unlock(&g_clients_mtx);
 }
 
 void clients_relink_accounts(void)
@@ -63,14 +79,20 @@ void clients_relink_accounts(void)
 	for (int i = 0; i < MAX_ACTIVE_CLIENTS; i++)
 	{
 		S_CLIENT *cl = g_clients[i];
-		if (!cl || !cl->identity.user[0]) continue;
-		S_ACCOUNT *a;
-		for (a = account_state_list_locked(); a; a = a->next)
-			if (strcmp(cl->identity.user, a->user) == 0) break;
+        if (!cl) continue;
+        pthread_mutex_lock(&cl->state_mtx);
+        int has_user = cl->identity.user[0] != '\0';
+        char user[CFGKEY_LEN];
+        if (has_user) tcmg_strlcpy(user, cl->identity.user, sizeof(user));
+        pthread_mutex_unlock(&cl->state_mtx);
+        if (!has_user) continue;
+        S_ACCOUNT *a;
+        for (a = account_state_list_locked(); a; a = a->next)
+            if (strcmp(user, a->user) == 0) break;
         if (a) {
             account_session_rebind(cl, a);
         } else {
-            cl->session.kill_flag = 1;
+            atomic_store_explicit(&cl->session.kill_flag, 1, memory_order_relaxed);
         }
 	}
 	account_state_read_unlock();

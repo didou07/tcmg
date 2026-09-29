@@ -1,6 +1,7 @@
 #include "stats/account_stats.h"
 #define MODULE_LOG_PREFIX "newcamd"
 #include "../core/config_state.h"
+#include "../config/runtime_access.h"
 #include "../core/runtime_state.h"
 #include "../core/utils.h"
 #include "../config/config.h"
@@ -34,7 +35,8 @@ static void ncd_ecm_nak(S_CLIENT *cl, uint8_t cmd,
 
 static bool ncd_handle_login(S_CLIENT *cl,
                               const uint8_t *data, int32_t dlen,
-                              uint16_t sid, uint16_t mid, uint32_t pid)
+                              uint16_t sid, uint16_t mid, uint32_t pid,
+                              const S_CONFIG_NETWORK_VIEW *netcfg)
 {
 	const char *ip = cl->identity.ip;
 	S_ACCOUNT  *acc;
@@ -42,7 +44,6 @@ static bool ncd_handle_login(S_CLIENT *cl,
 	size_t      umax, ulen;
 	char        expected[64];
 	uint8_t     key16[16];
-	int         i;
 
 	if (dlen < 4)
 	{
@@ -81,7 +82,6 @@ static bool ncd_handle_login(S_CLIENT *cl,
 	}
 
 	acc = account_acquire(user);
-	cl->auth.account = acc;
 
 	if (!acc)
 	{
@@ -109,6 +109,7 @@ static bool ncd_handle_login(S_CLIENT *cl,
 		default:
 			break;
 		}
+		account_release(acc);
 		return false;
 	}
 
@@ -118,6 +119,7 @@ static bool ncd_handle_login(S_CLIENT *cl,
 		ncd_nak(cl, sid, mid, pid);
 		tcmg_log("%s LOGIN failed: wrong password for user='%s'", ip, user);
 		ban_record_fail(ip);
+		account_release(acc);
 		return false;
 	}
 
@@ -126,6 +128,7 @@ static bool ncd_handle_login(S_CLIENT *cl,
 		ncd_nak(cl, sid, mid, pid);
 		tcmg_log("%s LOGIN failed: max_connections=%d reached for user='%s' active=%d",
 		         ip, acc->max_connections, acc->user, (int)acc->active);
+		account_release(acc);
 		return false;
 	}
 
@@ -134,62 +137,68 @@ static bool ncd_handle_login(S_CLIENT *cl,
 
 	{ size_t hlen = strlen(hash);
 	  if (hlen == 0 || hlen > NC_MSG_MAX) return false;
-	  tcmg_ncd_des_login_key_get(g_cfg.newcamd_key, (const uint8_t *)hash, (int)hlen, key16);
+	  tcmg_ncd_des_login_key_get(netcfg->newcamd_key, (const uint8_t *)hash, (int)hlen, key16);
 	  memcpy(cl->protocol.wire.newcamd.key1, key16, 8);
 	  memcpy(cl->protocol.wire.newcamd.key2, key16 + 8, 8);
 	}
 	secure_zero(key16, sizeof(key16));
 
-	cl->ecm.caid      = acc->caid;
+	pthread_mutex_lock(&cl->state_mtx);
+	cl->ecm.caid = account_default_caid(acc);
 	cl->identity.client_id = sid;
-
-	cl->protocol.wire.newcamd.is_mgcamd = (cl->protocol.wire.newcamd.is_mgcamd || (g_cfg.newcamd_mgclient != 0)) ? 1 : 0;
+	cl->protocol.wire.newcamd.is_mgcamd = (cl->protocol.wire.newcamd.is_mgcamd || (netcfg->newcamd_mgclient != 0)) ? 1 : 0;
 	tcmg_strlcpy(cl->protocol.name, cl->protocol.wire.newcamd.is_mgcamd ? "mgcamd" : "newcamd", sizeof(cl->protocol.name));
-	tcmg_strlcpy(cl->identity.user,        acc->user,            CFGKEY_LEN);
+	tcmg_strlcpy(cl->identity.user, acc->user, sizeof(cl->identity.user));
 	tcmg_strlcpy(cl->identity.client_name, cfg_client_name(sid), sizeof(cl->identity.client_name));
+	pthread_mutex_unlock(&cl->state_mtx);
 	account_mark_login(acc, ip);
 	ban_record_ok(ip);
 
 	if (cl->protocol.wire.newcamd.is_mgcamd)
 	{
-		char caids[64];
-		int pos = snprintf(caids, sizeof(caids), "%04X", acc->caid);
-		for (i = 0; i < acc->ncaids; i++)
-			pos += snprintf(caids + pos, sizeof(caids) - pos,
-			                ",%04X", acc->caids[i]);
+		uint16_t login_caids[MAX_CAIDS_PER_ACC + (MAX_READERS * MAX_CAIDS_PER_READER)];
+		int32_t login_ncaids = account_collect_caids(acc, login_caids,
+		                                               (int32_t)(sizeof(login_caids) / sizeof(login_caids[0])));
+		char caids[256];
+		int pos = 0;
+		for (int32_t j = 0; j < login_ncaids && pos < (int)sizeof(caids); j++)
+			pos += snprintf(caids + pos, sizeof(caids) - (size_t)pos,
+			                "%s%04X", j ? "," : "", login_caids[j]);
 		tcmg_log("%s [mgcamd] LOGIN ok user='%s' caids=[%s] max_conn=%d",
-		         ip, user, caids, acc->max_connections);
+		         ip, user, login_ncaids ? caids : "none", acc->max_connections);
 	}
 	else
 	{
 		tcmg_log("%s [newcamd] LOGIN ok user='%s' caid=%04X max_conn=%d",
-		         ip, user, acc->caid, acc->max_connections);
+		         ip, user, cl->ecm.caid, acc->max_connections);
 	}
 	return true;
 }
 
 static void ncd_handle_card(S_CLIENT *cl, uint16_t sid, uint16_t mid, uint32_t pid)
 {
-	uint8_t  resp[26];
-	uint16_t caid = cl->auth.account ? cl->auth.account->caid : cl->ecm.caid;
+    uint8_t resp[26];
+    S_ACCOUNT *account = account_session_acquire(cl);
+    uint16_t caids[MAX_CAIDS_PER_ACC + (MAX_READERS * MAX_CAIDS_PER_READER)];
+    int32_t ncaids = account ? account_collect_caids(account, caids,
+                                                     (int32_t)(sizeof(caids) / sizeof(caids[0]))) : 0;
+    uint16_t caid = ncaids > 0 ? caids[0] : cl->ecm.caid;
 
-	memset(resp, 0, sizeof(resp));
-	resp[0] = MSG_CARD_DATA;
-	resp[4] = (uint8_t)(caid >> 8);
-	resp[5] = (uint8_t)(caid & 0xFF);
-	nc_send(cl, resp, 26, sid, mid, pid);
-	tcmg_log_dbg(D_NEWCAMD, "%s CARD_DATA user='%s' caid=%04X sid=%04X",
-	             cl->identity.ip, cl->identity.user, caid, sid);
+    memset(resp, 0, sizeof(resp));
+    resp[0] = MSG_CARD_DATA;
+    resp[4] = (uint8_t)(caid >> 8);
+    resp[5] = (uint8_t)(caid & 0xFF);
+    nc_send(cl, resp, 26, sid, mid, pid);
+    tcmg_log_dbg(D_NEWCAMD, "%s CARD_DATA user='%s' caid=%04X sid=%04X",
+                 cl->identity.ip, cl->identity.user, caid, sid);
 
-	if (cl->protocol.wire.newcamd.is_mgcamd && cl->auth.account)
-	{
-		tcmg_log_dbg(D_NEWCAMD, "%s [mgcamd] sending ADDCARD for %d caid(s)",
-		             cl->identity.ip, cl->auth.account->ncaids + 1);
-		nc_send_addcard(cl, caid, 0, mid);
-		for (int i = 0; i < cl->auth.account->ncaids; i++)
-			if (cl->auth.account->caids[i] != caid)
-				nc_send_addcard(cl, cl->auth.account->caids[i], 0, mid);
-	}
+    if (account && cl->protocol.wire.newcamd.is_mgcamd) {
+        tcmg_log_dbg(D_NEWCAMD, "%s [mgcamd] sending ADDCARD for %d caid(s)",
+                     cl->identity.ip, ncaids);
+        for (int32_t i = 0; i < ncaids; i++)
+            nc_send_addcard(cl, caids[i], 0, mid);
+    }
+    if (account) account_release(account);
 }
 
 static void ncd_handle_ecm(S_CLIENT *cl, uint8_t cmd,
@@ -203,8 +212,7 @@ static void ncd_handle_ecm(S_CLIENT *cl, uint8_t cmd,
     T_ECM_ACCESS_STATUS access;
     S_ECM_RESULT result;
 
-    if (!cl || !cl->auth.account) {
-        ncd_ecm_nak(cl, cmd, sid, mid, pid);
+    if (!cl) {
         return;
     }
     if (dlen <= 0) {
@@ -221,10 +229,14 @@ static void ncd_handle_ecm(S_CLIENT *cl, uint8_t cmd,
         case ECM_ACCESS_DISABLED:
             tcmg_log("%s ECM denied: account disabled mid-session user='%s'", cl->identity.ip, cl->identity.user);
             break;
-        case ECM_ACCESS_EXPIRED:
+        case ECM_ACCESS_EXPIRED: {
+            S_ACCOUNT *ea = account_session_acquire(cl);
+            long exp = ea ? (long)ea->expirationdate : 0L;
             tcmg_log("%s ECM denied: account expired mid-session user='%s' expired=%ld",
-                     cl->identity.ip, cl->identity.user, (long)cl->auth.account->expirationdate);
+                     cl->identity.ip, cl->identity.user, exp);
+            if (ea) account_release(ea);
             break;
+        }
         case ECM_ACCESS_SCHEDULE:
             tcmg_log("%s ECM denied: outside schedule for user='%s'", cl->identity.ip, cl->identity.user);
             break;
@@ -282,14 +294,19 @@ void *handle_newcamd_client(void *arg)
 		session_init(&cl, &input, "newcamd");
 	}
 	free(args);
+	S_CONFIG_NETWORK_VIEW netcfg;
+	if (!cfg_runtime_network_snapshot(&netcfg)) {
+		session_cleanup(&cl);
+		return NULL;
+	}
 	tcmg_log_dbg(D_CONN, "%s new newcamd/mgcamd connection fd=%d tid=%u",
 	             cl.identity.ip, cl.session.fd, cl.identity.thread_id);
 
 	{
-		int recv_timeout = g_cfg.sock_timeout;
-		if (g_cfg.server_keepalive > 0 && g_cfg.server_keepalive < recv_timeout)
-			recv_timeout = g_cfg.server_keepalive;
-		nc_init(&cl, g_cfg.newcamd_key, recv_timeout);
+		int recv_timeout = netcfg.sock_timeout;
+		if (netcfg.server_keepalive > 0 && netcfg.server_keepalive < recv_timeout)
+			recv_timeout = netcfg.server_keepalive;
+		nc_init(&cl, netcfg.newcamd_key, recv_timeout);
 	}
 
 	int ka_misses = 0;
@@ -297,23 +314,29 @@ void *handle_newcamd_client(void *arg)
 	{
 		if (session_idle_expired(&cl, time(NULL)))
 		{
-			time_t idle = time(NULL) - (cl.session.last_activity ? cl.session.last_activity : cl.ecm.last_ecm_time);
-			tcmg_log("%s idle timeout: %lds >= max_idle=%ds disconnecting user='%s'",
-			         cl.identity.ip, (long)idle, cl.auth.account->max_idle, cl.identity.user);
+            time_t idle = time(NULL) - (cl.session.last_activity ? cl.session.last_activity : cl.ecm.last_ecm_time);
+            S_ACCOUNT *ia = account_session_acquire(&cl);
+            int max_idle = ia ? ia->max_idle : 0;
+            tcmg_log("%s idle timeout: %lds >= max_idle=%ds disconnecting user='%s'",
+                     cl.identity.ip, (long)idle, max_idle, cl.identity.user);
+            if (ia) account_release(ia);
 			break;
 		}
 
 		dlen = nc_recv(&cl, data, &sid, &mid, &pid, &caid_hdr);
 		if (dlen == NET_RECV_TIMEOUT)
 		{
-			if (cl.auth.account && g_cfg.server_keepalive > 0)
+            S_ACCOUNT *ka_account = account_session_acquire(&cl);
+            bool logged_in = ka_account != NULL;
+            if (ka_account) account_release(ka_account);
+            if (logged_in && netcfg.server_keepalive > 0)
 			{
 				uint8_t ka[3] = { MSG_KEEPALIVE, 0, 0 };
 				if (nc_send(&cl, ka, sizeof(ka), cl.ecm.last_srvid, 0, 0) < 0) break;
 				ka_misses++;
 				tcmg_log_dbg(D_NEWCAMD, "%s SERVER_KEEPALIVE user='%s' miss=%d/%d",
-				             cl.identity.ip, cl.identity.user, ka_misses, g_cfg.server_keepalive_misses);
-				if (ka_misses >= g_cfg.server_keepalive_misses) break;
+				             cl.identity.ip, cl.identity.user, ka_misses, netcfg.server_keepalive_misses);
+				if (ka_misses >= netcfg.server_keepalive_misses) break;
 				continue;
 			}
 			break;
@@ -322,7 +345,8 @@ void *handle_newcamd_client(void *arg)
 		{
 			if (cl.identity.user[0]) {
 				S_ACCOUNT_STATS_SNAPSHOT stats;
-				account_stats_snapshot(cl.auth.account, &stats);
+                S_ACCOUNT *sa = account_session_acquire(&cl);
+                if (sa) { account_stats_snapshot(sa, &stats); account_release(sa); }
 				tcmg_log("%s disconnected user='%s' ecm_total=%llu cw_found=%lld cw_not=%lld",
 				         cl.identity.ip, cl.identity.user,
 				         (unsigned long long)stats.ecm_total,
@@ -340,13 +364,16 @@ void *handle_newcamd_client(void *arg)
 		tcmg_log_dbg(D_NEWCAMD, "%s recv cmd=0x%02X dlen=%d sid=%04X mid=%04X",
 		             cl.identity.ip, cmd, dlen, sid, mid);
 
-		if (!cl.auth.account && cmd != MSG_CLIENT_LOGIN)
+        S_ACCOUNT *cmd_account = account_session_acquire(&cl);
+        bool logged_in = cmd_account != NULL;
+        if (cmd_account) account_release(cmd_account);
+        if (!logged_in && cmd != MSG_CLIENT_LOGIN)
 		{
 			tcmg_log_dbg(D_NEWCAMD, "%s command 0x%02X rejected before authentication", cl.identity.ip, cmd);
 			ncd_ecm_nak(&cl, cmd, sid, mid, pid);
 			break;
 		}
-		if (cl.auth.account && cmd == MSG_CLIENT_LOGIN)
+        if (logged_in && cmd == MSG_CLIENT_LOGIN)
 		{
 			tcmg_log_dbg(D_NEWCAMD, "%s repeated login rejected for user='%s'", cl.identity.ip, cl.identity.user);
 			ncd_ecm_nak(&cl, cmd, sid, mid, pid);
@@ -354,13 +381,13 @@ void *handle_newcamd_client(void *arg)
 		}
 
 		if      (cmd == MSG_CLIENT_LOGIN)
-		{ if (!ncd_handle_login(&cl, data, dlen, sid, mid, pid)) break; }
+		{ if (!ncd_handle_login(&cl, data, dlen, sid, mid, pid, &netcfg)) break; }
 		else if (cmd == MSG_CARD_DATA_REQ)
 		{ ncd_handle_card(&cl, sid, mid, pid); }
 		else if (cmd == MSG_KEEPALIVE)
 		{
 			tcmg_log_dbg(D_NEWCAMD, "%s KEEPALIVE user='%s'", cl.identity.ip, cl.identity.user);
-			if (g_cfg.newcamd_keepalive)
+			if (netcfg.newcamd_keepalive)
 				nc_send(&cl, data, dlen, sid, mid, pid);
 		}
 		else if (cmd == MSG_ECM_0 || cmd == MSG_ECM_1)

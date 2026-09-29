@@ -42,17 +42,17 @@ S_WEBIF_SERVER_STATS webif_server_stats(void)
     return s;
 }
 
+static bool reader_is_enabled_pcsc(const S_READER *r, void *ctx)
+{
+    (void)ctx;
+    return r->enabled &&
+           reader_protocol_kind(r->protocol) == READER_PROTOCOL_CARD &&
+           strcasecmp(r->protocol, "pcsc") == 0;
+}
+
 int webif_pcsc_enabled(void)
 {
-    S_READER readers[MAX_READERS];
-    int n = cfg_runtime_reader_snapshot(readers, MAX_READERS);
-    for (int i = 0; i < n; i++) {
-        if (!readers[i].enabled) continue;
-        if (reader_protocol_kind(readers[i].protocol) == READER_PROTOCOL_CARD &&
-            strcasecmp(readers[i].protocol, "pcsc") == 0)
-            return 1;
-    }
-    return 0;
+    return cfg_runtime_reader_any(reader_is_enabled_pcsc, NULL) ? 1 : 0;
 }
 
 int webif_ban_snapshot(S_WEBIF_BAN_VIEW *out, size_t cap, S_WEBIF_BAN_STATS *stats)

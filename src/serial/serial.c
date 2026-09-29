@@ -33,10 +33,15 @@
 #endif
 
 #define SERIAL_BAUD 9600
+#define SERIAL_CARD_BAUD_BASE 9600u
 #define SERIAL_OPEN_SETTLE_MS 50
+#define SERIAL_FAST_RESET_SETTLE_MS 10
 #define SERIAL_IO_TIMEOUT_MS 1500
 #define SERIAL_ATR_TIMEOUT_MS 1000
 #define SERIAL_T0_GAP_MS 10
+#define SERIAL_PROBE_ATR_FIRST_MS 700
+#define SERIAL_UNAVAILABLE_COOLDOWN_MS 2000
+#define SERIAL_T0_NO_PROCEDURE_MS 1200
 
 typedef struct {
 #ifdef TCMG_OS_WINDOWS
@@ -49,9 +54,22 @@ typedef struct {
     int ready;
     int protocol;
     int parity;
+    uint8_t t0_fi;
+    uint8_t t0_di;
+    uint8_t t0_d;
+    uint8_t t0_wi;
+    uint8_t t0_n;
+    uint8_t t0_ta1;
+    int t0_ta1_present;
+    uint8_t t0_ta2;
+    int t0_ta2_present;
+    uint32_t current_baud;
+    uint32_t requested_baud;
+    uint32_t t0_wwt_ms;
     int64_t last_reset_ms;
     int64_t last_attempt_ms;
     int64_t last_poll_ms;
+    int ecm_active;
     uint8_t atr[TCMG_SERIAL_MAX_ATR];
     size_t atr_len;
     char device[TCMG_SERIAL_PORT_LEN];
@@ -111,9 +129,22 @@ static void slot_clear(S_SERIAL_SLOT *s)
     s->ready = 0;
     s->protocol = 0;
     s->parity = -1;
+    s->t0_fi = 1;
+    s->t0_di = 1;
+    s->t0_d = 1;
+    s->t0_wi = 10;
+    s->t0_n = 0;
+    s->t0_ta1 = 0x11;
+    s->t0_ta1_present = 0;
+    s->t0_ta2 = 0;
+    s->t0_ta2_present = 0;
+    s->current_baud = SERIAL_BAUD;
+    s->requested_baud = SERIAL_BAUD;
+    s->t0_wwt_ms = 1000;
     s->last_reset_ms = 0;
     s->last_attempt_ms = 0;
     s->last_poll_ms = 0;
+    s->ecm_active = 0;
     s->atr_len = 0;
     memset(s->atr, 0, sizeof(s->atr));
     s->device[0] = '\0';
@@ -190,6 +221,8 @@ static int serial_open_slot(S_SERIAL_SLOT *s, const char *device, int parity)
     s->h = h;
     s->open = 1;
     s->parity = parity;
+    s->current_baud = SERIAL_BAUD;
+    s->requested_baud = SERIAL_BAUD;
     return 0;
 }
 
@@ -244,6 +277,56 @@ static int unix_configure(int fd, int parity)
     return 0;
 }
 
+static speed_t unix_baud_speed(uint32_t requested, uint32_t *actual)
+{
+    struct baud_pair { uint32_t rate; speed_t speed; };
+    static const struct baud_pair rates[] = {
+        { 9600u, B9600 },
+#ifdef B19200
+        { 19200u, B19200 },
+#endif
+#ifdef B38400
+        { 38400u, B38400 },
+#endif
+#ifdef B57600
+        { 57600u, B57600 },
+#endif
+#ifdef B76800
+        { 76800u, B76800 },
+#endif
+#ifdef B115200
+        { 115200u, B115200 },
+#endif
+#ifdef B153600
+        { 153600u, B153600 },
+#endif
+#ifdef B230400
+        { 230400u, B230400 },
+#endif
+#ifdef B460800
+        { 460800u, B460800 },
+#endif
+#ifdef B921600
+        { 921600u, B921600 },
+#endif
+    };
+    size_t best = 0;
+    uint64_t best_diff = UINT64_MAX;
+    for (size_t i = 0; i < sizeof(rates) / sizeof(rates[0]); i++) {
+        uint64_t a = rates[i].rate;
+        uint64_t b = requested;
+        uint64_t diff = a > b ? a - b : b - a;
+        if (diff < best_diff) { best_diff = diff; best = i; }
+    }
+    if (actual) *actual = rates[best].rate;
+    // Do not select a materially different rate: the card will not understand it.
+    if (best_diff * 100u > (uint64_t)requested * 5u) {
+        if (actual) *actual = 9600u;
+        return B9600;
+    }
+    return rates[best].speed;
+}
+
 static int unix_set_rts(int fd, int high)
 {
 #if defined(TIOCM_RTS) && (defined(TIOCMBIS) || defined(TIOCMBIC))
@@ -272,6 +355,8 @@ static int serial_open_slot(S_SERIAL_SLOT *s, const char *device, int parity)
     s->fd = fd;
     s->open = 1;
     s->parity = parity;
+    s->current_baud = SERIAL_BAUD;
+    s->requested_baud = SERIAL_BAUD;
     return 0;
 }
 
@@ -309,6 +394,37 @@ static int serial_read_byte(S_SERIAL_SLOT *s, uint8_t *out, int timeout_ms)
 }
 #endif
 
+static int serial_apply_baud(S_SERIAL_SLOT *s, uint32_t requested, uint32_t *actual_out)
+{
+    if (!s || requested == 0) return -1;
+#ifdef TCMG_OS_WINDOWS
+    if (!s->open || s->h == INVALID_HANDLE_VALUE) return -1;
+    DCB dcb;
+    memset(&dcb, 0, sizeof(dcb));
+    dcb.DCBlength = sizeof(dcb);
+    if (!GetCommState(s->h, &dcb)) return -1;
+    dcb.BaudRate = requested;
+    if (!SetCommState(s->h, &dcb)) return -1;
+    s->requested_baud = requested;
+    s->current_baud = requested;
+    if (actual_out) *actual_out = requested;
+    return 0;
+#else
+    if (!s->open || s->fd < 0) return -1;
+    uint32_t actual = SERIAL_BAUD;
+    speed_t speed = unix_baud_speed(requested, &actual);
+    struct termios tio;
+    if (tcgetattr(s->fd, &tio) < 0) return -1;
+    if (cfsetispeed(&tio, speed) < 0 || cfsetospeed(&tio, speed) < 0) return -1;
+    if (tcsetattr(s->fd, TCSANOW, &tio) < 0) return -1;
+    s->requested_baud = requested;
+    s->current_baud = actual;
+    if (actual_out) *actual_out = actual;
+    return 0;
+#endif
+}
+
+
 static int serial_read_n(S_SERIAL_SLOT *s, uint8_t *buf, size_t len, int timeout_ms)
 {
     for (size_t i = 0; i < len; i++)
@@ -324,13 +440,23 @@ static int serial_drain(S_SERIAL_SLOT *s, size_t len)
     return 0;
 }
 
-static int read_atr(S_SERIAL_SLOT *s)
+static int read_atr(S_SERIAL_SLOT *s, int first_timeout_ms)
 {
     uint8_t *a = s->atr;
     memset(a, 0, sizeof(s->atr));
     s->atr_len = 0;
+    s->t0_fi = 1;
+    s->t0_di = 1;
+    s->t0_d = 1;
+    s->t0_wi = 10;
+    s->t0_n = 0;
+    s->t0_ta1 = 0x11;
+    s->t0_ta1_present = 0;
+    s->t0_ta2 = 0;
+    s->t0_ta2_present = 0;
 
-    if (serial_read_byte(s, &a[0], 3000) < 0) return -1;
+    if (first_timeout_ms <= 0) first_timeout_ms = SERIAL_ATR_TIMEOUT_MS;
+    if (serial_read_byte(s, &a[0], first_timeout_ms) < 0) return -1;
     if (a[0] != 0x3B && a[0] != 0x3F) return -1;
     if (serial_read_byte(s, &a[1], 500) < 0) return -1;
 
@@ -339,18 +465,43 @@ static int read_atr(S_SERIAL_SLOT *s)
     int group = 1;
     int has_tck = 0;
     int proto = 0;
+    int first_proto = 0;
+    int protocol_count = 1;
     size_t n = 2;
 
     for (;;) {
-        if (y & 0x01) { if (n >= sizeof(s->atr) || serial_read_byte(s, &a[n++], 500) < 0) return -1; }
-        if (y & 0x02) { if (n >= sizeof(s->atr) || serial_read_byte(s, &a[n++], 500) < 0) return -1; }
-        if (y & 0x04) { if (n >= sizeof(s->atr) || serial_read_byte(s, &a[n++], 500) < 0) return -1; }
+        if (y & 0x01) {
+            if (n >= sizeof(s->atr) || serial_read_byte(s, &a[n], 500) < 0) return -1;
+            if (group == 1) {
+                s->t0_ta1 = a[n];
+                s->t0_ta1_present = 1;
+                s->t0_fi = (uint8_t)(a[n] >> 4);
+                s->t0_di = (uint8_t)(a[n] & 0x0F);
+            } else if (group == 2) {
+                s->t0_ta2 = a[n];
+                s->t0_ta2_present = 1;
+            }
+            n++;
+        }
+        if (y & 0x02) {
+            if (n >= sizeof(s->atr) || serial_read_byte(s, &a[n], 500) < 0) return -1;
+            n++;
+        }
+        if (y & 0x04) {
+            if (n >= sizeof(s->atr) || serial_read_byte(s, &a[n], 500) < 0) return -1;
+            if (group == 1) s->t0_n = a[n];
+            if (group == 2) s->t0_wi = a[n] ? a[n] : 10;
+            n++;
+        }
         if (y & 0x08) {
-            if (n >= sizeof(s->atr) || serial_read_byte(s, &a[n++], 500) < 0) return -1;
-            y = (uint8_t)((a[n - 1] >> 4) & 0x0F);
-            proto = a[n - 1] & 0x0F;
+            if (n >= sizeof(s->atr) || serial_read_byte(s, &a[n], 500) < 0) return -1;
+            y = (uint8_t)((a[n] >> 4) & 0x0F);
+            proto = a[n] & 0x0F;
+            if (group == 1) first_proto = proto;
             if (proto != 0) has_tck = 1;
             group++;
+            protocol_count++;
+            n++;
             if (group > 8) return -1;
             continue;
         }
@@ -363,12 +514,107 @@ static int read_atr(S_SERIAL_SLOT *s)
     if (has_tck && serial_read_byte(s, &a[n++], 500) < 0) return -1;
 
     if (a[0] == 0x3F) return -1;
+    if (s->t0_fi >= 16u || s->t0_fi == 0u) s->t0_fi = 1;
+    if (s->t0_di >= 16u || s->t0_di == 0u) s->t0_di = 1;
+
+    static const uint16_t f_table[16] = {
+        0, 372, 558, 744, 1116, 1488, 1860, 0,
+        0, 512, 768, 1024, 1536, 2048, 0, 0
+    };
+    static const uint8_t d_table[16] = {
+        0, 1, 2, 4, 8, 16, 32, 64, 12, 20, 0, 0, 0, 0, 0, 0
+    };
+    if (f_table[s->t0_fi] == 0 || d_table[s->t0_di] == 0) {
+        s->t0_fi = 1;
+        s->t0_di = 1;
+    }
+    s->t0_d = d_table[s->t0_di];
+    s->t0_wwt_ms = 960u * (uint32_t)s->t0_d * (uint32_t)s->t0_wi;
+    uint32_t initial_etu_us = (uint32_t)(((uint64_t)f_table[s->t0_fi] * 1000000u + 3579545u / 2u) / 3579545u);
+    uint64_t wwt_us = (uint64_t)s->t0_wwt_ms * initial_etu_us;
+    s->t0_wwt_ms = (uint32_t)((wwt_us + 999u) / 1000u);
+    if (s->t0_wwt_ms < 250u) s->t0_wwt_ms = 250u;
+    if (s->t0_wwt_ms > 10000u) s->t0_wwt_ms = 10000u;
+
     s->atr_len = n;
-    s->protocol = 0;
+    s->protocol = first_proto;
+    tcmg_log_dbg(D_READER,
+                 "serial ATR proto=T%d FI=%u DI=%u D=%u WI=%u TA1=%s%02X TA2=%s%02X baud-base=%u",
+                 s->protocol, s->t0_fi, s->t0_di, s->t0_d, s->t0_wi,
+                 s->t0_ta1_present ? "" : "-", s->t0_ta1,
+                 s->t0_ta2_present ? "" : "-", s->t0_ta2,
+                 SERIAL_CARD_BAUD_BASE);
+    (void)protocol_count;
     return 0;
 }
 
-static int do_reset_parity(S_SERIAL_SLOT *s, int parity, int *got)
+static int serial_pts_exchange(S_SERIAL_SLOT *s, uint8_t ta1)
+{
+    uint8_t req[4] = { 0xFF, 0x10, ta1, 0x00 };
+    uint8_t confirm[4] = { 0 };
+    req[3] = (uint8_t)(req[0] ^ req[1] ^ req[2]);
+    if (serial_write_all(s, req, sizeof(req), 1000) < 0) return -1;
+    if (serial_drain(s, sizeof(req)) < 0) return -1;
+    for (size_t i = 0; i < sizeof(confirm); i++)
+        if (serial_read_byte(s, &confirm[i], 1000) < 0) return -1;
+    if (memcmp(req, confirm, sizeof(req)) != 0) return -1;
+    return 0;
+}
+
+static uint32_t serial_target_baud(const S_SERIAL_SLOT *s)
+{
+    static const uint16_t f_table[16] = {
+        0, 372, 558, 744, 1116, 1488, 1860, 0,
+        0, 512, 768, 1024, 1536, 2048, 0, 0
+    };
+    uint32_t d = s && s->t0_d ? s->t0_d : 1u;
+    uint32_t f = (s && s->t0_fi < 16u) ? f_table[s->t0_fi] : 372u;
+    if (!f) f = 372u;
+    uint64_t baud = (uint64_t)SERIAL_CARD_BAUD_BASE * d * 372u;
+    baud = (baud + f / 2u) / f;
+    if (baud < 9600u) baud = 9600u;
+    if (baud > 921600u) baud = 921600u;
+    return (uint32_t)baud;
+}
+
+static int serial_select_speed_after_atr(S_SERIAL_SLOT *s)
+{
+    if (!s || !s->open) return -1;
+    if (s->protocol != 0) return -2;
+
+    int specific = s->t0_ta2_present != 0;
+    int pts_ok = 0;
+    if (!specific && s->t0_ta1_present && s->t0_ta1 != 0x11) {
+        if (serial_pts_exchange(s, s->t0_ta1) == 0) {
+            pts_ok = 1;
+            tcmg_log_dbg(D_READER, "serial PTS accepted device=%s TA1=%02X D=%u",
+                         s->device, s->t0_ta1, s->t0_d);
+        } else {
+            s->t0_fi = 1;
+            s->t0_di = 1;
+            s->t0_d = 1;
+            tcmg_log_dbg(D_READER, "serial PTS rejected device=%s TA1=%02X; keeping 9600/default timing",
+                         s->device, s->t0_ta1);
+        }
+    } else if (specific && (s->t0_ta2 & 0x10u) == 0 && s->t0_ta1_present) {
+        pts_ok = 1;
+    }
+
+    uint32_t target = pts_ok ? serial_target_baud(s) : SERIAL_BAUD;
+    uint32_t actual = SERIAL_BAUD;
+    if (target != s->current_baud) {
+        if (serial_apply_baud(s, target, &actual) < 0) return -3;
+    } else {
+        actual = s->current_baud;
+        s->requested_baud = target;
+    }
+    s->current_baud = actual;
+    tcmg_log_dbg(D_READER, "serial speed device=%s requested=%u actual=%u D=%u",
+                 s->device, target, actual, s->t0_d);
+    return 0;
+}
+
+static int do_reset_parity(S_SERIAL_SLOT *s, int parity, int *got, int atr_first_timeout_ms, int fast_reset)
 {
     slot_close(s);
 #ifdef TCMG_OS_WINDOWS
@@ -378,7 +624,7 @@ static int do_reset_parity(S_SERIAL_SLOT *s, int parity, int *got)
     if (serial_open_slot(s, s->device, parity) < 0) return -1;
     if (unix_set_rts(s->fd, 1) < 0) { slot_close(s); return -1; }
 #endif
-    tcmg_sleep_ms(SERIAL_OPEN_SETTLE_MS);
+    tcmg_sleep_ms(fast_reset ? SERIAL_FAST_RESET_SETTLE_MS : SERIAL_OPEN_SETTLE_MS);
     slot_close(s);
 
     if (serial_open_slot(s, s->device, parity) < 0) return -1;
@@ -387,35 +633,80 @@ static int do_reset_parity(S_SERIAL_SLOT *s, int parity, int *got)
 #else
     if (unix_set_rts(s->fd, 0) < 0) { slot_close(s); return -1; }
 #endif
-    tcmg_sleep_ms(SERIAL_OPEN_SETTLE_MS);
-    if (read_atr(s) < 0) {
+    tcmg_sleep_ms(fast_reset ? SERIAL_FAST_RESET_SETTLE_MS : SERIAL_OPEN_SETTLE_MS);
+    if (read_atr(s, atr_first_timeout_ms) < 0) {
         slot_close(s);
         return -1;
     }
     s->parity = parity;
+    if (serial_select_speed_after_atr(s) < 0) {
+        slot_close(s);
+        return -1;
+    }
     s->present = 1;
     s->ready = 1;
     if (got) *got = 1;
     return 0;
 }
 
-static int serial_fast_reset(S_SERIAL_SLOT *s)
+static int serial_fast_reset_mode(S_SERIAL_SLOT *s, int quick_probe)
 {
     static const int parities[] = { 0, 1, 2 };
+    int order[sizeof(parities) / sizeof(parities[0])];
+    size_t norder = 0;
     int got = 0;
+    int first_timeout = quick_probe ? SERIAL_PROBE_ATR_FIRST_MS : SERIAL_ATR_TIMEOUT_MS;
+
+    if (!s || !s->device[0]) return -1;
+
+    /* When a card was previously working, its parity is the best first probe.
+       This matters when the card disappears: we do not spend ~3x the ATR wait
+       trying all three parities before declaring it unavailable. */
+    if (s->parity >= 0 && s->parity <= 2) order[norder++] = s->parity;
     for (size_t i = 0; i < sizeof(parities) / sizeof(parities[0]); i++) {
-        if (do_reset_parity(s, parities[i], &got) == 0) {
+        if (norder && parities[i] == order[0]) continue;
+        order[norder++] = parities[i];
+    }
+
+    for (size_t i = 0; i < norder; i++) {
+        if (do_reset_parity(s, order[i], &got, first_timeout, !quick_probe) == 0) {
             s->last_reset_ms = mono_ms();
-            tcmg_log_force("fast reset ok device=%s parity=%s ATR=%zu",
-                           s->device, parities[i] == 0 ? "even" : (parities[i] == 1 ? "odd" : "none"), s->atr_len);
+            s->last_attempt_ms = s->last_reset_ms;
+            tcmg_log_force("fast reset ok device=%s parity=%s ATR=%zu baud=%u D=%u",
+                           s->device, order[i] == 0 ? "even" : (order[i] == 1 ? "odd" : "none"),
+                           s->atr_len, s->current_baud, s->t0_d);
             return 0;
         }
+        /* For the normal/full reset path, a successful open with the wrong
+           parity can still fail at ATR; continue to the next parity. */
     }
     s->present = 0;
     s->ready = 0;
     s->atr_len = 0;
-    if (!got) tcmg_log_dbg(D_READER, "fast reset failed device=%s", s->device);
+    s->last_attempt_ms = mono_ms();
+    if (!quick_probe)
+        tcmg_log_dbg(D_READER, "fast reset failed device=%s", s->device);
     return -1;
+}
+
+static int serial_fast_reset(S_SERIAL_SLOT *s)
+{
+    return serial_fast_reset_mode(s, 0);
+}
+
+static int serial_quick_probe(S_SERIAL_SLOT *s)
+{
+    return serial_fast_reset_mode(s, 1);
+}
+
+static void serial_mark_unavailable(S_SERIAL_SLOT *s)
+{
+    if (!s) return;
+    s->present = 0;
+    s->ready = 0;
+    s->atr_len = 0;
+    s->last_attempt_ms = mono_ms();
+    slot_close(s);
 }
 
 static int t0_transmit(S_SERIAL_SLOT *s, const uint8_t *apdu, size_t apdu_len,
@@ -440,12 +731,15 @@ static int t0_transmit(S_SERIAL_SLOT *s, const uint8_t *apdu, size_t apdu_len,
 
     for (int guard = 0; guard < 600; guard++) {
         uint8_t p = 0;
-        if (serial_read_byte(s, &p, 2500) < 0) return -5;
+        uint32_t procedure_timeout = s->t0_wwt_ms ? s->t0_wwt_ms : 2500u;
+        if (procedure_timeout > SERIAL_T0_NO_PROCEDURE_MS)
+            procedure_timeout = SERIAL_T0_NO_PROCEDURE_MS;
+        if (serial_read_byte(s, &p, (int)procedure_timeout) < 0) return -5;
         if (p == 0x60) continue;
         if ((p & 0xF0) == 0x60 || (p & 0xF0) == 0x90) {
             if (out + 2 > *rsp_len) return -6;
             rsp[out++] = p;
-            if (serial_read_byte(s, &rsp[out++], 2500) < 0) return -7;
+            if (serial_read_byte(s, &rsp[out++], (int)(s->t0_wwt_ms ? s->t0_wwt_ms : 2500u)) < 0) return -7;
             *rsp_len = out;
             return 0;
         }
@@ -453,7 +747,7 @@ static int t0_transmit(S_SERIAL_SLOT *s, const uint8_t *apdu, size_t apdu_len,
         if ((p & 0x0E) == (ins & 0x0E)) {
             if (!case3) {
                 if (le + 2 > *rsp_len) return -8;
-                if (serial_read_n(s, rsp, le + 2, 2500) < 0) return -9;
+                if (serial_read_n(s, rsp, le + 2, (int)(s->t0_wwt_ms ? s->t0_wwt_ms : 2500u)) < 0) return -9;
                 *rsp_len = le + 2;
                 return 0;
             }
@@ -465,10 +759,10 @@ static int t0_transmit(S_SERIAL_SLOT *s, const uint8_t *apdu, size_t apdu_len,
         else if ((p & 0x0E) == ((uint8_t)(~ins) & 0x0E)) {
             if (!case3) {
                 if (out + 1 > *rsp_len) return -13;
-                if (serial_read_byte(s, &rsp[out++], 2500) < 0) return -14;
+                if (serial_read_byte(s, &rsp[out++], (int)(s->t0_wwt_ms ? s->t0_wwt_ms : 2500u)) < 0) return -14;
                 if (out >= le) {
                     if (out + 2 > *rsp_len) return -15;
-                    if (serial_read_n(s, rsp + out, 2, 2500) < 0) return -16;
+                    if (serial_read_n(s, rsp + out, 2, (int)(s->t0_wwt_ms ? s->t0_wwt_ms : 2500u)) < 0) return -16;
                     out += 2;
                     *rsp_len = out;
                     return 0;
@@ -561,8 +855,16 @@ static int serial_open_and_reset(S_SERIAL_SLOT *s, const char *device)
     if (!device || !*device) return -1;
     if (s->device[0] && strcmp(s->device, device) != 0) slot_clear(s);
     if (!s->device[0]) tcmg_strlcpy(s->device, device, sizeof(s->device));
-    if (!s->ready) return serial_fast_reset(s);
-    return 0;
+    if (s->ready) return 0;
+
+    /* The background serial thread owns card detection.  Avoid turning every
+       ECM request into a multi-second three-parity reset when the card is gone.
+       A single quick probe is allowed after the cooldown; otherwise fail fast. */
+    int64_t now = mono_ms();
+    if (s->last_attempt_ms != 0 && now - s->last_attempt_ms < SERIAL_UNAVAILABLE_COOLDOWN_MS)
+        return -7;
+    s->last_attempt_ms = now;
+    return serial_quick_probe(s);
 }
 
 static void *serial_thread(void *arg)
@@ -579,7 +881,8 @@ static void *serial_thread(void *arg)
             const char *device = want ? cfg->device : NULL;
             if (want && cfg->poll_ms > 0 && cfg->poll_ms < min_poll) min_poll = cfg->poll_ms;
 
-            pthread_mutex_lock(&s_slots[i].mtx);
+            if (pthread_mutex_trylock(&s_slots[i].mtx) != 0)
+                continue;
             if (!want || !device || !*device) {
                 slot_clear(&s_slots[i]);
             } else {
@@ -587,10 +890,10 @@ static void *serial_thread(void *arg)
                 tcmg_strlcpy(s_slots[i].device, device, sizeof(s_slots[i].device));
                 int64_t now = mono_ms();
                 if (!s_slots[i].ready &&
-                    (s_slots[i].last_attempt_ms == 0 || now - s_slots[i].last_attempt_ms >= 2000)) {
+                    (s_slots[i].last_attempt_ms == 0 || now - s_slots[i].last_attempt_ms >= SERIAL_UNAVAILABLE_COOLDOWN_MS)) {
                     s_slots[i].last_attempt_ms = now;
-                    if (serial_fast_reset(&s_slots[i]) < 0)
-                        tcmg_log_dbg(D_READER, "reader[%d]: reset failed device=%s", i + 1, device);
+                    if (serial_quick_probe(&s_slots[i]) < 0)
+                        tcmg_log_dbg(D_READER, "reader[%d]: quick probe failed device=%s", i + 1, device);
                 }
                 if (s_slots[i].ready && cfg->fast_reset > 0 &&
                     now - s_slots[i].last_reset_ms >= (int64_t)cfg->fast_reset * 1000LL) {
@@ -681,10 +984,24 @@ int serial_do_ecm_reader(int index, uint16_t caid,
         return -6;
     }
 
+    s->ecm_active++;
     int rc = conax_ecm(s, ecm, ecm_len, cw);
+    if (s->ecm_active > 0) s->ecm_active--;
     if (rc < 0) {
-        (void)serial_fast_reset(s);
-        rc = conax_ecm(s, ecm, ecm_len, cw);
+        /* A timeout/no-response means the physical reader/card is no longer
+           usable.  Do not perform a second ECM plus a full three-parity reset
+           while the client is waiting.  Mark it unavailable and let the
+           background probe recover it asynchronously. */
+        if (rc == -2 || rc == -7) {
+            serial_mark_unavailable(s);
+            tcmg_log_dbg(D_READER,
+                         "serial reader unavailable during ECM device=%s rc=%d; fail-fast",
+                         s->device, rc);
+        } else {
+            /* Card-level/protocol error: one full reset/retry is still useful. */
+            if (serial_fast_reset(s) == 0)
+                rc = conax_ecm(s, ecm, ecm_len, cw);
+        }
     }
     pthread_mutex_unlock(&s->mtx);
     return rc;

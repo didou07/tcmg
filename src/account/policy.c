@@ -1,13 +1,49 @@
 #define MODULE_LOG_PREFIX "account"
 #include "account.h"
+#include "../reader/rules.h"
 #include <time.h>
+
+int account_collect_caids(const S_ACCOUNT *account, uint16_t *out, int32_t cap)
+{
+    if (!account || !out || cap <= 0) return 0;
+
+    if (account->caid) {
+        int32_t count = 1;
+        out[0] = account->caid;
+        for (int32_t i = 0; i < account->ncaids && count < cap; i++) {
+            bool exists = false;
+            for (int32_t j = 0; j < count; j++) {
+                if (out[j] == account->caids[i]) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists && account->caids[i]) out[count++] = account->caids[i];
+        }
+        return count;
+    }
+
+    return reader_collect_account_caids(account, out, cap);
+}
+
+uint16_t account_default_caid(const S_ACCOUNT *account)
+{
+    uint16_t caid = 0;
+    if (account && account->caid) return account->caid;
+    (void)account_collect_caids(account, &caid, 1);
+    return caid;
+}
 
 bool account_allows_caid(const S_ACCOUNT *account, uint16_t caid)
 {
-    if (!account) return false;
-    if (account->caid && account->caid == caid) return true;
-    for (int32_t i = 0; i < account->ncaids; i++)
-        if (account->caids[i] == caid) return true;
+    uint16_t caids[MAX_CAIDS_PER_ACC + (MAX_READERS * MAX_CAIDS_PER_READER)];
+    int32_t n;
+
+    if (!account || !caid) return false;
+    n = account_collect_caids(account, caids,
+                              (int32_t)(sizeof(caids) / sizeof(caids[0])));
+    for (int32_t i = 0; i < n; i++)
+        if (caids[i] == caid) return true;
     return false;
 }
 

@@ -21,5 +21,6 @@ void account_stats_reset(S_ACCOUNT *account);
 void account_stats_copy_runtime(S_ACCOUNT *dst, const S_ACCOUNT *src);
 void account_stats_global_snapshot(int64_t *cw_found, int64_t *cw_not);
 void account_stats_global_remove(S_ACCOUNT *account);
+void account_stats_global_adopt(S_ACCOUNT *account);
 
 #endif

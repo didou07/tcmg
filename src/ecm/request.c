@@ -11,7 +11,7 @@ void ecm_request_init(S_ECM_REQUEST *request, S_CLIENT *client,
     if (!request) return;
     memset(request, 0, sizeof(*request));
     request->client = client;
-    request->account = client ? client->auth.account : NULL;
+    request->account = NULL;
     request->fd = client ? client->session.fd : -1;
     request->thread_id = client ? client->identity.thread_id : 0;
     request->user = client ? client->identity.user : NULL;

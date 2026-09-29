@@ -35,7 +35,14 @@ bool webif_config_snapshot(S_WEBIF_CONFIG_VIEW *out)
     out->scheduled_restart_enabled = g_cfg.scheduled_restart_enabled;
     unsigned restart_minutes = (g_cfg.scheduled_restart_minutes >= 0 && g_cfg.scheduled_restart_minutes < 1440)
         ? (unsigned)g_cfg.scheduled_restart_minutes : 240u;
-    snprintf(out->scheduled_restart_time, sizeof(out->scheduled_restart_time), "%02u:%02u", restart_minutes / 60u, restart_minutes % 60u);
+    unsigned restart_hour = restart_minutes / 60u;
+    unsigned restart_minute = restart_minutes % 60u;
+    out->scheduled_restart_time[0] = (char)('0' + (restart_hour / 10u));
+    out->scheduled_restart_time[1] = (char)('0' + (restart_hour % 10u));
+    out->scheduled_restart_time[2] = ':';
+    out->scheduled_restart_time[3] = (char)('0' + (restart_minute / 10u));
+    out->scheduled_restart_time[4] = (char)('0' + (restart_minute % 10u));
+    out->scheduled_restart_time[5] = '\0';
     tcmg_strlcpy(out->logfile, g_cfg.logfile, sizeof(out->logfile));
     out->webif_port = g_cfg.webif_port;
     out->webif_refresh = g_cfg.webif_refresh;
@@ -55,21 +62,42 @@ bool webif_config_apply(const S_WEBIF_CONFIG_PATCH *p, bool *restart_required)
     if (!p) return false;
     if (restart_required) *restart_required = false;
 
+    pthread_mutex_lock(&g_cfg_transition_mtx);
     pthread_rwlock_wrlock(&g_cfg.acc_lock);
-
     int old_webif_enabled = g_cfg.webif_enabled;
     int old_webif_port = g_cfg.webif_port;
     char old_webif_bindaddr[MAXIPLEN];
-    tcmg_strlcpy(old_webif_bindaddr, g_cfg.webif_bindaddr, sizeof(old_webif_bindaddr));
-    int old_newcamd_port = g_cfg.newcamd_port;
     char old_newcamd_bindaddr[MAXIPLEN];
-    tcmg_strlcpy(old_newcamd_bindaddr, g_cfg.newcamd_bindaddr, sizeof(old_newcamd_bindaddr));
-    int old_cccam_port = g_cfg.cccam_port;
     char old_cccam_bindaddr[MAXIPLEN];
-    tcmg_strlcpy(old_cccam_bindaddr, g_cfg.cccam_bindaddr, sizeof(old_cccam_bindaddr));
-    int old_cs378x_port = g_cfg.cs378x_port;
     char old_cs378x_bindaddr[MAXIPLEN];
+    tcmg_strlcpy(old_webif_bindaddr, g_cfg.webif_bindaddr, sizeof(old_webif_bindaddr));
+    tcmg_strlcpy(old_newcamd_bindaddr, g_cfg.newcamd_bindaddr, sizeof(old_newcamd_bindaddr));
+    tcmg_strlcpy(old_cccam_bindaddr, g_cfg.cccam_bindaddr, sizeof(old_cccam_bindaddr));
     tcmg_strlcpy(old_cs378x_bindaddr, g_cfg.cs378x_bindaddr, sizeof(old_cs378x_bindaddr));
+    int old_newcamd_port = g_cfg.newcamd_port;
+    int old_newcamd_keepalive = g_cfg.newcamd_keepalive;
+    int old_newcamd_mgclient = g_cfg.newcamd_mgclient;
+    int old_cccam_port = g_cfg.cccam_port;
+    int old_cs378x_port = g_cfg.cs378x_port;
+    int old_sock_timeout = g_cfg.sock_timeout;
+    int old_server_keepalive = g_cfg.server_keepalive;
+    int old_server_keepalive_misses = g_cfg.server_keepalive_misses;
+    int old_ecm_log = g_cfg.ecm_log;
+    int old_sched_enabled = g_cfg.scheduled_restart_enabled;
+    int old_sched_minutes = g_cfg.scheduled_restart_minutes;
+    int old_webif_refresh = g_cfg.webif_refresh;
+    char old_webif_user[CFGKEY_LEN], old_webif_pass[CFGKEY_LEN], old_logfile[CFGPATH_LEN];
+    char old_usrfile[CFGPATH_LEN], old_failban_allowlist[CFGKEY_LEN];
+    uint8_t old_newcamd_key[14];
+    tcmg_strlcpy(old_webif_user, g_cfg.webif_user, sizeof(old_webif_user));
+    tcmg_strlcpy(old_webif_pass, g_cfg.webif_pass, sizeof(old_webif_pass));
+    tcmg_strlcpy(old_logfile, g_cfg.logfile, sizeof(old_logfile));
+    tcmg_strlcpy(old_usrfile, g_cfg.usrfile, sizeof(old_usrfile));
+    tcmg_strlcpy(old_failban_allowlist, g_cfg.failban_allowlist, sizeof(old_failban_allowlist));
+    memcpy(old_newcamd_key, g_cfg.newcamd_key, sizeof(old_newcamd_key));
+    int old_failban_enabled = g_cfg.failban_enabled;
+    int old_failban_max_fails = g_cfg.failban_max_fails;
+    int old_failban_ban_secs = g_cfg.failban_ban_secs;
 
     if (p->has_newcamd_port) g_cfg.newcamd_port = p->newcamd_port;
     if (p->has_newcamd_bindaddr) tcmg_strlcpy(g_cfg.newcamd_bindaddr, p->newcamd_bindaddr, sizeof(g_cfg.newcamd_bindaddr));
@@ -105,11 +133,43 @@ bool webif_config_apply(const S_WEBIF_CONFIG_PATCH *p, bool *restart_required)
     pthread_rwlock_unlock(&g_cfg.acc_lock);
 
     bool ok = cfg_save(&g_cfg);
-    if (ok) {
+    if (!ok) {
+        pthread_rwlock_wrlock(&g_cfg.acc_lock);
+        g_cfg.webif_enabled = old_webif_enabled;
+        g_cfg.webif_port = old_webif_port;
+        tcmg_strlcpy(g_cfg.webif_bindaddr, old_webif_bindaddr, sizeof(g_cfg.webif_bindaddr));
+        g_cfg.newcamd_port = old_newcamd_port;
+        tcmg_strlcpy(g_cfg.newcamd_bindaddr, old_newcamd_bindaddr, sizeof(g_cfg.newcamd_bindaddr));
+        memcpy(g_cfg.newcamd_key, old_newcamd_key, sizeof(g_cfg.newcamd_key));
+        g_cfg.newcamd_keepalive = old_newcamd_keepalive;
+        g_cfg.newcamd_mgclient = old_newcamd_mgclient;
+        g_cfg.cccam_port = old_cccam_port;
+        tcmg_strlcpy(g_cfg.cccam_bindaddr, old_cccam_bindaddr, sizeof(g_cfg.cccam_bindaddr));
+        g_cfg.cs378x_port = old_cs378x_port;
+        tcmg_strlcpy(g_cfg.cs378x_bindaddr, old_cs378x_bindaddr, sizeof(g_cfg.cs378x_bindaddr));
+        g_cfg.sock_timeout = old_sock_timeout;
+        g_cfg.server_keepalive = old_server_keepalive;
+        g_cfg.server_keepalive_misses = old_server_keepalive_misses;
+        g_cfg.ecm_log = old_ecm_log;
+        g_cfg.scheduled_restart_enabled = old_sched_enabled;
+        g_cfg.scheduled_restart_minutes = old_sched_minutes;
+        g_cfg.webif_refresh = old_webif_refresh;
+        tcmg_strlcpy(g_cfg.webif_user, old_webif_user, sizeof(g_cfg.webif_user));
+        tcmg_strlcpy(g_cfg.webif_pass, old_webif_pass, sizeof(g_cfg.webif_pass));
+        tcmg_strlcpy(g_cfg.logfile, old_logfile, sizeof(g_cfg.logfile));
+        tcmg_strlcpy(g_cfg.usrfile, old_usrfile, sizeof(g_cfg.usrfile));
+        g_cfg.failban_enabled = old_failban_enabled;
+        tcmg_strlcpy(g_cfg.failban_allowlist, old_failban_allowlist, sizeof(g_cfg.failban_allowlist));
+        g_cfg.failban_max_fails = old_failban_max_fails;
+        g_cfg.failban_ban_secs = old_failban_ban_secs;
+        pthread_rwlock_unlock(&g_cfg.acc_lock);
+    } else {
         if (restart_required) *restart_required = restart;
         if (!restart) g_reload_cfg = 1;
         else tcmg_log("listener settings saved; restart required to apply them");
     }
+
+    pthread_mutex_unlock(&g_cfg_transition_mtx);
     return ok;
 }
 

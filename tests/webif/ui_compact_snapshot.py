@@ -34,9 +34,9 @@ check('FailBan duration max is one week', 'max=\'604800\'' in config and 'Math.m
 
 check('Mobile menu wiring is singular', core.count("id='mnuBtn'") == 1 and core.count("id='mobile-nav'") == 1 and core.count('function toggleMobileNav') == 1)
 
-# One authoritative responsive card layer. Older 6.0.2/6.0.3 patches are intentionally gone.
-check('single mobile 640 layer', len(re.findall(r'@media\(max-width:640px\)\{', css)) == 1)
-check('single mobile 360 layer', len(re.findall(r'@media\(max-width:360px\)\{', css)) == 1)
+# One authoritative responsive card layer. Older responsive patches are intentionally consolidated into the single portrait layer.
+check('portrait mode has no width gate', '@media(orientation:portrait){' in css and not re.search(r'@media\([^)]*(?:max|min)-width', css))
+check('landscape uses desktop base without pointer gate', 'orientation:landscape' not in css and 'pointer:coarse' not in css)
 check('no legacy mobile patch markers', not re.search(r'6\.0\.[23]|chocolate-box|mobile card pass|status-card system', css))
 check('single Users card root rule', len(re.findall(r'body\.pg-users \.ut \.urow\{display:grid', css)) == 1)
 check('single Readers card root rule', len(re.findall(r'body\.pg-readers \.rt \.rrow\{display:grid', css)) == 1)
@@ -58,8 +58,10 @@ check('Live Log controls stay below the log', 'body.pg-livelog .ll-controls{disp
 check('Modals stack on narrow screens', '.reader-topgrid,.reader-cccam-grid,.reader-pcsc-grid,.reader-routing-grid,.user-g3,.user-bottom-grid,.g2{grid-template-columns:1fr!important}' in css and '.reader-modal .mf,.user-modal .mf{flex-direction:column' in css)
 check('Mobile menu overlay is below menu', 'body.nav-open #mn::before{content:\'\';position:fixed;z-index:1035' in css and '.tnav{display:none;position:fixed' in css and 'z-index:1065' in css)
 check('Desktop modal base remains intact', '.reader-modal{width:640px;max-width:calc(100vw - 24px)}' in css)
-check('Desktop Users table grows with content, not empty viewport', '#uTable{flex:0 1 auto;min-width:0;min-height:0;height:auto;max-height:calc(100vh - 190px)' in css)
-check('Desktop Readers table grows with content, not empty viewport', '#rTable{flex:0 1 auto;min-width:0;min-height:0;height:auto;max-height:calc(100vh - 190px)' in css)
+check('Desktop Users page keeps document scrolling enabled', 'body.pg-users{height:auto;min-height:100vh;overflow-x:clip;overflow-y:visible;padding-top:var(--tbh)}' in css)
+check('Desktop Readers table grows with content and stays centered', '#rTable{flex:0 1 auto;width:100%;max-width:920px;min-width:0;min-height:0;height:auto;max-height:calc(100vh - 190px)' in css)
+check('Readers desktop wrapper stays centered and capped like its table', '#rTable{flex:0 1 auto;width:100%;max-width:920px;min-width:0;min-height:0' in css and '#rTable table{width:100%;max-width:920px;min-width:700px;table-layout:fixed}' in css)
+check('Hidden Users and Readers rows remain hidden in card mode', 'body.pg-users .ut .urow[hidden],body.pg-readers .rt .rrow[hidden]{display:none!important}' in css)
 check('Mobile Readers table does not reserve empty viewport space', 'body.pg-readers #rTable{flex:none;width:100%;max-width:100%;min-width:0;max-height:none;height:auto' in css)
 
 failed = [name for name, ok in checks if not ok]

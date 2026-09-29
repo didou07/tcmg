@@ -23,6 +23,58 @@ static void free_account_list(S_ACCOUNT *head)
     }
 }
 
+S_ACCOUNT *account_clone_config(const S_ACCOUNT *src)
+{
+    S_ACCOUNT *dst;
+    if (!src) return NULL;
+
+    dst = (S_ACCOUNT *)calloc(1, sizeof(*dst));
+    if (!dst) return NULL;
+
+    memcpy(dst->user, src->user, sizeof(dst->user));
+    memcpy(dst->pass, src->pass, sizeof(dst->pass));
+    dst->caid = src->caid;
+    dst->group = src->group;
+    memcpy(dst->groups, src->groups, sizeof(dst->groups));
+    dst->ngroups = src->ngroups;
+    dst->enabled = src->enabled;
+    memcpy(dst->caids, src->caids, sizeof(dst->caids));
+    dst->ncaids = src->ncaids;
+    memcpy(dst->ip_whitelist, src->ip_whitelist, sizeof(dst->ip_whitelist));
+    dst->nwhitelist = src->nwhitelist;
+    memcpy(dst->keys, src->keys, sizeof(dst->keys));
+    dst->nkeys = src->nkeys;
+    dst->max_connections = src->max_connections;
+    dst->expirationdate = src->expirationdate;
+    dst->max_idle = src->max_idle;
+    memcpy(dst->schedule, src->schedule, sizeof(dst->schedule));
+    dst->sched_day_from = src->sched_day_from;
+    dst->sched_day_to = src->sched_day_to;
+    dst->sched_hhmm_from = src->sched_hhmm_from;
+    dst->sched_hhmm_to = src->sched_hhmm_to;
+    memcpy(dst->sid_whitelist, src->sid_whitelist, sizeof(dst->sid_whitelist));
+    dst->nsid_whitelist = src->nsid_whitelist;
+    dst->anti_share = src->anti_share;
+    dst->as_max_sids = src->as_max_sids;
+    dst->as_max_ecm = src->as_max_ecm;
+    dst->as_ecm_window_s = src->as_ecm_window_s;
+    dst->as_channel_timeout_s = src->as_channel_timeout_s;
+    dst->as_switch_delay_s = src->as_switch_delay_s;
+
+    if (!account_stats_init(&dst->stats)) {
+        free(dst);
+        return NULL;
+    }
+    if (pthread_mutex_init(&dst->as_mtx, NULL) != 0) {
+        account_stats_destroy(&dst->stats);
+        free(dst);
+        return NULL;
+    }
+    atomic_init(&dst->active, 0);
+    atomic_init(&dst->refs, 0);
+    return dst;
+}
+
 S_ACCOUNT *account_acquire(const char *user)
 {
     S_ACCOUNT *found = NULL;

@@ -16,6 +16,17 @@ static int             s_webif_sock    = -1;
 static pthread_t s_webif_tid;
 static sem_t     s_webif_sem;
 
+#ifndef TCMG_OS_WINDOWS
+
+static int s_webif_wake[2] = { -1, -1 };
+
+static void webif_wake_close(void)
+{
+	for (int i = 0; i < 2; i++)
+		if (s_webif_wake[i] >= 0) { close(s_webif_wake[i]); s_webif_wake[i] = -1; }
+}
+#endif
+
 #define WEBIF_MAX_THREADS 16
 
 typedef struct { int fd; char ip[MAXIPLEN]; } s_conn_arg;
@@ -326,12 +337,33 @@ static void *http_server_thread(void *arg)
 	tcmg_log("listening http %s:%d", bindaddr[0] ? bindaddr : "0.0.0.0", webif_port());
 
 	while (atomic_load_explicit(&s_webif_running, memory_order_acquire)) {
+#ifndef TCMG_OS_WINDOWS
+		struct pollfd pfd[2];
+		pfd[0].fd = s_webif_sock;    pfd[0].events = POLLIN; pfd[0].revents = 0;
+		pfd[1].fd = s_webif_wake[0]; pfd[1].events = POLLIN; pfd[1].revents = 0;
+		int have_wake = s_webif_wake[0] >= 0;
+
+		int pr = poll(pfd, have_wake ? 2 : 1, have_wake ? -1 : 500);
+		if (pr < 0) {
+			if (errno != EINTR) { struct timespec ts = { 0, 100 * 1000 * 1000 }; nanosleep(&ts, NULL); }
+			continue;
+		}
+		if (have_wake && pfd[1].revents) break;
+		if (!(pfd[0].revents & POLLIN)) {
+			if (pfd[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+				struct timespec ts = { 0, 100 * 1000 * 1000 };
+				nanosleep(&ts, NULL);
+			}
+			continue;
+		}
+#else
 		fd_set rfds;
 		FD_ZERO(&rfds);
 		FD_SET(s_webif_sock, &rfds);
-		struct timeval tv = { 0, 200000 };
+		struct timeval tv = { 0, 500000 };
 		if (select(s_webif_sock + 1, &rfds, NULL, NULL, &tv) <= 0)
 			continue;
+#endif
 
 		struct sockaddr_in ca;
 		socklen_t clen = sizeof(ca);
@@ -418,6 +450,16 @@ int32_t webif_start(void)
 	}
 
 	sem_init(&s_webif_sem, 0, WEBIF_MAX_THREADS);
+#ifndef TCMG_OS_WINDOWS
+	if (pipe(s_webif_wake) != 0) {
+		s_webif_wake[0] = s_webif_wake[1] = -1;
+	} else {
+		for (int i = 0; i < 2; i++) {
+			int fl = fcntl(s_webif_wake[i], F_GETFD);
+			if (fl >= 0) fcntl(s_webif_wake[i], F_SETFD, fl | FD_CLOEXEC);
+		}
+	}
+#endif
 	atomic_store_explicit(&s_webif_running, 1, memory_order_release);
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
@@ -427,6 +469,9 @@ int32_t webif_start(void)
 		tcmg_log("pthread_create failed: errno=%d (%s)", errno, strerror(errno));
 		atomic_store_explicit(&s_webif_running, 0, memory_order_release);
 		sem_destroy(&s_webif_sem);
+#ifndef TCMG_OS_WINDOWS
+		webif_wake_close();
+#endif
 		close(s_webif_sock); s_webif_sock = -1;
 		pthread_attr_destroy(&attr);
 		return -1;
@@ -439,7 +484,13 @@ void webif_stop(void)
 {
 	if (!s_webif_running) return;
 	atomic_store_explicit(&s_webif_running, 0, memory_order_release);
+#ifndef TCMG_OS_WINDOWS
+	if (s_webif_wake[1] >= 0) { ssize_t wr = write(s_webif_wake[1], "x", 1); (void)wr; }
+#endif
 	pthread_join(s_webif_tid, NULL);
+#ifndef TCMG_OS_WINDOWS
+	webif_wake_close();
+#endif
 	if (s_webif_sock >= 0) { close(s_webif_sock); s_webif_sock = -1; }
 	sem_destroy(&s_webif_sem);
 }

@@ -8,6 +8,7 @@
 #include "client_session.h"
 
 #include <stdint.h>
+#include <pthread.h>
 
 typedef struct s_client {
     S_CLIENT_IDENTITY identity;
@@ -15,6 +16,8 @@ typedef struct s_client {
     S_CLIENT_ACCOUNT_STATE auth;
     S_CLIENT_ECM_STATE ecm;
     S_CLIENT_PROTOCOL_STATE protocol;
+    pthread_mutex_t auth_mtx;
+    pthread_mutex_t state_mtx;
 } S_CLIENT;
 
 typedef struct {

@@ -21,6 +21,7 @@ void req_free(s_http_req *req);
 int  buf_printf(char **dst, int *dstsz, int pos, const char *fmt, ...)
      __attribute__((format(printf, 4, 5)));
 int  buf_json_string(char **dst, int *dstsz, int pos, const char *src);
+int  buf_html_string(char **dst, int *dstsz, int pos, const char *src);
 void url_decode(char *s);
 void get_param(const char *qs, const char *key, char *out, int outsz);
 void form_get(const char *body, const char *key, char *out, int outsz);

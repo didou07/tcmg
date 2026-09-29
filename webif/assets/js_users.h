@@ -14,6 +14,17 @@
 	"  function fmtN(n) { return String(Math.round(n)).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ','); }\n" \
 	"  function pad2(n) { return (n < 10 ? '0' : '') + n; }\n" \
 	"  function ymd(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }\n" \
+	"  function protocolLabel(proto) {\n" \
+	"    var p = String(proto || '').toLowerCase();\n" \
+	"    if (p === 'n' || p === 'newcamd') return 'Newcamd';\n" \
+	"    if (p === 'm' || p === 'mgcamd') return 'MGcamd';\n" \
+	"    if (p === 'c' || p === 'cccam') return 'CCcam';\n" \
+	"    if (p === 's' || p === 'cs378x') return 'CS378X';\n" \
+	"    if (p === 'p' || p === 'pcsc') return 'PCSC';\n" \
+	"    if (p === 'i' || p === 'internal') return 'Internal';\n" \
+	"    if (p === 'r' || p === 'serial') return 'Serial';\n" \
+	"    return proto || '\u2014';\n" \
+	"  }\n" \
 	"\n" \
 	"  function netErr(e) {\n" \
 	"    if (e && e.message === 'unauthorized') return;\n" \
@@ -225,7 +236,6 @@
 	"  var rowMap = Object.create(null);\n" \
 	"  function rebuildRowMap() {\n" \
 	"    rowMap = Object.create(null);\n" \
-	"    rowsAll().forEach(function (r) { rowMap[r.dataset.user] = r; });\n" \
 	"  }\n" \
 	"\n" \
 	"  function fmtLiveAgo(ts) {\n" \
@@ -329,8 +339,8 @@
 	"    if (p) {\n" \
 	"      var badge = p.querySelector('.badge');\n" \
 	"      p.classList.toggle('dim', !proto);\n" \
-	"      if (badge) badge.textContent = proto || '\\u2014';\n" \
-	"      else p.textContent = proto || '\\u2014';\n" \
+	"      if (badge) badge.textContent = protocolLabel(proto);\n" \
+	"      else p.textContent = protocolLabel(proto);\n" \
 	"    }\n" \
 	"    setCellText(row, 'c-idle', fmtLiveIdle(u.idle));\n" \
 	"    var last60 = +u.last_60s || 0;\n" \

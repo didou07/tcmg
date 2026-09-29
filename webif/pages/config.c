@@ -72,8 +72,8 @@ void send_page_config(int fd)
 		".cfg-msg.err{border:1px solid var(--re);color:var(--re);background:var(--res)}"
 		".cfg-save{display:flex;justify-content:center;margin:20px 0 4px}"
 		".cfg-save button{min-width:190px;justify-content:center}"
-		"@media(min-width:1100px){.cfg-page{max-width:920px}}"
-		"@media(max-width:720px){"
+		""
+		"@media(orientation:portrait){"
 		".cfg-page{padding:0 2px 20px}"
 		".cfg-grid{display:flex;flex-direction:column}"
 		".cfg-field{grid-template-columns:1fr;gap:5px;padding:9px 0}"
@@ -166,7 +166,6 @@ void send_page_config(int fd)
 		cfg.newcamd_mgclient ? " checked" : "");
 	pos = buf_printf(&buf, &bsz, pos, "</section><section class='cfg-panel' id='cfgPanel-web' role='tabpanel' aria-labelledby='cfgTab-web' hidden>");
 
-
 	pos = buf_printf(&buf, &bsz, pos,
 		"<section class='cfg-card'>"
 		"<div class='cfg-head'><div class='cfg-head-main'>"
@@ -208,7 +207,6 @@ void send_page_config(int fd)
 		cfg.webif_refresh);
 	pos = buf_printf(&buf, &bsz, pos, "</section><section class='cfg-panel' id='cfgPanel-log' role='tabpanel' aria-labelledby='cfgTab-log' hidden>");
 
-
 	pos = buf_printf(&buf, &bsz, pos,
 		"<section class='cfg-card'>"
 		"<div class='cfg-head'><div class='cfg-head-main'>"
@@ -229,7 +227,6 @@ void send_page_config(int fd)
 		cfg.ecm_log ? " checked" : "");
 	pos = buf_printf(&buf, &bsz, pos, "</section><section class='cfg-panel' id='cfgPanel-system' role='tabpanel' aria-labelledby='cfgTab-system' hidden>");
 
-
 	pos = buf_printf(&buf, &bsz, pos,
 		"<section class='cfg-card'>"
 		"<div class='cfg-head'><div class='cfg-head-main'>"
@@ -244,7 +241,6 @@ void send_page_config(int fd)
 		"</div></div></section>",
 		cfg.scheduled_restart_time, cfg.scheduled_restart_enabled ? " checked" : "");
 	pos = buf_printf(&buf, &bsz, pos, "</section><section class='cfg-panel' id='cfgPanel-security' role='tabpanel' aria-labelledby='cfgTab-security' hidden>");
-
 
 	pos = buf_printf(&buf, &bsz, pos,
 		"<section class='cfg-card'>"

@@ -1,5 +1,6 @@
 #define MODULE_LOG_PREFIX "reader"
 #include "rules.h"
+#include "core/config_state.h"
 
 bool reader_account_has_group(const S_ACCOUNT *acc, int32_t group)
 {
@@ -11,6 +12,42 @@ bool reader_account_has_group(const S_ACCOUNT *acc, int32_t group)
         return false;
     }
     return acc->group == group;
+}
+
+int reader_collect_account_caids(const S_ACCOUNT *acc, uint16_t *out, int32_t cap)
+{
+    int32_t count = 0;
+
+    if (!acc || !out || cap <= 0) return 0;
+
+    pthread_rwlock_rdlock(&g_cfg.acc_lock);
+    for (int32_t i = 0; i < MAX_READERS && count < cap; i++) {
+        const S_READER *reader = &g_cfg.readers[i];
+        if (!reader->in_use || !reader->enabled || reader->ncaids <= 0) continue;
+
+        bool group_ok = false;
+        for (int32_t j = 0; j < reader->ngroups && !group_ok; j++) {
+            if (reader_account_has_group(acc, reader->groups[j]))
+                group_ok = true;
+        }
+        if (!group_ok) continue;
+
+        for (int32_t j = 0; j < reader->ncaids && count < cap; j++) {
+            uint16_t caid = reader->caids[j];
+            if (!caid) continue;
+
+            bool exists = false;
+            for (int32_t k = 0; k < count; k++) {
+                if (out[k] == caid) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) out[count++] = caid;
+        }
+    }
+    pthread_rwlock_unlock(&g_cfg.acc_lock);
+    return count;
 }
 
 E_READER_RULE_RESULT reader_rule_check(const S_READER *reader, const S_ACCOUNT *acc,

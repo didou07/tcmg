@@ -46,6 +46,37 @@ int main(void)
     assert(!account_allows_sid(&account, 0x0001));
     assert(account_in_schedule(&account));
 
+    memset(g_cfg.readers, 0, sizeof(g_cfg.readers));
+    g_cfg.readers[0].in_use = 1;
+    g_cfg.readers[0].enabled = 1;
+    g_cfg.readers[0].ngroups = 1;
+    g_cfg.readers[0].groups[0] = 1;
+    g_cfg.readers[0].ncaids = 1;
+    g_cfg.readers[0].caids[0] = 0x0B00;
+    g_cfg.readers[1].in_use = 1;
+    g_cfg.readers[1].enabled = 1;
+    g_cfg.readers[1].ngroups = 1;
+    g_cfg.readers[1].groups[0] = 2;
+    g_cfg.readers[1].ncaids = 1;
+    g_cfg.readers[1].caids[0] = 0x0500;
+
+    account.caid = 0;
+    account.ngroups = 1;
+    account.groups[0] = 1;
+    account.group = 1;
+    assert(account_default_caid(&account) == 0x0B00);
+    assert(account_allows_caid(&account, 0x0B00));
+    assert(!account_allows_caid(&account, 0x0500));
+    g_cfg.readers[1].groups[0] = 1;
+    assert(account_allows_caid(&account, 0x0500));
+    g_cfg.readers[1].enabled = 0;
+    assert(!account_allows_caid(&account, 0x0500));
+    g_cfg.readers[1].enabled = 1;
+    account.caid = 0x0B00;
+    assert(account_default_caid(&account) == 0x0B00);
+    assert(account_allows_caid(&account, 0x0B00));
+    assert(!account_allows_caid(&account, 0x0500));
+
     assert(account_stats_init(&account.stats));
     int64_t global_found0 = 0, global_not0 = 0;
     int64_t global_found1 = 0, global_not1 = 0;

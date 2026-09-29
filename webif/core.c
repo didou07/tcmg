@@ -192,6 +192,34 @@ static int send_all(int fd, const char *p, int n)
 	return 0;
 }
 
+static int send_all2(int fd, const char *a, int an, const char *b, int bn)
+{
+#ifndef TCMG_OS_WINDOWS
+	while (an > 0 || bn > 0) {
+		struct iovec iov[2];
+		int c = 0;
+		if (an > 0) { iov[c].iov_base = (void *)a; iov[c].iov_len = (size_t)an; c++; }
+		if (bn > 0) { iov[c].iov_base = (void *)b; iov[c].iov_len = (size_t)bn; c++; }
+		struct msghdr mh;
+		memset(&mh, 0, sizeof(mh));
+		mh.msg_iov    = iov;
+		mh.msg_iovlen = (size_t)c;
+		ssize_t k = sendmsg(fd, &mh, MSG_NOSIGNAL);
+		if (k < 0) { if (errno == EINTR) continue; return -1; }
+		if (k == 0) return -1;
+		if (an > 0) {
+			int t = k < an ? (int)k : an;
+			a += t; an -= t; k -= t;
+		}
+		if (k > 0) { b += k; bn -= (int)k; }
+	}
+	return 0;
+#else
+	if (an > 0 && send_all(fd, a, an) != 0) return -1;
+	return bn > 0 ? send_all(fd, b, bn) : 0;
+#endif
+}
+
 int req_parse(s_http_req *req, int fd, char *raw, int rawlen)
 {
 	memset(req, 0, sizeof(*req));
@@ -451,6 +479,21 @@ int html_escape(const char *src, char *dst, int dstsz)
 	return o;
 }
 
+static size_t html_escaped_len(const char *buf, size_t len)
+{
+	size_t n = 0;
+	for (size_t i = 0; i < len; i++) {
+		switch ((unsigned char)buf[i]) {
+		case '<': case '>': n += 4; break;
+		case '&': n += 5; break;
+		case '"': n += 6; break;
+		case '\'': n += 5; break;
+		default: n += 1; break;
+		}
+	}
+	return n;
+}
+
 static size_t html_escape_inplace(char *buf, size_t len, size_t cap)
 {
 	size_t src = len;
@@ -475,13 +518,44 @@ static size_t html_escape_inplace(char *buf, size_t len, size_t cap)
 	return outlen;
 }
 
+int buf_html_string(char **dst, int *dstsz, int pos, const char *src)
+{
+	if (!dst || !*dst || !dstsz || pos < 0) return -1;
+	if (!src) src = "";
+	size_t n = strlen(src);
+	size_t need = html_escaped_len(src, n);
+	if (need > (size_t)(INT_MAX / 2) || (size_t)pos > (size_t)(INT_MAX / 2)) return -1;
+	int required = pos + (int)need + 1;
+	if (required > *dstsz) {
+		int newsz = *dstsz * 2;
+		if (newsz < required + 1024) newsz = required + 1024;
+		char *nb = (char *)realloc(*dst, (size_t)newsz);
+		if (!nb) return -1;
+		*dst = nb;
+		*dstsz = newsz;
+	}
+	char *o = *dst + pos;
+	for (size_t i = 0; i < n; i++) {
+		switch ((unsigned char)src[i]) {
+		case '<':  memcpy(o, "&lt;",   4); o += 4; break;
+		case '>':  memcpy(o, "&gt;",   4); o += 4; break;
+		case '&':  memcpy(o, "&amp;",  5); o += 5; break;
+		case '"':  memcpy(o, "&quot;", 6); o += 6; break;
+		case '\'': memcpy(o, "&#39;",  5); o += 5; break;
+		default:   *o++ = src[i]; break;
+		}
+	}
+	*o = '\0';
+	return pos + (int)need;
+}
+
 char *html_escape_alloc(const char *src, int maxbytes, int *truncated)
 {
 	if (maxbytes < 0) maxbytes = 0;
 	size_t srclen = strlen(src);
 	if (truncated) *truncated = srclen > (size_t)maxbytes;
 	if (srclen > (size_t)maxbytes) srclen = (size_t)maxbytes;
-	size_t cap = srclen * 6 + 1;
+	size_t cap = html_escaped_len(src, srclen) + 1;
 	char *out = (char *)malloc(cap);
 	if (!out) return NULL;
 	if (srclen) memcpy(out, src, srclen);
@@ -510,12 +584,18 @@ char *file_read_escaped(const char *path, int maxbytes, int *truncated)
 		limit = (size_t)maxbytes;
 		if (truncated) *truncated = 1;
 	}
-	size_t cap = limit * 6 + 1;
-	char *buf = (char *)malloc(cap);
+	char *buf = (char *)malloc(limit + 1);
 	if (!buf) { fclose(fp); return NULL; }
 	size_t n = fread(buf, 1, limit, fp);
 	if (ferror(fp)) { fclose(fp); free(buf); return NULL; }
 	fclose(fp);
+	size_t cap = html_escaped_len(buf, n) + 1;
+	if (cap < limit + 1) cap = limit + 1;
+	if (cap > limit + 1) {
+		char *nb = (char *)realloc(buf, cap);
+		if (!nb) { free(buf); return NULL; }
+		buf = nb;
+	}
 	if (n < limit && st.st_size > (off_t)n) {
 		if ((size_t)n < (size_t)maxbytes) {
 			if (truncated) *truncated = 0;
@@ -545,10 +625,9 @@ int json_escape(const char *src, char *dst, int dstsz)
 	return o;
 }
 
-void send_headers_ex(int fd, int code, const char *reason,
-                     const char *ctype, int length, const char *set_cookie)
+static int build_headers(char *hdr, size_t cap, int code, const char *reason,
+                         const char *ctype, int length, const char *set_cookie)
 {
-	char hdr[1280];
 	time_t    now = time(NULL);
 	struct tm tm_s;
 	char      date_str[64];
@@ -561,7 +640,7 @@ void send_headers_ex(int fd, int code, const char *reason,
 		         "Set-Cookie: tcmg_session=%s; Path=/; HttpOnly; SameSite=Strict\r\n",
 		         set_cookie);
 
-	int hdr_n = snprintf(hdr, sizeof(hdr),
+	int hdr_n = snprintf(hdr, cap,
 	         "HTTP/1.1 %d %s\r\n"
 	         "Server: %s\r\n"
 	         "Date: %s\r\n"
@@ -577,20 +656,30 @@ void send_headers_ex(int fd, int code, const char *reason,
 	         "\r\n",
 	         code, reason, WEB_SERVER_NAME, date_str,
 	         ctype, length, cookie_line);
-	if (hdr_n >= (int)sizeof(hdr)) {
+	if (hdr_n < 0) return 0;
+	if (hdr_n >= (int)cap) {
 		tcmg_log("HTTP header truncated (needed %d bytes)", hdr_n);
-		hdr_n = (int)sizeof(hdr) - 1;
+		hdr_n = (int)cap - 1;
 	}
-	send_all(fd, hdr, hdr_n);
+	return hdr_n;
+}
+
+void send_headers_ex(int fd, int code, const char *reason,
+                     const char *ctype, int length, const char *set_cookie)
+{
+	char hdr[1280];
+	int  n = build_headers(hdr, sizeof(hdr), code, reason, ctype, length, set_cookie);
+	if (n > 0) send_all(fd, hdr, n);
 }
 
 void send_response_ex(int fd, int code, const char *reason,
                       const char *ctype, const char *body, int blen,
                       const char *set_cookie)
 {
-	send_headers_ex(fd, code, reason, ctype, blen, set_cookie);
-	if (body && blen > 0)
-		send_all(fd, body, blen);
+	char hdr[1280];
+	int  n = build_headers(hdr, sizeof(hdr), code, reason, ctype, blen, set_cookie);
+	if (n <= 0) return;
+	send_all2(fd, hdr, n, body, blen > 0 ? blen : 0);
 }
 
 void send_response(int fd, int code, const char *reason,
@@ -639,27 +728,32 @@ void send_redirect_clear_cookie(int fd, const char *location)
 void send_webif_asset(int fd, const char *path)
 {
 	const char *body = NULL, *ctype = NULL;
+	int len = 0;
 	if (!strcmp(path, "/assets/app.css")) {
 		body = TCMG_CSS;
+		len = (int)(sizeof(TCMG_CSS) - 1);
 		ctype = "text/css; charset=utf-8";
 	} else if (!strcmp(path, "/assets/app.js")) {
 		body = TCMG_JS;
+		len = (int)(sizeof(TCMG_JS) - 1);
 		ctype = "application/javascript; charset=utf-8";
 	} else if (!strcmp(path, "/assets/users.js")) {
 		body = TCMG_USERS_JS;
+		len = (int)(sizeof(TCMG_USERS_JS) - 1);
 		ctype = "application/javascript; charset=utf-8";
 	} else if (!strcmp(path, "/assets/readers.js")) {
 		body = TCMG_READERS_JS;
+		len = (int)(sizeof(TCMG_READERS_JS) - 1);
 		ctype = "application/javascript; charset=utf-8";
 	} else if (!strcmp(path, "/assets/livelog.js")) {
 		body = TCMG_LIVELOG_JS;
+		len = (int)(sizeof(TCMG_LIVELOG_JS) - 1);
 		ctype = "application/javascript; charset=utf-8";
 	} else {
 		send_response(fd, 404, "Not Found", "text/plain", "not found", 9);
 		return;
 	}
 
-	int len = (int)strlen(body);
 	char hdr[512];
 	int n = snprintf(hdr, sizeof(hdr),
 	                 "HTTP/1.1 200 OK\r\n"
@@ -672,8 +766,7 @@ void send_webif_asset(int fd, const char *path)
 	                 WEB_SERVER_NAME, ctype, len);
 	if (n < 0) return;
 	if (n >= (int)sizeof(hdr)) n = (int)sizeof(hdr) - 1;
-	send_all(fd, hdr, n);
-	send_all(fd, body, len);
+	send_all2(fd, hdr, n, body, len);
 }
 
 S_SERVER_STATS collect_stats(void)
@@ -794,7 +887,7 @@ int emit_header(char **buf, int *bsz, int pos,
             nav[i].href, cls, nav[i].icon, nav[i].label);
     }
 
-    S_WEBIF_SERVER_STATS header_stats = webif_server_stats();
+    int header_conns = webif_active_connection_count();
 
     pos = buf_printf(buf, bsz, pos,
         "</div>"
@@ -814,7 +907,7 @@ int emit_header(char **buf, int *bsz, int pos,
         "<script>function toggleMobileNav(b){var n=document.getElementById('mobile-nav');if(!n)return;var o=!n.classList.contains('open');n.classList.toggle('open',o);document.body.classList.toggle('nav-open',o);if(b){b.setAttribute('aria-expanded',o?'true':'false');b.setAttribute('aria-label',o?'Close menu':'Open menu');}}function closeMobileNav(){var n=document.getElementById('mobile-nav'),b=document.getElementById('mnuBtn');if(n)n.classList.remove('open');document.body.classList.remove('nav-open');if(b){b.setAttribute('aria-expanded','false');b.setAttribute('aria-label','Open menu');}}document.addEventListener('keydown',function(e){if(e.key==='Escape')closeMobileNav();});</script>"
         "</nav>"
         "<div id='mn'><div id='ct'>",
-        header_stats.active_conns,
+        header_conns,
         refresh <= 0 ? " pc-off" : "",
         refresh > 0 ? refresh : 5);
 

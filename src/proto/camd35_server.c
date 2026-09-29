@@ -1,5 +1,6 @@
 #define MODULE_LOG_PREFIX "cs378x"
 #include "../core/config_state.h"
+#include "../config/runtime_access.h"
 #include "../core/runtime_state.h"
 #include "../core/utils.h"
 #include "../platform/platform.h"
@@ -46,7 +47,7 @@ static int cs378x_handle_ecm(S_CLIENT *cl, const uint8_t *plain, size_t plain_le
     T_ECM_ACCESS_STATUS access;
     S_ECM_RESULT result;
 
-    if (!cl || !cl->auth.account || plain_len < CS378X_HEADER_LEN + 3) return -1;
+    if (!cl || plain_len < CS378X_HEADER_LEN + 3) return -1;
     sid = (uint16_t)(((uint16_t)plain[8] << 8) | plain[9]);
     caid = (uint16_t)(((uint16_t)plain[10] << 8) | plain[11]);
     provid = ((uint32_t)plain[12] << 24) | ((uint32_t)plain[13] << 16) |
@@ -109,10 +110,15 @@ void *handle_cs378x_client(void *arg)
         session_init(&cl, &input, "cs378x");
     }
     free(args);
+    S_CONFIG_NETWORK_VIEW netcfg;
+    if (!cfg_runtime_network_snapshot(&netcfg)) {
+        session_cleanup(&cl);
+        return NULL;
+    }
     net_tune_socket(cl.session.fd);
     {
-        int timeout = g_cfg.sock_timeout;
-        if (g_cfg.server_keepalive > 0 && g_cfg.server_keepalive < timeout) timeout = g_cfg.server_keepalive;
+        int timeout = netcfg.sock_timeout;
+        if (netcfg.server_keepalive > 0 && netcfg.server_keepalive < timeout) timeout = netcfg.server_keepalive;
         net_set_timeout(cl.session.fd, timeout);
     }
 
@@ -123,7 +129,6 @@ void *handle_cs378x_client(void *arg)
     int urc = cs378x_recv_ucrc(cl.session.fd, ucrc);
     if (urc != 0) goto cleanup;
     acc = find_account_by_ucrc(ucrc);
-    cl.auth.account = acc;
     if (!acc) {
         tcmg_log("%s authentication failed: unknown account", cl.identity.ip);
         ban_record_fail(cl.identity.ip);
@@ -135,20 +140,24 @@ void *handle_cs378x_client(void *arg)
             tcmg_log("%s authentication failed: account access rejected user='%s' status=%d",
                      cl.identity.ip, acc->user, status);
             if (status != ACCOUNT_IP_DENIED) ban_record_fail(cl.identity.ip);
+            account_release(acc);
             goto cleanup;
         }
     }
     if (account_session_open(&cl, acc) < 0) {
         tcmg_log("%s login denied: max_connections=%d user='%s' active=%d",
                  cl.identity.ip, acc->max_connections, acc->user, (int)acc->active);
+        account_release(acc);
         goto cleanup;
     }
 
     memcpy(cl.protocol.wire.cs378x.ucrc, ucrc, 4);
     cs378x_password_key(acc->pass, cl.protocol.wire.cs378x.key);
-    cl.ecm.caid = acc->caid;
+    pthread_mutex_lock(&cl.state_mtx);
+    cl.ecm.caid = account_default_caid(acc);
     tcmg_strlcpy(cl.identity.user, acc->user, sizeof(cl.identity.user));
     tcmg_strlcpy(cl.identity.client_name, "CS378X", sizeof(cl.identity.client_name));
+    pthread_mutex_unlock(&cl.state_mtx);
     account_mark_login(acc, cl.identity.ip);
     ban_record_ok(cl.identity.ip);
     tcmg_log("%s LOGIN ok user='%s'", cl.identity.ip, cl.identity.user);
@@ -162,11 +171,11 @@ void *handle_cs378x_client(void *arg)
         if (!first_frame) urc_frame = cs378x_recv_ucrc(cl.session.fd, frame_ucrc);
         else memcpy(frame_ucrc, cl.protocol.wire.cs378x.ucrc, CS378X_UCRC_LEN);
         if (urc_frame == NET_RECV_TIMEOUT) {
-            if (g_cfg.server_keepalive > 0) {
+            if (netcfg.server_keepalive > 0) {
                 uint8_t ka[CS378X_HEADER_LEN + 1] = {0};
                 ka[0] = CS378X_CMD_KEEPALIVE; ka[1] = 1;
                 if (cs378x_send_payload(cl.session.fd, cl.protocol.wire.cs378x.ucrc, cl.protocol.wire.cs378x.key, ka, sizeof(ka)) < 0) break;
-                if (++ka_misses >= g_cfg.server_keepalive_misses) break;
+                if (++ka_misses >= netcfg.server_keepalive_misses) break;
                 continue;
             }
             break;

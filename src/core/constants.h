@@ -2,7 +2,7 @@
 #define TCMG_CONSTANTS_H_
 
 #ifndef TCMG_VERSION
-#  define TCMG_VERSION    "6.0"
+#  define TCMG_VERSION    "6.2"
 #endif
 #define TCMG_BANNER       "tcmg v" TCMG_VERSION
 #ifndef TCMG_BUILD_TIME
@@ -55,6 +55,8 @@
 #define AS_LOG_SIZE          32
 #define CW_CACHE_SIZE        512
 #define CW_CACHE_SHARDS      16
+#define CW_CACHE_WAYS        4
+#define CW_CACHE_BUCKETS     (CW_CACHE_SIZE / CW_CACHE_WAYS)
 #define CW_CACHE_TTL_S       30
 #define MAX_ACTIVE_CLIENTS   256
 #define BAN_BUCKETS          256

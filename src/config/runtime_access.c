@@ -52,3 +52,30 @@ bool cfg_runtime_reader_get(int index, S_READER *out)
     pthread_rwlock_unlock(&g_cfg.acc_lock);
     return true;
 }
+
+bool cfg_runtime_reader_any(bool (*pred)(const S_READER *r, void *ctx), void *ctx)
+{
+    bool found = false;
+    if (!pred) return false;
+    pthread_rwlock_rdlock(&g_cfg.acc_lock);
+    for (int i = 0; i < MAX_READERS && !found; i++) {
+        if (!g_cfg.readers[i].in_use) continue;
+        found = pred(&g_cfg.readers[i], ctx);
+    }
+    pthread_rwlock_unlock(&g_cfg.acc_lock);
+    return found;
+}
+
+bool cfg_runtime_network_snapshot(S_CONFIG_NETWORK_VIEW *out)
+{
+    if (!out) return false;
+    pthread_rwlock_rdlock(&g_cfg.acc_lock);
+    out->sock_timeout = g_cfg.sock_timeout;
+    out->server_keepalive = g_cfg.server_keepalive;
+    out->server_keepalive_misses = g_cfg.server_keepalive_misses;
+    out->newcamd_keepalive = g_cfg.newcamd_keepalive;
+    out->newcamd_mgclient = g_cfg.newcamd_mgclient;
+    memcpy(out->newcamd_key, g_cfg.newcamd_key, sizeof(out->newcamd_key));
+    pthread_rwlock_unlock(&g_cfg.acc_lock);
+    return true;
+}

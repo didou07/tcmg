@@ -10,6 +10,7 @@
 typedef struct {
     int32_t status;
     int32_t reader_index;
+    int8_t  cache_hit;
     int32_t groups[MAX_GROUPS_PER_READER];
     int32_t ngroups;
 } S_READER_RESULT;

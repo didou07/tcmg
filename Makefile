@@ -150,10 +150,11 @@ ifeq ($(RELEASE),1)
             -ffunction-sections -fdata-sections \
             -fmerge-all-constants -fno-ident \
             -fstack-protector-strong \
+            -fno-unwind-tables -fno-asynchronous-unwind-tables \
             -flto
   ifeq ($(PLATFORM),linux)
     LDFLAGS += -flto -Wl,--gc-sections -Wl,--strip-all \
-               -Wl,--build-id=none -Wl,--relax -Wl,-O1
+               -Wl,--build-id=none -Wl,--relax -Wl,-O1 -Wl,--hash-style=gnu
   endif
   ifeq ($(PLATFORM),windows)
     LDFLAGS += -flto -Wl,--gc-sections -Wl,--strip-all \
@@ -173,7 +174,7 @@ else
   endif
 endif
 
-.PHONY: all clean debug release test-config test-network test-reader-rules test-reader-registry test-proto-registry test-account-core test-session test-ecm-pipeline test-cache test-webif-service test-config-runtime-access test-account-state test-antishare test-internal test-internal-t0 test-internal-ui test-serial check
+.PHONY: all clean debug release test-config test-network test-reader-rules test-reader-registry test-proto-registry test-account-core test-session test-ecm-pipeline test-cache test-webif-service test-webif-many-clients test-webif-concurrency test-config-runtime-access test-account-state test-antishare test-internal test-internal-t0 test-internal-ui test-serial check
 
 # Browser assets (CSS / JS) are plain C headers in webif/assets/*.h -- edited by hand,
 # no generator step.  Every object is rebuilt when one of them changes.
@@ -230,6 +231,13 @@ test-webif-service: $(TARGET)
 	$(CC) $(TEST_COMMON_CFLAGS) tests/webif_service_smoke.c $(filter-out $(OBJ_DIR)/src/main.o,$(OBJS)) -o $(BUILD_DIR)/test_webif_service $(LDFLAGS)
 	$(BUILD_DIR)/test_webif_service
 
+test-webif-many-clients: $(TARGET)
+	$(CC) $(TEST_COMMON_CFLAGS) tests/webif_many_clients_smoke.c $(filter-out $(OBJ_DIR)/src/main.o,$(OBJS)) -o $(BUILD_DIR)/test_webif_many_clients $(LDFLAGS)
+	$(BUILD_DIR)/test_webif_many_clients
+
+test-webif-concurrency: $(TARGET)
+	TCMG_WEBIF_BIN="$(abspath $(TARGET))" python3 tests/webif/concurrency_503.py
+
 test-config-runtime-access: $(TARGET)
 	$(CC) $(TEST_COMMON_CFLAGS) tests/config_runtime_access_smoke.c $(filter-out $(OBJ_DIR)/src/main.o,$(OBJS)) -o $(BUILD_DIR)/test_config_runtime_access $(LDFLAGS)
 	$(BUILD_DIR)/test_config_runtime_access
@@ -257,7 +265,7 @@ test-serial: $(TARGET)
 	$(CC) $(TEST_COMMON_CFLAGS) tests/serial_smoke.c $(filter-out $(OBJ_DIR)/src/main.o,$(OBJS)) -o $(BUILD_DIR)/test_serial $(LDFLAGS)
 	$(BUILD_DIR)/test_serial
 
-test: test-config test-network test-reader-rules test-reader-registry test-proto-registry test-account-core test-session test-ecm-pipeline test-cache test-webif-service test-config-runtime-access test-account-state test-antishare test-internal test-internal-t0 test-internal-ui test-serial
+test: test-config test-network test-reader-rules test-reader-registry test-proto-registry test-account-core test-session test-ecm-pipeline test-cache test-webif-service test-webif-many-clients test-webif-concurrency test-config-runtime-access test-account-state test-antishare test-internal test-internal-t0 test-internal-ui test-serial
 
 check: $(ASSET_HDRS)
 	@set -e; \
@@ -272,6 +280,7 @@ check: $(ASSET_HDRS)
 	if grep -RInE 'g_cfg\.(acc_lock|accounts|naccounts)' src/account src/client src/proto/cccam.c src/proto/camd35_server.c --exclude='account_state.c'; then echo 'ACCOUNT STATE boundary violation detected' >&2; exit 1; fi; \
 	if grep -RInE '\bfetch\(' webif/pages webif/core.c | grep -v 'js_common.h'; then echo 'DIRECT FETCH IN PAGE DETECTED' >&2; exit 1; fi; \
 	if grep -RInE '"../../src/(core/config_state|core/client_state|config/config|client/client|security/failban)' webif/api webif/pages webif/core.c webif/server.c; then echo 'WEBIF internal include detected' >&2; exit 1; fi; \
+	if grep -nE '@media[^\n]*(max-width|min-width)' webif/assets/css.h; then echo 'WIDTH-BASED RESPONSIVE MEDIA QUERY DETECTED' >&2; exit 1; fi; \
 	if grep -RIn 'globals.h' src webif tests --include='*.c' --include='*.h' >/tmp/tcmg-globals.$$ 2>/dev/null && [ -s /tmp/tcmg-globals.$$ ]; then echo 'Umbrella globals.h include detected' >&2; rm -f /tmp/tcmg-globals.$$; exit 1; fi; rm -f /tmp/tcmg-globals.$$; \
 	bash ./build.sh check >/dev/null; \
 	bash ./build.sh self-test >/dev/null; \

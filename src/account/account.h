@@ -20,6 +20,8 @@ void account_release(S_ACCOUNT *account);
 void account_retire(S_ACCOUNT *account);
 void account_reap_retired(void);
 void account_retired_free(void);
+S_ACCOUNT *account_clone_config(const S_ACCOUNT *src);
+S_ACCOUNT *account_session_acquire(S_CLIENT *client);
 
 T_ACCOUNT_STATUS account_validate(const S_ACCOUNT *account, const char *ip);
 void account_mark_login(S_ACCOUNT *account, const char *ip);
@@ -28,6 +30,8 @@ int account_session_open(S_CLIENT *client, S_ACCOUNT *account);
 void account_session_close(S_CLIENT *client);
 void account_session_rebind(S_CLIENT *client, S_ACCOUNT *account);
 
+int account_collect_caids(const S_ACCOUNT *account, uint16_t *out, int32_t cap);
+uint16_t account_default_caid(const S_ACCOUNT *account);
 bool account_allows_caid(const S_ACCOUNT *account, uint16_t caid);
 bool account_allows_sid(const S_ACCOUNT *account, uint16_t sid);
 bool account_in_schedule(const S_ACCOUNT *account);

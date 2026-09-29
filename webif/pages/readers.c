@@ -30,10 +30,11 @@ void send_page_readers(int fd)
         "<th data-k='protocol'><button type='button' class='table-sort'>Type<span class='sort-arrow' aria-hidden='true'></span></button></th>"
         "<th data-k='device'><button type='button' class='table-sort'>Endpoint<span class='sort-arrow' aria-hidden='true'></span></button></th>"
         "<th data-k='groups'><button type='button' class='table-sort'>Group<span class='sort-arrow' aria-hidden='true'></span></button></th>"
-        "<th data-k='caid'><button type='button' class='table-sort'>CAID<span class='sort-arrow' aria-hidden='true'></span></button></th><th data-k='cw_ok'><button type='button' class='table-sort' title='Successful CWs' aria-label='CW OK'>OK<span class='sort-arrow' aria-hidden='true'></span></button></th><th data-k='cw_nok'><button type='button' class='table-sort' title='Failed CWs' aria-label='CW NOK'>NOK<span class='sort-arrow' aria-hidden='true'></span></button></th><th class='c-btn' aria-label='Actions'></th>"
+        "<th data-k='caid'><button type='button' class='table-sort'>CAID<span class='sort-arrow' aria-hidden='true'></span></button></th><th data-k='cw_ok'><button type='button' class='table-sort' title='Successful CWs' aria-label='CW OK'>OK<span class='sort-arrow' aria-hidden='true'></span></button></th><th data-k='cw_nok'><button type='button' class='table-sort' title='Failed CWs' aria-label='CW NOK'>NOK<span class='sort-arrow' aria-hidden='true'></span></button></th><th class='c-btn'>Actions</th>"
         "</tr></thead><tbody id='rBody'>");
     for (int ri = 0; ri < n; ri++) {
         const S_WEBIF_READER_LIST_VIEW *r = &readers[ri];
+        const char *rstate = !r->enabled ? "r-disabled" : r->active ? "r-active" : "r-idle";
         char l[256], p[64], d[512], g[256], c[256];
         html_escape(r->label, l, sizeof(l));
         html_escape(r->protocol, p, sizeof(p));
@@ -43,12 +44,12 @@ void send_page_readers(int fd)
         const S_READER_PROTOCOL *rp=reader_protocol_find(r->protocol); const char *kind=rp&&rp->kind==READER_PROTOCOL_CARD?"card":rp&&rp->kind==READER_PROTOCOL_EMU?"emu":"network";
         pos=buf_printf(&buf,&bsz,pos,
             "<tr class='rrow' data-i='%d' data-enabled='%d' data-active='%d' data-kind='%s'><td class='c-rstate'><button type='button' class='pw-btn %s' data-a='toggle' title='%s reader' aria-label='%s reader'>" ICON("i-toggle") "</button></td>"
-            "<td class='c-rlabel'><button type='button' class='rlink' data-a='edit' title='Edit %s'>%s</button></td><td class='c-rproto'><span class='badge %s'>%s</span></td>"
+            "<td class='c-rlabel'><button type='button' class='rlink %s' data-a='edit' title='Edit %s'>%s</button></td><td class='c-rproto'><span class='badge %s'>%s</span></td>"
             "<td class='c-rdev mono'>%s</td><td class='c-rgroup mono'>%s</td><td class='c-rcaid mono'>%s</td><td class='c-rstat-ok mono'>%lld</td><td class='c-rstat-nok mono'>%lld</td><td class='c-btn'><div class='ba'>"
             "<button type='button' class='act-b ed' data-a='edit' title='Edit reader' aria-label='Edit reader'>" ICON("i-edit") "</button>"
             "<button type='button' class='act-b dl' data-a='delete' title='Delete reader' aria-label='Delete reader'>" ICON("i-trash") "</button></div></td></tr>",
             r->index,r->enabled,r->active,kind,
-            r->enabled?"on":"off",r->enabled?"Disable":"Enable",r->enabled?"Disable":"Enable",l,l,
+            r->enabled?"on":"off",r->enabled?"Disable":"Enable",r->enabled?"Disable":"Enable",rstate,l,l,
             rp&&rp->kind==READER_PROTOCOL_CARD?"bcy":rp&&rp->kind==READER_PROTOCOL_EMU?"bvi":"bbl",p,d[0]?d:"&mdash;",g[0]?g:"&mdash;",c[0]?c:"&mdash;",
             (long long)r->cw_ok,(long long)r->cw_nok);
     }

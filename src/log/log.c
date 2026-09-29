@@ -59,11 +59,20 @@ static int color_enabled(void)
 }
 
 typedef struct {
-	char line[LOG_LINE_MAX];
+	char *line;
+	char *usr_line;
 	char usr[CFGKEY_LEN];
-	char usr_line[192];
-	int8_t has_usr_line;
 } S_WQ_ENTRY;
+
+static char *log_dup_n(const char *s, size_t max)
+{
+	size_t n = s ? strnlen(s, max) : 0;
+	char *p = (char *)malloc(n + 1);
+	if (!p) return NULL;
+	if (n) memcpy(p, s, n);
+	p[n] = '\0';
+	return p;
+}
 
 static S_WQ_ENTRY       s_wq[WQ_SIZE];
 static _Atomic int32_t  s_wq_head    = 0;
@@ -75,7 +84,7 @@ static pthread_t        s_wq_tid;
 static _Atomic int8_t   s_wq_running = 0;
 
 typedef struct {
-	char    line[LOG_LINE_MAX];
+	char   *line;
 	char    usr[CFGKEY_LEN];
 	int32_t id;
 } S_RING_ENTRY;
@@ -101,8 +110,16 @@ static int8_t s_ecm_log = 1;
 
 static __thread char    t_log_user[CFGKEY_LEN] = "";
 static __thread char    t_log_type              = 's';
-static __thread char    t_last_line[LOG_LINE_MAX] = "";
+static __thread uint64_t t_last_hash            = 0;
+static __thread int8_t   t_have_last            = 0;
 static __thread int32_t t_dup_count             = 0;
+
+static uint64_t log_hash(const char *s)
+{
+	uint64_t h = 1469598103934665603ULL;
+	while (*s) { h ^= (uint8_t)*s++; h *= 1099511628211ULL; }
+	return h;
+}
 
 static void ts_now(char *buf, size_t sz)
 {
@@ -139,8 +156,7 @@ typedef enum {
 
 static E_LOG_COLOR classify_line(const char *body)
 {
-	/* Check negative ECM results before generic "found" so "not found"
-	 * can never be misclassified as a successful CW hit. */
+
 	if (strstr(body, "ECM rejected") || strstr(body, "ecm rejected")) return LC_ECM_REJECTED;
 	if (strstr(body, "not found") || strstr(body, ": miss"))   return LC_CW_MISS;
 	if (strstr(body, "found (")   || strstr(body, ": found"))  return LC_CW_HIT;
@@ -235,14 +251,18 @@ static void rotate_if_needed(FILE **fp, const char *path, unsigned long max_byte
 
 static void ring_push(const char *line, const char *usr)
 {
+	char *copy = log_dup_n(line, LOG_LINE_MAX - 1);
+	char *old;
 	pthread_mutex_lock(&s_ring_mtx);
 	S_RING_ENTRY *e = &s_ring[s_ring_head % LOG_RING_MAX];
-	tcmg_strlcpy(e->line, line, sizeof(e->line));
+	old = e->line;
+	e->line = copy;
 	tcmg_strlcpy(e->usr,  usr ? usr : "", sizeof(e->usr));
 	e->id = s_ring_total;
 	s_ring_head = (s_ring_head + 1) % LOG_RING_MAX;
 	s_ring_total++;
 	pthread_mutex_unlock(&s_ring_mtx);
+	free(old);
 }
 
 static void apply_pending_files(void)
@@ -305,7 +325,7 @@ static void writer_drain(void)
 	while (tail != head) {
 		int32_t     slot = tail % WQ_SIZE;
 		S_WQ_ENTRY *e    = &s_wq[slot];
-		const char *line = e->line;
+		const char *line = e->line ? e->line : "";
 
 		print_colored(stdout, line);
 
@@ -319,7 +339,7 @@ static void writer_drain(void)
 
 		ring_push(line, e->usr);
 
-		if (e->has_usr_line && s_usr_fp) {
+		if (e->usr_line && s_usr_fp) {
 			rotate_if_needed(&s_usr_fp, s_usr_path, USR_FILE_MAX_BYTES);
 			if (s_usr_fp) {
 				fputs(e->usr_line, s_usr_fp);
@@ -327,10 +347,11 @@ static void writer_drain(void)
 			}
 		}
 
-		e->line[0]      = '\0';
-		e->usr[0]       = '\0';
-		e->usr_line[0]  = '\0';
-		e->has_usr_line = 0;
+		free(e->line);
+		free(e->usr_line);
+		e->line     = NULL;
+		e->usr_line = NULL;
+		e->usr[0]   = '\0';
 
 		tail++;
 		atomic_store_explicit(&s_wq_tail, tail, memory_order_release);
@@ -393,6 +414,9 @@ void log_shutdown(void)
 	pthread_join(s_wq_tid, NULL);
 	if (s_log_fp) { fclose(s_log_fp); s_log_fp = NULL; }
 	if (s_usr_fp) { fclose(s_usr_fp); s_usr_fp = NULL; }
+	pthread_mutex_lock(&s_ring_mtx);
+	for (int32_t i = 0; i < LOG_RING_MAX; i++) { free(s_ring[i].line); s_ring[i].line = NULL; }
+	pthread_mutex_unlock(&s_ring_mtx);
 }
 
 void log_reopen(void)
@@ -420,16 +444,13 @@ static void wq_push(const char *line, const char *usr, const char *usr_line)
 	int32_t     slot = head % WQ_SIZE;
 	S_WQ_ENTRY *e    = &s_wq[slot];
 
-	tcmg_strlcpy(e->line, line, sizeof(e->line));
-	tcmg_strlcpy(e->usr,  usr ? usr : "", sizeof(e->usr));
-
-	if (usr_line && usr_line[0]) {
-		tcmg_strlcpy(e->usr_line, usr_line, sizeof(e->usr_line));
-		e->has_usr_line = 1;
-	} else {
-		e->usr_line[0]  = '\0';
-		e->has_usr_line = 0;
+	e->line = log_dup_n(line, LOG_LINE_MAX - 1);
+	if (!e->line) {
+		pthread_mutex_unlock(&s_wq_mtx);
+		return;
 	}
+	tcmg_strlcpy(e->usr,  usr ? usr : "", sizeof(e->usr));
+	e->usr_line = (usr_line && usr_line[0]) ? log_dup_n(usr_line, 191) : NULL;
 
 	atomic_store_explicit(&s_wq_head, head + 1, memory_order_release);
 	pthread_cond_signal(&s_wq_cond);
@@ -454,7 +475,8 @@ static void emit_line(const char *mod, const char *body, int dedupe)
 		         ts, tid, t_log_type, body);
 	}
 
-	if (dedupe && strcmp(line, t_last_line) == 0) {
+	const uint64_t line_hash = log_hash(line);
+	if (dedupe && t_have_last && line_hash == t_last_hash) {
 		t_dup_count++;
 		return;
 	}
@@ -474,7 +496,8 @@ static void emit_line(const char *mod, const char *body, int dedupe)
 		}
 	}
 
-	tcmg_strlcpy(t_last_line, line, sizeof(t_last_line));
+	t_last_hash = line_hash;
+	t_have_last = 1;
 
 	if (atomic_load_explicit(&s_wq_running, memory_order_acquire))
 		wq_push(line, t_log_user, NULL);
@@ -683,25 +706,36 @@ void log_cw_result(uint16_t caid, uint16_t sid, int32_t len,
 		const char *result_text = result == LOG_ECM_FOUND ? (from_cache ? "cache" : "found") :
 		                          (result == LOG_ECM_REJECTED ? "ECM rejected" : "not found");
 
+		const char *display_user = (user && *user) ? user : "?";
 		if (result == LOG_ECM_FOUND) {
 			if (ch)
 				snprintf(body, sizeof(body),
 				         "(%04X:%04X:%02X:%s): %s (%d ms) by %s  [%s]",
 				         caid, sid, (int)len, cw_str, result_text, ms,
-				         user ? user : "?", ch);
+				         display_user, ch);
 			else
 				snprintf(body, sizeof(body),
 				         "(%04X:%04X:%02X:%s): %s (%d ms) by %s",
 				         caid, sid, (int)len, cw_str, result_text, ms,
-				         user ? user : "?");
+				         display_user);
 		} else if (result == LOG_ECM_REJECTED) {
-			snprintf(body, sizeof(body),
-			         "(%04X:%04X:%02X): ECM rejected (%d ms)",
-			         caid, sid, (int)len, ms);
+			if (ch)
+				snprintf(body, sizeof(body),
+				         "(%04X:%04X:%02X): ECM rejected (%d ms) by %s  [%s]",
+				         caid, sid, (int)len, ms, display_user, ch);
+			else
+				snprintf(body, sizeof(body),
+				         "(%04X:%04X:%02X): ECM rejected (%d ms) by %s",
+				         caid, sid, (int)len, ms, display_user);
 		} else {
-			snprintf(body, sizeof(body),
-			         "(%04X:%04X:%02X): not found (%d ms)",
-			         caid, sid, (int)len, ms);
+			if (ch)
+				snprintf(body, sizeof(body),
+				         "(%04X:%04X:%02X): not found (%d ms) by %s  [%s]",
+				         caid, sid, (int)len, ms, display_user, ch);
+			else
+				snprintf(body, sizeof(body),
+				         "(%04X:%04X:%02X): not found (%d ms) by %s",
+				         caid, sid, (int)len, ms, display_user);
 		}
 
 		usr_line[0] = '\0';
@@ -759,7 +793,7 @@ int32_t log_ring_foreach(int32_t from_id, int32_t max_lines, log_ring_iter_cb cb
 	for (int32_t i = from_id; i < total && count < max_lines; i++) {
 		int32_t slot = i % LOG_RING_MAX;
 		S_RING_ENTRY *e = &s_ring[slot];
-		if (cb(i, e->line, e->usr, ctx) < 0) break;
+		if (cb(i, e->line ? e->line : "", e->usr, ctx) < 0) break;
 		count++;
 	}
 	if (out_next) *out_next = s_ring_total;

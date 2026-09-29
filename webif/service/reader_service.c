@@ -204,14 +204,13 @@ bool webif_reader_save(const S_WEBIF_READER_EDIT *e)
         if (!e->device[0]) return false;
         if (parse_simple_i32(e->inactivitytimeout, 1, 600, &value.inactivitytimeout) < 0) return false;
     }
-        if (strlen(e->group) >= sizeof(e->group) || strlen(e->caid) >= sizeof(e->caid) ||
+    if (strlen(e->group) >= sizeof(e->group) || strlen(e->caid) >= sizeof(e->caid) ||
         strlen(e->sid_whitelist) >= sizeof(e->sid_whitelist) || strlen(e->ecmkeys) >= sizeof(e->ecmkeys)) return false;
     char groups[sizeof(e->group)]; tcmg_strlcpy(groups, e->group, sizeof(groups));
     char *save = NULL, *tok = strtok_r(groups, ",", &save);
     while (tok) {
         char *q = tok; while (*q && isspace((unsigned char)*q)) q++;
-        char *end = NULL;
-        long x = strtol(q, &end, 10);
+        char *end = NULL; long x = strtol(q, &end, 10);
         while (end && *end && isspace((unsigned char)*end)) end++;
         if (end == q || (end && *end) || x < 1 || x > 65535 || value.ngroups >= MAX_GROUPS_PER_READER) return false;
         for (int i = 0; i < value.ngroups; i++) if (value.groups[i] == (int32_t)x) return false;
@@ -255,39 +254,78 @@ bool webif_reader_save(const S_WEBIF_READER_EDIT *e)
         tok=strtok_r(NULL,"\r\n;",&save);
     }
 
+    pthread_mutex_lock(&g_cfg_transition_mtx);
+    S_READER old_value;
     pthread_rwlock_wrlock(&g_cfg.acc_lock);
+    if (g_cfg.readers[e->index].in_use) old_value = g_cfg.readers[e->index];
+    else memset(&old_value, 0, sizeof(old_value));
     g_cfg.readers[e->index] = value;
     g_cfg.nreaders = 0; for (int i = 0; i < MAX_READERS; i++) if (g_cfg.readers[i].in_use) g_cfg.nreaders++;
     pthread_rwlock_unlock(&g_cfg.acc_lock);
     bool ok = cfg_save(&g_cfg);
-    if (ok) g_reload_cfg = 1;
+    if (!ok) {
+        pthread_rwlock_wrlock(&g_cfg.acc_lock);
+        g_cfg.readers[e->index] = old_value;
+        g_cfg.nreaders = 0; for (int i = 0; i < MAX_READERS; i++) if (g_cfg.readers[i].in_use) g_cfg.nreaders++;
+        pthread_rwlock_unlock(&g_cfg.acc_lock);
+    } else g_reload_cfg = 1;
+    pthread_mutex_unlock(&g_cfg_transition_mtx);
     return ok;
 }
 
 bool webif_reader_toggle(int index, int *enabled)
 {
     if (index < 0 || index >= MAX_READERS) return false;
+    pthread_mutex_lock(&g_cfg_transition_mtx);
     pthread_rwlock_wrlock(&g_cfg.acc_lock);
-    if (!g_cfg.readers[index].in_use) { pthread_rwlock_unlock(&g_cfg.acc_lock); return false; }
-    g_cfg.readers[index].enabled = g_cfg.readers[index].enabled ? 0 : 1;
+    if (!g_cfg.readers[index].in_use) {
+        pthread_rwlock_unlock(&g_cfg.acc_lock);
+        pthread_mutex_unlock(&g_cfg_transition_mtx);
+        return false;
+    }
+    int old = g_cfg.readers[index].enabled;
+    g_cfg.readers[index].enabled = old ? 0 : 1;
     int value = g_cfg.readers[index].enabled;
     pthread_rwlock_unlock(&g_cfg.acc_lock);
-    if (!cfg_save(&g_cfg)) return false;
-    g_reload_cfg = 1;
-    if (enabled) *enabled = value;
-    return true;
+    bool ok = cfg_save(&g_cfg);
+    if (!ok) {
+        pthread_rwlock_wrlock(&g_cfg.acc_lock);
+        g_cfg.readers[index].enabled = old;
+        pthread_rwlock_unlock(&g_cfg.acc_lock);
+    } else {
+        g_reload_cfg = 1;
+        if (enabled) *enabled = value;
+    }
+    pthread_mutex_unlock(&g_cfg_transition_mtx);
+    return ok;
 }
 
 bool webif_reader_delete(int index)
 {
     if (index < 0 || index >= MAX_READERS) return false;
+    pthread_mutex_lock(&g_cfg_transition_mtx);
+    S_READER old_value;
     pthread_rwlock_wrlock(&g_cfg.acc_lock);
-    if (!g_cfg.readers[index].in_use) { pthread_rwlock_unlock(&g_cfg.acc_lock); return false; }
+    if (!g_cfg.readers[index].in_use) {
+        pthread_rwlock_unlock(&g_cfg.acc_lock);
+        pthread_mutex_unlock(&g_cfg_transition_mtx);
+        return false;
+    }
+    old_value = g_cfg.readers[index];
     memset(&g_cfg.readers[index], 0, sizeof(g_cfg.readers[index]));
-    reader_stats_reset(index);
     g_cfg.nreaders = 0; for (int i = 0; i < MAX_READERS; i++) if (g_cfg.readers[i].in_use) g_cfg.nreaders++;
     pthread_rwlock_unlock(&g_cfg.acc_lock);
     bool ok = cfg_save(&g_cfg);
-    if (ok) g_reload_cfg = 1;
+    if (!ok) {
+        pthread_rwlock_wrlock(&g_cfg.acc_lock);
+        g_cfg.readers[index] = old_value;
+        g_cfg.nreaders = 0; for (int i = 0; i < MAX_READERS; i++) if (g_cfg.readers[i].in_use) g_cfg.nreaders++;
+        pthread_rwlock_unlock(&g_cfg.acc_lock);
+    } else {
+        reader_stats_reset(index);
+        g_reload_cfg = 1;
+    }
+    pthread_mutex_unlock(&g_cfg_transition_mtx);
     return ok;
 }
+

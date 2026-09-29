@@ -6,7 +6,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STATE_DIR="$ROOT_DIR/.tcmg-build"
 TOOLCHAIN_DIR="$STATE_DIR/toolchains"
 LOG_DIR="$STATE_DIR/logs"
-VERSION="6.0"
+VERSION="6.2"
 
 [[ -f "$ROOT_DIR/Makefile" && -f "$ROOT_DIR/src/main.c" ]] || {
   echo "ERROR: run this script from the TCMG source tree" >&2
@@ -80,7 +80,7 @@ err(){ printf '  %-8s %s\n' ERROR "$*" >&2; }
 
 usage(){
   cat <<'TXT'
-TCMG 6.0 - simple device builder
+TCMG 6.2 - simple device builder
 
   ./build.sh                 Choose device -> [1=Build, 2=Edit]
   ./build.sh list            List devices
@@ -185,7 +185,6 @@ save_state(){
     printf 'CC_EXPLICIT=%q\n' "$CC_EXPLICIT"
   } > "$tmp"
   mv -f "$tmp" "$f"
-  ok "Saved: .tcmg-build/$(basename "$f")"
 }
 
 device_label(){
@@ -219,7 +218,7 @@ device_label(){
 show_devices(){
   local i=1 row name label
   echo
-  printf '%s\n' "TCMG 6.0 devices"
+  printf '%s\n' "TCMG 6.2 devices"
   line
   for row in "${DEVICES[@]}"; do
     IFS='|' read -r name _ <<< "$row"
@@ -254,11 +253,6 @@ show_profile(){
   echo
   printf '%s\n' "Profile — $(device_label "$TARGET")"
   show_config
-  if has_saved_state; then
-    echo 'Saved configuration: yes'
-  else
-    echo 'Saved configuration: no'
-  fi
 }
 
 choose_device(){
@@ -880,8 +874,6 @@ interactive_menu(){
     case "${normalized:-1}" in
       1)
         save_state
-        echo
-        ok "Starting build for $(device_label "$TARGET")"
         build_device
         return $?
         ;;
@@ -940,7 +932,7 @@ build_device(){
   log="$LOG_DIR/${TARGET}-${stamp}.log"
   echo
   line
-  echo "Building TCMG 6.0 — $TARGET"
+  echo "Building TCMG 6.2 — $TARGET"
   show_config
   echo "Compiler: $cc"
   echo "Output  : $build_dir/tcmg"

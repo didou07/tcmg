@@ -155,6 +155,17 @@ void account_stats_global_snapshot(int64_t *cw_found, int64_t *cw_not)
     if (cw_not)  *cw_not  = atomic_load_explicit(&s_global_cw_not, memory_order_relaxed);
 }
 
+void account_stats_global_adopt(S_ACCOUNT *account)
+{
+    if (!account) return;
+    pthread_mutex_lock(&account->stats.lock);
+    if (!atomic_exchange_explicit(&account->stats.global_tracked, 1, memory_order_acq_rel)) {
+        atomic_fetch_add_explicit(&s_global_cw_found, account->stats.cw_found, memory_order_relaxed);
+        atomic_fetch_add_explicit(&s_global_cw_not, account->stats.cw_not, memory_order_relaxed);
+    }
+    pthread_mutex_unlock(&account->stats.lock);
+}
+
 void account_stats_global_remove(S_ACCOUNT *account)
 {
     if (!account) return;

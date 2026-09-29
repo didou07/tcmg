@@ -18,7 +18,7 @@ void send_login_page(int fd, int failed)
 		"<meta name='viewport' content='width=device-width,initial-scale=1'>"
 		"<title>TCMG &mdash; Login</title>"
 		"<style>%s</style>"
-		
+
 		"</head><body>",
 		TCMG_CSS);
 

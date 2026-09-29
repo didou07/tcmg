@@ -4,6 +4,7 @@
 #include "../core/utils.h"
 #include "../log/log.h"
 #include "../crypto/newcamd_des.h"
+#include "../account/account.h"
 
 int32_t net_recv_all(int fd, void *buf, int32_t len)
 {
@@ -327,14 +328,17 @@ int32_t nc_send(S_CLIENT *cl, const uint8_t *data, int32_t dlen,
                 uint16_t sid, uint16_t mid, uint32_t pid)
 {
     if (!cl || !data || dlen < 3) return -1;
-    uint16_t caid = cl->auth.account ? cl->auth.account->caid : cl->ecm.caid;
+    S_ACCOUNT *account = account_session_acquire(cl);
+    uint16_t caid = account ? account->caid : cl->ecm.caid;
     bool is_ecm = data[0] == MSG_ECM_0 || data[0] == MSG_ECM_1;
     bool custom = cl->protocol.wire.newcamd.client_mode && is_ecm;
     bool mg_ack = cl->protocol.wire.newcamd.is_mgcamd && data[0] == MSG_CLIENT_LOGIN_ACK;
     bool addcard = data[0] == MSG_ADDCARD;
 
-    return ncd_send_ex(cl, data, dlen, custom ? sid : (addcard ? 0 : 0), mid,
-                       caid, pid, custom, mg_ack, addcard);
+    int rc = ncd_send_ex(cl, data, dlen, custom ? sid : (addcard ? 0 : 0), mid,
+                         caid, pid, custom, mg_ack, addcard);
+    if (account) account_release(account);
+    return rc;
 }
 
 int32_t nc_send_addcard(S_CLIENT *cl, uint16_t caid,

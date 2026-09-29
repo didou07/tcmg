@@ -33,7 +33,7 @@ static int             s_reader_count = 0;
 static _Atomic int8_t  s_running = 0;
 static _Atomic int8_t  s_available = 0;
 #ifdef TCMG_PCSC
-static _Atomic int32_t s_ecm_active = 0;
+static _Atomic int32_t s_ecm_active[TCMG_PCSC_MAX_READERS];
 static pthread_t       s_tid;
 #endif
 
@@ -330,15 +330,27 @@ static void *pcsc_thread(void *arg)
                 atomic_store(&s_available, s_ctx ? 1 : 0);
 
             int64_t now_ms = tcmg_mono_ms();
-            if (atomic_load(&s_ecm_active) == 0) {
-                for (int i = 0; i < reader_count; i++) {
-                    if (pcsc_readers[i].fast_reset <= 0) continue;
-                    int64_t due = (int64_t)pcsc_readers[i].fast_reset * 1000LL;
-                    if (now_ms - last_fast_reset_ms[i] >= due) {
-                        pcsc_reset_selector_locked(pcsc_readers[i].device);
-                        last_fast_reset_ms[i] = now_ms;
+            for (int i = 0; i < reader_count; i++) {
+                if (pcsc_readers[i].fast_reset <= 0) continue;
+                int64_t due = (int64_t)pcsc_readers[i].fast_reset * 1000LL;
+                if (now_ms - last_fast_reset_ms[i] < due) continue;
+                int target_idx = -1;
+                if (pcsc_readers[i].device && *pcsc_readers[i].device) {
+                    char *end = NULL;
+                    long n = strtol(pcsc_readers[i].device, &end, 10);
+                    if (end && *end == '\0' && n >= 0 && n < s_reader_count)
+                        target_idx = (int)n;
+                    else {
+                        for (int j = 0; j < s_reader_count; j++) {
+                            if (!strcmp(pcsc_readers[i].device, s_readers[j].name)) { target_idx = j; break; }
+                        }
                     }
                 }
+                if (target_idx >= 0 && target_idx < TCMG_PCSC_MAX_READERS &&
+                    atomic_load(&s_ecm_active[target_idx]) != 0)
+                    continue;
+                pcsc_reset_selector_locked(pcsc_readers[i].device);
+                last_fast_reset_ms[i] = now_ms;
             }
 #else
             atomic_store(&s_available, 0);
@@ -623,6 +635,7 @@ int pcsc_do_ecm_reader(const char *selector, uint16_t caid, const uint8_t *ecm, 
 {
 #ifdef TCMG_PCSC
     int rc = -1;
+    int active_idx = -1;
 
     if (!ecm || !cw || ecm_len == 0 || ecm_len > 249) return -1;
     if ((caid & 0xFF00u) != 0x0B00u) return -2;
@@ -634,13 +647,20 @@ int pcsc_do_ecm_reader(const char *selector, uint16_t caid, const uint8_t *ecm, 
         return -13;
     }
 
-    atomic_fetch_add(&s_ecm_active, 1);
-
     char reader[TCMG_PCSC_READER_NAME_MAX];
     if (pcsc_select_reader_ex(selector, reader, sizeof(reader)) < 0) {
         rc = -4;
         goto done;
     }
+
+    pthread_mutex_lock(&s_pcsc_mtx);
+    active_idx = pcsc_card_index_locked(reader);
+    pthread_mutex_unlock(&s_pcsc_mtx);
+    if (active_idx < 0 || active_idx >= TCMG_PCSC_MAX_READERS) {
+        rc = -4;
+        goto done;
+    }
+    atomic_fetch_add(&s_ecm_active[active_idx], 1);
 
     uint8_t apdu[5 + 255];
     uint8_t rsp[TCMG_PCSC_ATR_MAX + 256];
@@ -723,7 +743,8 @@ int pcsc_do_ecm_reader(const char *selector, uint16_t caid, const uint8_t *ecm, 
         rc = -13;
 
 done:
-    atomic_fetch_sub(&s_ecm_active, 1);
+    if (active_idx >= 0 && active_idx < TCMG_PCSC_MAX_READERS)
+        atomic_fetch_sub(&s_ecm_active[active_idx], 1);
     return rc;
 #else
     (void)caid;

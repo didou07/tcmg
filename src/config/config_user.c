@@ -6,6 +6,7 @@ static void free_account_list(S_ACCOUNT *head)
 {
     while (head) {
         S_ACCOUNT *next = head->next;
+        account_stats_global_remove(head);
         account_stats_destroy(&head->stats);
         pthread_mutex_destroy(&head->as_mtx);
         secure_zero(head, sizeof(*head));

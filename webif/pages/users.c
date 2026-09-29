@@ -97,7 +97,7 @@ void send_page_users(int fd)
 		TH("c-caid", "caid", "CAID")
 		TH("c-ok",   "ok",   "CW OK")
 		TH("c-nok",  "nok",  "CW NOK")
-		TH("c-proto","proto","Proto")
+		TH("c-proto","proto","Protocol")
 		TH("c-idle", "idle", "Idle")
 		TH("c-last60","last60","Last 60s")
 		TH("c-last", "last", "Last seen")
@@ -106,15 +106,8 @@ void send_page_users(int fd)
 		"</tr></thead><tbody id='usrBody'>");
 #undef TH
 
-	S_WEBIF_CLIENT_VIEW snap_local[8];
-	S_WEBIF_CLIENT_VIEW *snaps = snap_local;
-	int nsnaps = webif_client_snapshot_all(snap_local, 32);
-	int snaps_heap = 0;
-	if (nsnaps == 32) {
-		snaps = NULL;
-		nsnaps = webif_client_snapshot_alloc(&snaps);
-		snaps_heap = 1;
-	}
+	S_WEBIF_CLIENT_VIEW *snaps = NULL;
+	int nsnaps = webif_client_snapshot_alloc(&snaps);
 	if (nsnaps < 0) {
 		free(accounts);
 		free(buf);
@@ -172,11 +165,19 @@ void send_page_users(int fd)
 		{ unsigned o[4]; if (sscanf(ip_str, "%u.%u.%u.%u", &o[0], &o[1], &o[2], &o[3]) == 4)
 			ipn = ((o[0] & 255u) << 24) | ((o[1] & 255u) << 16) | ((o[2] & 255u) << 8) | (o[3] & 255u); }
 
-		char esc_user[256], esc_ip[64], esc_flag_ip[64], esc_proto[8], q_raw[512], q_esc[1400];
+		char esc_user[256], esc_ip[64], esc_flag_ip[64], esc_proto[16], q_raw[512], q_esc[1400];
 		html_escape(a->user, esc_user, sizeof(esc_user));
 		html_escape(ip_str, esc_ip, sizeof(esc_ip));
 		html_escape(flag_ip, esc_flag_ip, sizeof(esc_flag_ip));
-		html_escape(proto_raw, esc_proto, sizeof(esc_proto));
+		const char *proto_label = proto_raw;
+		if (!strcasecmp(proto_raw, "n") || !strcasecmp(proto_raw, "newcamd")) proto_label = "Newcamd";
+		else if (!strcasecmp(proto_raw, "m") || !strcasecmp(proto_raw, "mgcamd")) proto_label = "MGcamd";
+		else if (!strcasecmp(proto_raw, "c") || !strcasecmp(proto_raw, "cccam")) proto_label = "CCcam";
+		else if (!strcasecmp(proto_raw, "s") || !strcasecmp(proto_raw, "cs378x")) proto_label = "CS378X";
+		else if (!strcasecmp(proto_raw, "p") || !strcasecmp(proto_raw, "pcsc")) proto_label = "PCSC";
+		else if (!strcasecmp(proto_raw, "i") || !strcasecmp(proto_raw, "internal")) proto_label = "Internal";
+		else if (!strcasecmp(proto_raw, "r") || !strcasecmp(proto_raw, "serial")) proto_label = "Serial";
+		html_escape(proto_label, esc_proto, sizeof(esc_proto));
 		char live_s[16] = "";
 		if (live_caid) snprintf(live_s, sizeof(live_s), "%04X", live_caid);
 		snprintf(q_raw, sizeof(q_raw), "%s %s %s %s %s", a->user, live_s, allowed, ip_str, proto_raw);
@@ -309,12 +310,11 @@ void send_page_users(int fd)
 
 		pos = buf_printf(&buf, &bsz, pos,
 			"<td class='c-btn'><div class='ba'>"
-			"<button type='button' class='act-b ed' data-a='edit' title='Edit' aria-label='Edit user'>" ICON("i-user-pen") "</button>"
 			"<button type='button' class='act-b rs' data-a='reset' title='Reset statistics' aria-label='Reset statistics'>" ICON("i-rotate-ccw") "</button>"
 			"<button type='button' class='act-b dl' data-a='del' title='Delete' aria-label='Delete user'>" ICON("i-trash-2") "</button>"
 			"</div></td></tr>");
 	}
-	if (snaps_heap) free(snaps);
+	free(snaps);
 	free(accounts);
 
 	pos = buf_printf(&buf, &bsz, pos,

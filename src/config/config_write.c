@@ -155,34 +155,42 @@ bool cfg_build_server_text(const S_CONFIG *c, char *buf, size_t cap)
     return ok;
 }
 
+typedef bool (*cfg_builder_fn)(const S_CONFIG *c, char *buf, size_t cap);
+
+static char *cfg_build_grow(const S_CONFIG *c, cfg_builder_fn fn,
+                            size_t start_cap, size_t max_cap)
+{
+    size_t cap = start_cap;
+    while (cap <= max_cap) {
+        char *buf = (char *)calloc(1, cap);
+        if (!buf) return NULL;
+        if (fn(c, buf, cap)) return buf;
+        free(buf);
+        cap *= 2;
+    }
+    return NULL;
+}
+
 bool cfg_save(S_CONFIG *c)
 {
-    enum { GLOBAL_CAP = 32768, USER_CAP = 262144, READER_CAP = 262144 };
-    char *global_text;
-    char *user_text;
-    char *reader_text;
+    enum { GLOBAL_START = 2048, GLOBAL_MAX = 32768,
+           TEXT_START = 8192, TEXT_MAX = 262144 };
+    char *global_text = NULL;
+    char *user_text = NULL;
+    char *reader_text = NULL;
     bool ok;
 
     if (!c || !c->config_file[0] || !c->user_file[0] || !c->server_file[0]) return false;
 
     pthread_mutex_lock(&s_save_mtx);
 
-    global_text = calloc(1, GLOBAL_CAP);
-    user_text = calloc(1, USER_CAP);
-    reader_text = calloc(1, READER_CAP);
-    if (!global_text || !user_text || !reader_text) {
-        free(global_text);
-        free(user_text);
-        free(reader_text);
-        pthread_mutex_unlock(&s_save_mtx);
-        return false;
-    }
-
     pthread_rwlock_rdlock(&c->acc_lock);
-    ok = cfg_build_global_text(c, global_text, GLOBAL_CAP) &&
-         cfg_build_user_text(c, user_text, USER_CAP) &&
-         cfg_build_server_text(c, reader_text, READER_CAP);
+    global_text = cfg_build_grow(c, cfg_build_global_text, GLOBAL_START, GLOBAL_MAX);
+    user_text   = cfg_build_grow(c, cfg_build_user_text,   TEXT_START,   TEXT_MAX);
+    reader_text = cfg_build_grow(c, cfg_build_server_text, TEXT_START,   TEXT_MAX);
     pthread_rwlock_unlock(&c->acc_lock);
+
+    ok = global_text && user_text && reader_text;
 
     if (ok) ok = cfg_write_atomic(c->config_file, global_text);
     if (ok) ok = cfg_write_atomic(c->user_file, user_text);
@@ -191,6 +199,9 @@ bool cfg_save(S_CONFIG *c)
     if (ok)
         tcmg_log("saved");
 
+    if (user_text)   secure_zero(user_text, strlen(user_text));
+    if (global_text) secure_zero(global_text, strlen(global_text));
+    if (reader_text) secure_zero(reader_text, strlen(reader_text));
     free(global_text);
     free(user_text);
     free(reader_text);

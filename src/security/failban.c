@@ -46,6 +46,10 @@ static bool ban_ip_allowed(const char *ip)
     return false;
 }
 
+#define BAN_STALE_S       3600
+#define BAN_MAX_ENTRIES   4096
+#define BAN_PRUNE_EVERY_S 10
+
 static S_BAN_ENTRY *ban_find_locked(const char *ip)
 {
     S_BAN_ENTRY *e = g_cfg.ban_table[ban_hash_pub(ip)];
@@ -55,18 +59,25 @@ static S_BAN_ENTRY *ban_find_locked(const char *ip)
     return NULL;
 }
 
-static void ban_prune_locked(void)
+static void ban_prune_locked(bool force)
 {
+    static time_t s_last_prune = 0;
     time_t now = time(NULL);
+    if (!force && now - s_last_prune < BAN_PRUNE_EVERY_S) return;
+    s_last_prune = now;
+
     for (int i = 0; i < BAN_BUCKETS; i++)
     {
         S_BAN_ENTRY **pp = &g_cfg.ban_table[i];
         while (*pp)
         {
             S_BAN_ENTRY *e = *pp;
-            if (e->until > 0 && now >= e->until)
+            const bool expired = e->until > 0 && now >= e->until;
+            const bool stale   = e->until == 0 &&
+                                 (e->fails <= 0 || now - e->last_fail >= BAN_STALE_S);
+            if (expired || stale)
             {
-                tcmg_log("pruned expired entry: ip=%s", e->ip);
+                if (expired) tcmg_log("pruned expired entry: ip=%s", e->ip);
                 *pp = e->next;
                 free(e);
             }
@@ -78,6 +89,32 @@ static void ban_prune_locked(void)
     }
 }
 
+static int ban_count_locked(void)
+{
+    int n = 0;
+    for (int i = 0; i < BAN_BUCKETS; i++)
+        for (const S_BAN_ENTRY *e = g_cfg.ban_table[i]; e; e = e->next) n++;
+    return n;
+}
+
+static bool ban_make_room_locked(void)
+{
+    if (ban_count_locked() < BAN_MAX_ENTRIES) return true;
+    ban_prune_locked(true);
+    if (ban_count_locked() < BAN_MAX_ENTRIES) return true;
+
+    S_BAN_ENTRY **victim = NULL;
+    for (int i = 0; i < BAN_BUCKETS; i++)
+        for (S_BAN_ENTRY **pp = &g_cfg.ban_table[i]; *pp; pp = &(*pp)->next)
+            if ((*pp)->until == 0 && (!victim || (*pp)->last_fail < (*victim)->last_fail))
+                victim = pp;
+    if (!victim) return false;
+    S_BAN_ENTRY *e = *victim;
+    *victim = e->next;
+    free(e);
+    return true;
+}
+
 bool ban_is_banned(const char *ip)
 {
     S_CONFIG_FAILBAN_VIEW cfg;
@@ -87,7 +124,7 @@ bool ban_is_banned(const char *ip)
     time_t now    = time(NULL);
 
     pthread_mutex_lock(&g_cfg.ban_lock);
-    ban_prune_locked();
+    ban_prune_locked(false);
     S_BAN_ENTRY *e = ban_find_locked(ip);
     if (e && e->until > 0 && now < e->until)
     {
@@ -110,6 +147,7 @@ void ban_record_fail(const char *ip)
     S_BAN_ENTRY *e = ban_find_locked(ip);
     if (!e)
     {
+        if (!ban_make_room_locked()) { pthread_mutex_unlock(&g_cfg.ban_lock); return; }
         e = (S_BAN_ENTRY *)calloc(1, sizeof(S_BAN_ENTRY));
         if (!e) { pthread_mutex_unlock(&g_cfg.ban_lock); return; }
         tcmg_strlcpy(e->ip, ip, MAXIPLEN);
@@ -119,6 +157,7 @@ void ban_record_fail(const char *ip)
     }
 
     e->fails++;
+    e->last_fail = time(NULL);
     int max_fails = cfg.max_fails > 0 ? cfg.max_fails : BAN_MAX_FAILS;
     int ban_secs  = cfg.ban_secs  > 0 ? cfg.ban_secs  : BAN_SECS;
     int remaining = max_fails - e->fails;

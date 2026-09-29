@@ -380,13 +380,20 @@ bool crypt_md5_crypt(const char *pw, const char *salt_in, char *out, size_t outs
 	sl = (int)(ep - sp);
 	if (sl > 8) sl = 8;
 
-	size_t  bsz = pw_len * 2 + 128;
-	uint8_t *tmp  = (uint8_t *)malloc(bsz);
-	uint8_t *atmp = (uint8_t *)malloc(pw_len * 2 + 32);
+	size_t  bsz  = pw_len * 2 + 128;
+	size_t  absz = pw_len * 2 + 32;
+
+	uint8_t tmp_stack[384], atmp_stack[288];
+	uint8_t *tmp  = bsz  <= sizeof(tmp_stack)  ? tmp_stack  : (uint8_t *)malloc(bsz);
+	uint8_t *atmp = absz <= sizeof(atmp_stack) ? atmp_stack : (uint8_t *)malloc(absz);
 	uint8_t alt[16], fh[16];
 	size_t  pos = 0, apos = 0;
 
-	if (!tmp || !atmp) { free(tmp); free(atmp); return false; }
+	if (!tmp || !atmp) {
+		if (tmp  && tmp  != tmp_stack)  free(tmp);
+		if (atmp && atmp != atmp_stack) free(atmp);
+		return false;
+	}
 
 	memcpy(tmp + pos, pw, pw_len);     pos += pw_len;
 	memcpy(tmp + pos, MD5_MAGIC, 3);   pos += 3;
@@ -434,8 +441,9 @@ bool crypt_md5_crypt(const char *pw, const char *salt_in, char *out, size_t outs
 
 	secure_zero(fh,  sizeof(fh));
 	secure_zero(tmp, bsz);
-	secure_zero(atmp, pw_len * 2 + 32);
-	free(tmp); free(atmp);
+	secure_zero(atmp, absz);
+	if (tmp  != tmp_stack)  free(tmp);
+	if (atmp != atmp_stack) free(atmp);
 
 	if ((size_t)opos >= outsz) return false;
 	memcpy(out, result, opos + 1);

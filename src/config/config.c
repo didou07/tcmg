@@ -58,15 +58,18 @@ bool cfg_reload(const char *file, char *err, size_t esz)
 
     if (!file || !*file || !err || esz == 0) return false;
     err[0] = '\0';
+    pthread_mutex_lock(&g_cfg_transition_mtx);
 
     memset(&next, 0, sizeof(next));
     if (pthread_rwlock_init(&next.acc_lock, NULL) != 0) {
         snprintf(err, esz, "cannot initialize temporary account lock");
+        pthread_mutex_unlock(&g_cfg_transition_mtx);
         return false;
     }
     if (pthread_mutex_init(&next.ban_lock, NULL) != 0) {
         pthread_rwlock_destroy(&next.acc_lock);
         snprintf(err, esz, "cannot initialize temporary ban lock");
+        pthread_mutex_unlock(&g_cfg_transition_mtx);
         return false;
     }
 
@@ -74,6 +77,7 @@ bool cfg_reload(const char *file, char *err, size_t esz)
         cfg_accounts_free(&next);
         pthread_rwlock_destroy(&next.acc_lock);
         pthread_mutex_destroy(&next.ban_lock);
+        pthread_mutex_unlock(&g_cfg_transition_mtx);
         return false;
     }
 
@@ -81,6 +85,7 @@ bool cfg_reload(const char *file, char *err, size_t esz)
         cfg_accounts_free(&next);
         pthread_rwlock_destroy(&next.acc_lock);
         pthread_mutex_destroy(&next.ban_lock);
+        pthread_mutex_unlock(&g_cfg_transition_mtx);
         return false;
     }
 
@@ -138,9 +143,14 @@ bool cfg_reload(const char *file, char *err, size_t esz)
         S_CLIENT *client = g_clients[i];
         S_ACCOUNT *replacement = NULL;
 
-        if (!client || !client->identity.user[0]) continue;
+        if (!client) continue;
+        char client_user[CFGKEY_LEN];
+        pthread_mutex_lock(&client->state_mtx);
+        tcmg_strlcpy(client_user, client->identity.user, sizeof(client_user));
+        pthread_mutex_unlock(&client->state_mtx);
+        if (!client_user[0]) continue;
         for (S_ACCOUNT *a = g_cfg.accounts; a; a = a->next) {
-            if (strcmp(client->identity.user, a->user) == 0) {
+            if (strcmp(client_user, a->user) == 0) {
                 replacement = a;
                 break;
             }
@@ -171,6 +181,7 @@ bool cfg_reload(const char *file, char *err, size_t esz)
     account_reap_retired();
 
     tcmg_log("reload: accounts=%d readers=%d", g_cfg.naccounts, g_cfg.nreaders);
+    pthread_mutex_unlock(&g_cfg_transition_mtx);
     return true;
 }
 
