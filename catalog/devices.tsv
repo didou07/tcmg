@@ -1,0 +1,386 @@
+tubox|linux|native|Native Linux / Tuxbox-style config|/etc/tuxbox/config|off|native
+generic-linux|linux|native|Native Linux /usr/local/etc|/usr/local/etc|auto|native
+dev-box|linux|native|Native development box ./cfg|./cfg|auto|native
+vuplus-4k|linux|armv7|Vu+ 4K ARMv7 (SimpleBuild4 vuplus4k_armv7)|/etc/tuxbox/config|on|vuplus4k_armv7
+vuplus-4k-legacy|linux|armv7|Vu+ legacy ARMv7 (manual SDK)|/etc/tuxbox/config|on|manual
+dreambox-dm900|linux|armv7|Dreambox DM900 / DM920|/etc/tuxbox/config|on|cortexa15hf_opendreambox_krogoth
+dreambox-one|linux|aarch64|Dreambox ONE / TWO AArch64|/etc/tuxbox/config|on|aarch64_opendreambox_pyro
+dreambox-mipsel|linux|mipsel|Dreambox MIPSel (DM520/7080/820 toolchain)|/etc/tuxbox/config|on|mips32el_opendreambox_krogoth
+dreambox-dm520|linux|mipsel|Dreambox DM520|/etc/tuxbox/config|on|mips32el_opendreambox_krogoth
+dreambox-dm7080|linux|mipsel|Dreambox DM7080|/etc/tuxbox/config|on|mips32el_opendreambox_krogoth
+dreambox-dm820|linux|mipsel|Dreambox DM820|/etc/tuxbox/config|on|mips32el_opendreambox_krogoth
+dreambox-dm500hd|linux|mipsel|Dreambox DM500HD (legacy MIPSel)|/etc/tuxbox/config|on|dream_mipsel
+dreambox-dm800|linux|mipsel|Dreambox DM800 (legacy MIPSel)|/etc/tuxbox/config|on|dream_mipsel
+dreambox-dm7020hd|linux|mipsel|Dreambox DM7020HD (legacy MIPSel)|/etc/tuxbox/config|on|dream_mipsel
+dreambox-dm8000|linux|mipsel|Dreambox DM8000 (legacy MIPSel)|/etc/tuxbox/config|on|dream_mipsel
+dreambox-dm800se|linux|mipsel|Dreambox DM800SE (legacy MIPSel)|/etc/tuxbox/config|on|dream_mipsel
+bootlin-aarch64-generic|linux|aarch64|Generic AArch64 STB toolchain (Bootlin 2018.11)|/etc/tuxbox/config|on|bootlin_aarch64_2018
+bootlin-armv7-generic|linux|armv7|Generic ARMv7 STB toolchain (Bootlin 2018.11)|/etc/tuxbox/config|on|bootlin_armv7_2018
+bootlin-mipsel-generic|linux|mipsel|Generic MIPSel STB toolchain (Bootlin 2018.11)|/etc/tuxbox/config|on|bootlin_mipsel_2018
+bootlin-powerpc-generic|linux|powerpc|Generic PowerPC STB toolchain (Bootlin 2018.11)|/etc/tuxbox/config|on|bootlin_powerpc_2018
+windows-x64|windows|x86_64|Windows x64 MinGW|./|on|native
+macos-native|macos|native|Native macOS target|/usr/local/etc/tcmg|on|native
+7000s|linux|mips32el|7000S|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+7005s|linux|mips32el|7005S|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+7100s|linux|mips32el|7100S|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+7105s|linux|mips32el|7105S|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+7210s|linux|mips32el|7210S|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+7215s|linux|mips32el|7215S|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+7220s|linux|mips32el|7220S|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+7225s|linux|mips32el|7225S|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+7300s|linux|mips32el|7300S|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+7400s|linux|mips32el|7400S|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+8100s|linux|armv7|8100S|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+9900lx|linux|mips32el|9900LX|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+alphatriplehd|linux|mips32el|alphatriplehd|/etc/tuxbox/config|on|mips32el_openpli_scarthgap
+beyonwizv2|linux|armv7|beyonwizv2|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+blackbox7405|linux|mips32el|blackbox7405|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+bre2ze4k|linux|armv7|BRE2ZE4K|/etc/tuxbox/config|on|cortexa15hf_openpli_scarthgap
+ch625dt|linux|mips32el|CH625DT|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+ch62lc|linux|mips32el|CH62LC|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+dags7252|linux|armv7|DAGS7252|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+dags72604|linux|armv7|dags72604|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+dags7335|linux|mips32el|DAGS7335|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+dags7356|linux|mips32el|DAGS7356|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+dags7362|linux|mips32el|DAGS7362|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+dags73625|linux|mips32el|dags73625|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+dagsmv200|linux|armv7|dagsmv200|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+dm500hdv2|linux|mipsel|Dreambox DM500HD v2|/etc/tuxbox/config|on|dream_mipsel
+dm7020hdv2|linux|mipsel|Dreambox DM7020HD v2|/etc/tuxbox/config|on|dream_mipsel
+dm800sev2|linux|mipsel|Dreambox DM800SE v2|/etc/tuxbox/config|on|dream_mipsel
+dreamone|linux|aarch64|Dreambox ONE|/etc/tuxbox/config|on|aarch64_opendreambox_pyro
+dreamtwo|linux|aarch64|Dreambox TWO|/etc/tuxbox/config|on|aarch64_opendreambox_pyro
+dual|linux|armv7|DUAL|/etc/tuxbox/config|on|cortexa15hf_openpli_scarthgap
+e3hd|linux|mips32el|E3HD|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+e4hd|linux|armv7|E4HD|/etc/tuxbox/config|on|cortexa15hf_openpli_scarthgap
+et10000|linux|mips32el|ET10000|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+et13000|linux|armv7|ET13000|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+et1x000|linux|armv7|ET1X000|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+et4x00|linux|mips32el|ET4X00|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+et5x00|linux|mips32el|ET5X00|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+et6x00|linux|mips32el|ET6X00|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+et7x00|linux|mips32el|ET7X00|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+et8000|linux|mips32el|ET8000|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+et8500|linux|mips32el|ET8500|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+et9x00|linux|mips32el|ET9X00|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+ew7356|linux|mips32el|EW7356|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+ew7358|linux|mips32el|EW7358|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+ew7362|linux|mips32el|EW7362|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+formuler1|linux|mips32el|formuler1|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+formuler1tc|linux|mips32el|formuler1tc|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+formuler3|linux|mips32el|formuler3|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+formuler3ip|linux|mips32el|formuler3ip|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+formuler4|linux|mips32el|formuler4|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+formuler4ip|linux|mips32el|formuler4ip|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+formuler4turbo|linux|mips32el|formuler4turbo|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+fusionhd|linux|mips32el|FUSIONHD|/etc/tuxbox/config|on|mips32el_openpli_scarthgap
+fusionhdse|linux|mips32el|fusionhdse|/etc/tuxbox/config|on|mips32el_openpli_scarthgap
+g100|linux|mips32el|G100|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+g101|linux|mips32el|G101|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+g300|linux|mips32el|G300|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+galaxy4k|linux|armv7|GALAXY4K|/etc/tuxbox/config|on|armv7ahf_openpli_scarthgap
+gb7252|linux|armv7|GB7252|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+gb72604|linux|armv7|GB72604|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+gb7325|linux|mips32el|GB7325|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+gb7356|linux|mips32el|GB7356|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+gb7358|linux|mips32el|GB7358|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+gb7362|linux|mips32el|GB7362|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+gb73625|linux|mips32el|GB73625|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+gb800solo|linux|mips32el|gb800solo|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+gbmv200|linux|armv7|GBMV200|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+gbquad4k|linux|armv7|GBQUAD4K|/etc/tuxbox/config|on|cortexa15hf_openpli_scarthgap
+gbquad4kpro|linux|armv7|gbquad4kpro|/etc/tuxbox/config|on|cortexa15hf_openpli_scarthgap
+gbtrio4k|linux|armv7|GBTRIO4K|/etc/tuxbox/config|on|cortexa15hf_openpli_scarthgap
+gbue4k|linux|armv7|GBUE4K|/etc/tuxbox/config|on|cortexa15hf_openpli_scarthgap
+generic-aarch64-buildroot|linux|aarch64|Generic AArch64 Linux|/etc/tuxbox/config|on|aarch64_universal
+generic-armv5-buildroot|linux|armv5|Generic ARMv5 Linux|/etc/tuxbox/config|on|armv5_universal
+generic-armv6-buildroot|linux|armv6|Generic ARMv6 Linux|/etc/tuxbox/config|on|armv6_universal
+generic-armv7-buildroot|linux|armv7|Generic ARMv7 Linux|/etc/tuxbox/config|on|armv7_universal
+generic-mips32el-buildroot|linux|mips32el|Generic MIPSel Linux|/etc/tuxbox/config|on|mips32el_universal
+generic-powerpc-buildroot|linux|powerpc|Generic PowerPC Linux|/etc/tuxbox/config|on|powerpc_universal
+generic-sh4-buildroot|linux|sh4|Generic SH4 Linux|/etc/tuxbox/config|on|sh4_universal
+h10|linux|armv7|H10|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+h11|linux|armv7|H11|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+h17|linux|armv7|H17|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+h17twin|linux|armv7|H17TWIN|/etc/tuxbox/config|on|cortexa15hf_openpli_scarthgap
+h3|linux|mips32el|H3|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+h4|linux|mips32el|H4|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+h5|linux|mips32el|H5|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+h6|linux|mips32el|H6|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+h7|linux|armv7|H7|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+h8|linux|armv7|H8|/etc/tuxbox/config|on|cortexa7hf_oealliance_6.0
+h8se|linux|armv7|H8SE|/etc/tuxbox/config|on|cortexa7hf_oealliance_6.0
+h9|linux|armv7|H9|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+h9combo|linux|armv7|H9COMBO|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+h9combose|linux|armv7|h9combose|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+h9se|linux|armv7|H9SE|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+hd11|linux|mips32el|HD11|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+hd1100|linux|mips32el|HD1100|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+hd1200|linux|mips32el|HD1200|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+hd1265|linux|mips32el|HD1265|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+hd1500|linux|mips32el|HD1500|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+hd2400|linux|mips32el|HD2400|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+hd500c|linux|mips32el|HD500C|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+hd51|linux|armv7|HD51|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+hd530c|linux|mips32el|HD530C|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+hd60|linux|armv7|HD60|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+hd61|linux|armv7|HD61|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+hd66se|linux|armv7|HD66SE|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+hzero|linux|armv7|HZERO|/etc/tuxbox/config|on|cortexa7hf_oealliance_6.0
+i55|linux|mips32el|I55|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+i55plus|linux|armv7|I55PLUS|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+i55se|linux|armv7|I55SE|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+igel-x86|linux|x86|Igel VIA VX855 / x86|./cfg|off|igel_x86
+inihde|linux|mips32el|INIHDE|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+inihde2|linux|mips32el|INIHDE2|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+inihdp|linux|mips32el|INIHDP|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+inihdx|linux|mips32el|INIHDX|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+ip8|linux|armv7|IP8|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+jj7362|linux|mips32el|JJ7362|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+lc|linux|mips32el|LC|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+lunix|linux|mips32el|LUNIX|/etc/tuxbox/config|on|mips32el_openpli_scarthgap
+lunix3-4k|linux|armv7|lunix3 4k|/etc/tuxbox/config|on|armv7ahf_openpli_scarthgap
+lunix4k|linux|armv7|LUNIX4K|/etc/tuxbox/config|on|armv7ahf_openpli_scarthgap
+mbmicro|linux|mips32el|MBMICRO|/etc/tuxbox/config|on|mips32el_openpli_scarthgap
+mbmicrov2|linux|mips32el|mbmicrov2|/etc/tuxbox/config|on|mips32el_openpli_scarthgap
+mbtwinplus|linux|mips32el|mbtwinplus|/etc/tuxbox/config|on|mips32el_openpli_scarthgap
+multibox|linux|armv7|MULTIBOX|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+multiboxpro|linux|armv7|multiboxpro|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+multiboxse|linux|armv7|multiboxse|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+odinm7|linux|mips32el|ODINM7|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+odinm9|linux|mips32el|ODINM9|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+og2ott4k|linux|armv7|OG2OTT4K|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+og2s4k|linux|armv7|OG2S4K|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+osmega|linux|mips32el|OSMEGA|/etc/tuxbox/config|on|mips32el_openpli_scarthgap
+osmini|linux|mips32el|OSMINI|/etc/tuxbox/config|on|mips32el_openpli_scarthgap
+osmini4k|linux|armv7|OSMINI4K|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+osminiplus|linux|mips32el|osminiplus|/etc/tuxbox/config|on|mips32el_openpli_scarthgap
+osmio4k|linux|armv7|OSMIO4K|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+osmio4kplus|linux|armv7|osmio4kplus|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+osnino|linux|mips32el|OSNINO|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+osninoplus|linux|mips32el|osninoplus|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+osninopro|linux|mips32el|osninopro|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+pogoplug-v2|linux|arm|Pogoplug V2 / Marvell Kirkwood|./cfg|off|pogoplug_arm
+pulse4k|linux|armv7|PULSE4K|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+pulse4kmini|linux|armv7|pulse4kmini|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+purehd|linux|mips32el|PUREHD|/etc/tuxbox/config|on|mips32el_openpli_scarthgap
+purehdse|linux|mips32el|PUREHDSE|/etc/tuxbox/config|on|mips32el_openpli_scarthgap
+qnap-armv7|linux|armv7|QNAP ARM Cortex-A9 family|./cfg|off|qnap_armv7
+qnap-ts119p2|linux|armv5|QNAP TS-119P II|./cfg|off|qnap_armv5
+qnap-x64|linux|x86_64|QNAP x64 family|./cfg|off|qnap_x64
+revo4k|linux|armv7|REVO4K|/etc/tuxbox/config|on|armv7ahf_openpli_scarthgap
+rpi-1|linux|armv6|Raspberry Pi 1 Model A / A+ / B / B+|./cfg|off|rpi_armv6
+rpi-2|linux|armv7|Raspberry Pi 2 Model B|./cfg|off|rpi_armv7
+rpi-2v1.2|linux|armv7|Raspberry Pi 2 Model B v1.2|./cfg|off|rpi_armv8
+rpi-3|linux|armv7|Raspberry Pi 3 Model A+ / B / B+|./cfg|off|rpi_armv8
+rpi-4|linux|armv7|Raspberry Pi 4 Model B (32-bit profile)|./cfg|off|rpi_armv8
+rpi-64|linux|aarch64|Raspberry Pi 3 Model B+ / 4 Model B AArch64|./cfg|off|rpi_aarch64
+rpi-zero|linux|armv6|Raspberry Pi Zero W / WH|./cfg|off|rpi_armv6
+samsung-tv|linux|arm|Samsung TV|./cfg|off|samsungtv
+sf4008|linux|armv7|SF4008|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+sf8008|linux|armv7|SF8008|/etc/tuxbox/config|on|cortexa15hf_openpli_scarthgap
+sf8008m|linux|armv7|SF8008M|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+sfx6008|linux|armv7|SFX6008|/etc/tuxbox/config|on|cortexa7hf_oealliance_6.0
+sh1|linux|mips32el|SH1|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+spycat|linux|mips32el|SPYCAT|/etc/tuxbox/config|on|mips32el_openpli_scarthgap
+spycatmini|linux|mips32el|spycatmini|/etc/tuxbox/config|on|mips32el_openpli_scarthgap
+spycatminiplus|linux|mips32el|spycatminiplus|/etc/tuxbox/config|on|mips32el_openpli_scarthgap
+sx88v2|linux|armv7|SX88V2|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+sx988|linux|armv7|SX988|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+synology-atom|linux|x86_64|Synology Atom x86_64|./cfg|off|syn_atom
+synology-ds112x|linux|armv5|Synology DS112x|./cfg|off|synology_armv5
+synology-ds115|linux|armv7|Synology DS115 / Marvell ARMADA 375|./cfg|off|synology_armv7a
+synology-ds213plus|linux|powerpc|Synology DS213+|./cfg|off|synology_ppc
+synology-ds216play|linux|armv7|Synology DS216play / ZyXEL NAS326 / NAS520|./cfg|off|synology_armv7
+synology-ds418|linux|aarch64|Synology DS418|./cfg|off|synology_aarch64
+tiviaraplus|linux|mips32el|tiviaraplus|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+tiviarmin|linux|mips32el|tiviarmin|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+triplex|linux|mips32el|TRIPLEX|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+u41|linux|armv7|U41|/etc/tuxbox/config|on|cortexa9hf_oealliance_6.0
+u42|linux|armv7|U42|/etc/tuxbox/config|on|cortexa9hf_oealliance_6.0
+u43|linux|armv7|U43|/etc/tuxbox/config|on|cortexa9hf_oealliance_6.0
+u45|linux|armv7|U45|/etc/tuxbox/config|on|cortexa9hf_oealliance_6.0
+u5|linux|armv7|U5|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+u51|linux|armv7|U51|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+u52|linux|armv7|U52|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+u53|linux|armv7|U53|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+u532|linux|armv7|U532|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+u533|linux|armv7|U533|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+u54|linux|armv7|U54|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+u55|linux|armv7|U55|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+u56|linux|armv7|U56|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+u57|linux|armv7|U57|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+u571|linux|armv7|U571|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+u5pvr|linux|armv7|U5PVR|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+ultrabox|linux|mips32el|ULTRABOX|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+ultramini|linux|mips32el|ultramini|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+ustym4kottpremium|linux|armv7|ustym4kottpremium|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+ustym4kpro|linux|armv7|ustym4kpro|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+ustym4ks2ottx|linux|armv7|ustym4ks2ottx|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+vg1000|linux|mips32el|VG1000|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+vg2000|linux|mips32el|VG2000|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+vg5000|linux|mips32el|VG5000|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+viper4k|linux|armv7|VIPER4K|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+vipercombo|linux|mips32el|vipercombo|/etc/tuxbox/config|on|mips32el_openpli_scarthgap
+vipercombohdd|linux|mips32el|vipercombohdd|/etc/tuxbox/config|on|mips32el_openpli_scarthgap
+viperslim|linux|mips32el|viperslim|/etc/tuxbox/config|on|mips32el_openpli_scarthgap
+vipert2c|linux|mips32el|VIPERT2C|/etc/tuxbox/config|on|mips32el_openpli_scarthgap
+vs1000|linux|mips32el|VS1000|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+vs1500|linux|armv7|VS1500|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+vuduo|linux|mips32el|VUDUO|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+vuduo2|linux|mips32el|VUDUO2|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+vuduo4k|linux|armv7|VUDUO4K|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+vuduo4kse|linux|armv7|vuduo4kse|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+vusolo|linux|mips32el|VUSOLO|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+vusolo2|linux|mips32el|VUSOLO2|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+vusolo4k|linux|armv7|VUSOLO4K|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+vusolose|linux|mips32el|VUSOLOSE|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+vuultimo|linux|mips32el|VUULTIMO|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+vuultimo4k|linux|armv7|vuultimo4k|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+vuuno|linux|mips32el|VUUNO|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+vuuno4k|linux|armv7|VUUNO4K|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+vuuno4kse|linux|armv7|vuuno4kse|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+vuzero|linux|mips32el|VUZERO|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+vuzero4k|linux|armv7|VUZERO4K|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
+xc7346|linux|mips32el|XC7346|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+xc7362|linux|mips32el|XC7362|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+xp1000|linux|mips32el|XP1000|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+xpeedc|linux|mips32el|XPEEDC|/etc/tuxbox/config|on|mips32el_openpli_scarthgap
+yh625dt|linux|mips32el|YH625DT|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+yh625tc|linux|mips32el|YH625TC|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+yh62tc|linux|mips32el|YH62TC|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+yh7362|linux|mips32el|YH7362|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+yh73625|linux|mips32el|YH73625|/etc/tuxbox/config|on|mips32el_oealliance_6.0
+platform-aarch64--musl--stable-2020.02-2_universal|linux|aarch64|aarch64 devices (generic)|./cfg|off|aarch64--musl--stable-2020.02-2_universal
+platform-arm_dream|linux|arm|Dreambox ARM|./cfg|off|arm_dream
+platform-armv5-eabi--musl--stable-2020.02-2_universal|linux|armv5|armv5-eabi devices (generic)|./cfg|off|armv5-eabi--musl--stable-2020.02-2_universal
+platform-armv6-eabihf--musl--stable-2020.02-2_universal|linux|armv6|armv6-eabihf devices (generic)|./cfg|off|armv6-eabihf--musl--stable-2020.02-2_universal
+platform-cool|linux|arm|COOLSTREAM|./cfg|off|cool
+platform-cool2|linux|arm|COOLSTREAM HD2|./cfg|off|cool2
+platform-csky|linux|csky|GX-API Box|./cfg|off|csky
+platform-dcube|linux|arm|Dcube-R2|./cfg|off|dcube
+platform-dockstar|linux|arm|Dockstar|./cfg|off|dockstar
+platform-dream_aarch64|linux|aarch64|Dreambox ONE / TWO|./cfg|off|dream_aarch64
+platform-dream_arm|linux|arm|Dreambox DM9x0 UHD|./cfg|off|dream_arm
+platform-dream_mipsel|linux|mipsel|Dreambox 500 HD / 52x / 8x0 HD / 70x0 HD|./cfg|off|dream_mipsel
+platform-dream_one|linux|aarch64|DreamOne aarch64|./cfg|off|dream_one
+platform-dreambox_fpu|linux|mipsel|Dreambox & VU+ (OE 2.0 FPU)|./cfg|off|dreambox_fpu
+platform-fritz3272_3370_3390_6840_7272_7330_7330SL_7360v2_7390_ssl_multi_mips-freetz|linux|mips|FRITZ!Box 3272 3370 3390 6840 7272 7330 7330SL 7360v2 7390 SSL multi|./cfg|off|fritz3272_3370_3390_6840_7272_7330_7330SL_7360v2_7390_ssl_multi_mips-freetz
+platform-fritz3490_5490_5491_6890_7430_7490_7560_7580_7583_7583vdsl_7590_7590AX_7690_ssl_multi_mips-freetz|linux|mips|FRITZ!Box 3490 5490 5491 6890 7430 7490 7560 7580 7583 7583vdsl 7590|./cfg|off|fritz3490_5490_5491_6890_7430_7490_7560_7580_7583_7583vdsl_7590_7590AX_7690_ssl_multi_mips-freetz
+platform-fritz4020_7362_ssl_multi_mips-freetz|linux|mips|FRITZ!Box 4020 7362 SSL Multi by MasterSaMMy|./cfg|off|fritz4020_7362_ssl_multi_mips-freetz
+platform-fritz4040_4050_4060_5590_5690Pro_68504g_68505g_7510_7520_7520B_7530_7530AX_ssl_multi_arm-freetz|linux|arm|FRITZ!Box 4040 4050 4060 5590 5690Pro 68504g 68505g 7510 7520 7520B|./cfg|off|fritz4040_4050_4060_5590_5690Pro_68504g_68505g_7510_7520_7520B_7530_7530AX_ssl_multi_arm-freetz
+platform-fritz6430_6490_6590_6591_6660_6670_6690_ssl_multi_i686-freetz|linux|i686|FRITZ!Box 6430 6490 6590 6591 6660 6670 6690 SSL multi by MasterSaMMy|./cfg|off|fritz6430_6490_6590_6591_6660_6670_6690_ssl_multi_i686-freetz
+platform-fritz73xxOS65|linux|mips|Fritzbox73xx Fritz OS V6.5|./cfg|off|fritz73xxOS65
+platform-fritz74xxOS65|linux|mips|Fritzbox74xx Fritz OS V6.5|./cfg|off|fritz74xxOS65
+platform-hd51|linux|arm|AX/Mutant HD51|./cfg|off|hd51
+platform-ineos|linux|csky|Ineos ZX4|./cfg|off|ineos
+platform-mca|linux|arm|MATRIX CAM AIR|./cfg|off|mca
+platform-mipsel|linux|mipsel|Dreambox & VU+ (OE 1.6)|./cfg|off|mipsel
+platform-mipsel_s3_ssl098|linux|mipsel|generic mipsel ssl 0.9.8|./cfg|off|mipsel_s3_ssl098
+platform-mipsel_s3_ssl100|linux|mipsel|generic mipsel ssl 1.0.0|./cfg|off|mipsel_s3_ssl100
+platform-mipsel_s3_ssl102|linux|mipsel|generic mipsel ssl 1.0.2|./cfg|off|mipsel_s3_ssl102
+platform-mipsoe20|linux|mipsel||./cfg|off|mipsoe20
+platform-oe20_armv7|linux|armv7|OpenEmbedded 2.0 STBs, ARM-Cortex-A9 devices|./cfg|off|oe20_armv7
+platform-oe20_mipsel|linux|mipsel|OpenEmbedded 2.0 STBs|./cfg|off|oe20_mipsel
+platform-oe20_sh4|linux|sh4|OpenEmbedded 2.0 STBs|./cfg|off|oe20_sh4
+platform-oe20_sh_multilib|linux|sh4|OpenEmbedded 2.0 STBs with multilib support|./cfg|off|oe20_sh_multilib
+platform-openpli40|linux|mipsel|Openpli Dreambox Vu+ and other|./cfg|off|openpli40
+platform-openwrt1505cc|linux|mips|OpenWRT 15.05.1 Chaos Calmer|./cfg|off|openwrt1505cc
+platform-osmio4k|linux|aarch64|Edision OS MIO 4k aarch64|./cfg|off|osmio4k
+platform-owrt_ar71xx_mips|linux|mips|OpenWrt 18.06 ar71xx, mips_24kc BE devices|./cfg|off|owrt_ar71xx_mips
+platform-owrt_ath79_mips|linux|mips|OpenWrt 19.07 / 21.02 ath79, mips_24kc BE devices|./cfg|off|owrt_ath79_mips
+platform-owrt_kirkwood_arm|linux|arm|OpenWrt 19.07 / 21.02 kirkwood, Pogoplug V2 LE devices|./cfg|off|owrt_kirkwood_arm
+platform-owrt_mediatek_armv8|linux|aarch64|OpenWrt 19.07 / 21.02 mediatek, GLinet Brume2 devices|./cfg|off|owrt_mediatek_armv8
+platform-owrt_mpc85xx_ppc|linux|powerpc|OpenWrt 19.07 / 21.02 mpc85xx, Freescale MPC85xx BE devices|./cfg|off|owrt_mpc85xx_ppc
+platform-owrt_ramips_mips|linux|mipsel|OpenWrt 19.07 / 21.02 ramips, Mediatek/Ralink mips_24kc LE devices|./cfg|off|owrt_ramips_mips
+platform-owrt_rpi_armv6|linux|armv6|OpenWrt 19.07 / 21.02 Raspberry Pi Zero W / WH, 1 Model A / A+ / B / B+|./cfg|off|owrt_rpi_armv6
+platform-owrt_rpi_armv7|linux|armv7|OpenWrt 19.07 / 21.02 Raspberry Pi 2 Model B|./cfg|off|owrt_rpi_armv7
+platform-ppcold|linux|powerpc|Dbox2 / Dreambox DM500 and DM500-S|./cfg|off|ppcold
+platform-rasb_hard|linux|arm|RaspberryPI Hardware FPU|./cfg|off|rasb_hard
+platform-sh4|linux|sh4|SH4|./cfg|off|sh4
+platform-sh_4|linux|sh4|SH4|./cfg|off|sh_4
+platform-solo4k|linux|arm|VU+ Solo4k|./cfg|off|solo4k
+platform-ubnt_aarch64|linux|aarch64|Ubiquiti Networks devices, UDM / UDM-Pro|./cfg|off|ubnt_aarch64
+platform-ubnt_mips64|linux|mips64|Ubiquiti Networks devices, USG / USG-Pro|./cfg|off|ubnt_mips64
+platform-vuplus4k_arm|linux|arm|Vu+ Zero / Uno / Duo / Solo / Ultimo 4K|./cfg|off|vuplus4k_arm
+platform-vuplus4k_armv7|linux|armv7|Vu+ Zero / Uno / Duo / Solo / Ultimo 4K|./cfg|off|vuplus4k_armv7
+platform-vuplus4k_armv7a|linux|armv7|Vu+ Zero / Uno / Duo / Solo / Ultimo 4K|./cfg|off|vuplus4k_armv7a
+platform-vusolo4k_atv|linux|armv7|Vu+ Zero / Uno / Duo / Solo / Ultimo 4K|./cfg|off|vusolo4k_atv
+profile-aarch64--musl--stable-2020.02-2_universal|linux|aarch64|aarch64 devices (generic)|./cfg|off|aarch64--musl--stable-2020.02-2_universal
+profile-aarch64_universal|linux|aarch64|aarch64 stb's (generic)|./cfg|off|aarch64_universal
+profile-arm_dream|linux|arm|Dreambox ARM|./cfg|off|arm_dream
+profile-armv5-eabi--musl--stable-2020.02-2_universal|linux|armv5|armv5-eabi devices (generic)|./cfg|off|armv5-eabi--musl--stable-2020.02-2_universal
+profile-armv5_universal|linux|armv5|armv5 devices (generic)|./cfg|off|armv5_universal
+profile-armv6-eabihf--musl--stable-2020.02-2_universal|linux|armv6|armv6-eabihf devices (generic)|./cfg|off|armv6-eabihf--musl--stable-2020.02-2_universal
+profile-armv6_universal|linux|armv6|armv6 stb's (generic)|./cfg|off|armv6_universal
+profile-armv7_universal|linux|armv7|armv7 stb's (generic)|./cfg|off|armv7_universal
+profile-cool|linux|arm|COOLSTREAM|./cfg|off|cool
+profile-cool2|linux|arm|COOLSTREAM HD2|./cfg|off|cool2
+profile-csky|linux|csky|GX-API Box|./cfg|off|csky
+profile-dcube|linux|arm|Dcube-R2|./cfg|off|dcube
+profile-dockstar|linux|arm|Dockstar|./cfg|off|dockstar
+profile-dream_aarch64|linux|aarch64|Dreambox ONE / TWO|./cfg|off|dream_aarch64
+profile-dream_arm|linux|arm|Dreambox DM9x0 UHD|./cfg|off|dream_arm
+profile-dream_mipsel|linux|mipsel|Dreambox 500 HD / 52x / 8x0 HD / 70x0 HD|./cfg|off|dream_mipsel
+profile-dream_one|linux|aarch64|DreamOne aarch64|./cfg|off|dream_one
+profile-dreambox_fpu|linux|mipsel|Dreambox & VU+ (OE 2.0 FPU)|./cfg|off|dreambox_fpu
+profile-fritz3272_3370_3390_6840_7272_7330_7330SL_7360v2_7390_ssl_multi_mips-freetz|linux|mips|FRITZ!Box 3272 3370 3390 6840 7272 7330 7330SL 7360v2 7390 SSL multi|./cfg|off|fritz3272_3370_3390_6840_7272_7330_7330SL_7360v2_7390_ssl_multi_mips-freetz
+profile-fritz3490_5490_5491_6890_7430_7490_7560_7580_7583_7583vdsl_7590_7590AX_7690_ssl_multi_mips-freetz|linux|mips|FRITZ!Box 3490 5490 5491 6890 7430 7490 7560 7580 7583 7583vdsl 7590|./cfg|off|fritz3490_5490_5491_6890_7430_7490_7560_7580_7583_7583vdsl_7590_7590AX_7690_ssl_multi_mips-freetz
+profile-fritz4020_7362_ssl_multi_mips-freetz|linux|mips|FRITZ!Box 4020 7362 SSL Multi by MasterSaMMy|./cfg|off|fritz4020_7362_ssl_multi_mips-freetz
+profile-fritz4040_4050_4060_5590_5690Pro_68504g_68505g_7510_7520_7520B_7530_7530AX_ssl_multi_arm-freetz|linux|arm|FRITZ!Box 4040 4050 4060 5590 5690Pro 68504g 68505g 7510 7520 7520B|./cfg|off|fritz4040_4050_4060_5590_5690Pro_68504g_68505g_7510_7520_7520B_7530_7530AX_ssl_multi_arm-freetz
+profile-fritz6430_6490_6590_6591_6660_6670_6690_ssl_multi_i686-freetz|linux|i686|FRITZ!Box 6430 6490 6590 6591 6660 6670 6690 SSL multi by MasterSaMMy|./cfg|off|fritz6430_6490_6590_6591_6660_6670_6690_ssl_multi_i686-freetz
+profile-fritz73xxOS65|linux|mips|Fritzbox73xx Fritz OS V6.5|./cfg|off|fritz73xxOS65
+profile-fritz74xxOS65|linux|mips|Fritzbox74xx Fritz OS V6.5|./cfg|off|fritz74xxOS65
+profile-hd51|linux|arm|AX/Mutant HD51|./cfg|off|hd51
+profile-igel_x86|linux|x86|Igel VIA VX855, x86 devices|./cfg|off|igel_x86
+profile-ineos|linux|csky|Ineos ZX4|./cfg|off|ineos
+profile-mca|linux|arm|MATRIX CAM AIR|./cfg|off|mca
+profile-mips32el_universal|linux|mips32el|mips32el stb's (generic)|./cfg|off|mips32el_universal
+profile-mipsel|linux|mipsel|Dreambox & VU+ (OE 1.6)|./cfg|off|mipsel
+profile-mipsel_s3_ssl098|linux|mipsel|generic mipsel ssl 0.9.8|./cfg|off|mipsel_s3_ssl098
+profile-mipsel_s3_ssl100|linux|mipsel|generic mipsel ssl 1.0.0|./cfg|off|mipsel_s3_ssl100
+profile-mipsel_s3_ssl102|linux|mipsel|generic mipsel ssl 1.0.2|./cfg|off|mipsel_s3_ssl102
+profile-mipsoe20|linux|mipsel||./cfg|off|mipsoe20
+profile-oe20_armv7|linux|armv7|OpenEmbedded 2.0 STBs, ARM-Cortex-A9 devices|./cfg|off|oe20_armv7
+profile-oe20_mipsel|linux|mipsel|OpenEmbedded 2.0 STBs|./cfg|off|oe20_mipsel
+profile-oe20_sh4|linux|sh4|OpenEmbedded 2.0 STBs|./cfg|off|oe20_sh4
+profile-oe20_sh_multilib|linux|native|OpenEmbedded 2.0 STBs with multilib support|./cfg|off|oe20_sh_multilib
+profile-openpli40|linux|mipsel|Openpli Dreambox Vu+ and other|./cfg|off|openpli40
+profile-openwrt1505cc|linux|mips|OpenWRT 15.05.1 Chaos Calmer|./cfg|off|openwrt1505cc
+profile-osmio4k|linux|aarch64|Edision OS MIO 4k aarch64|./cfg|off|osmio4k
+profile-owrt_ar71xx_mips|linux|mips|OpenWrt 18.06 ar71xx, mips_24kc BE devices|./cfg|off|owrt_ar71xx_mips
+profile-owrt_ath79_mips|linux|mips|OpenWrt 19.07 / 21.02 ath79, mips_24kc BE devices|./cfg|off|owrt_ath79_mips
+profile-owrt_kirkwood_arm|linux|arm|OpenWrt 19.07 / 21.02 kirkwood, Pogoplug V2 LE devices|./cfg|off|owrt_kirkwood_arm
+profile-owrt_mediatek_armv8|linux|aarch64|OpenWrt 19.07 / 21.02 mediatek, GLinet Brume2 devices|./cfg|off|owrt_mediatek_armv8
+profile-owrt_mpc85xx_ppc|linux|powerpc|OpenWrt 19.07 / 21.02 mpc85xx, Freescale MPC85xx BE devices|./cfg|off|owrt_mpc85xx_ppc
+profile-owrt_ramips_mips|linux|mipsel|OpenWrt 19.07 / 21.02 ramips, Mediatek/Ralink mips_24kc LE devices|./cfg|off|owrt_ramips_mips
+profile-owrt_rpi_armv6|linux|armv6|OpenWrt 19.07 / 21.02 Raspberry Pi Zero W / WH, 1 Model A / A+ / B / B+|./cfg|off|owrt_rpi_armv6
+profile-owrt_rpi_armv7|linux|armv7|OpenWrt 19.07 / 21.02 Raspberry Pi 2 Model B|./cfg|off|owrt_rpi_armv7
+profile-pogoplug_arm|linux|arm|Marvell Kirkwood devices, Pogoplug V2|./cfg|off|pogoplug_arm
+profile-powerpc_universal|linux|powerpc|powerpc stb's (generic)|./cfg|off|powerpc_universal
+profile-ppcold|linux|powerpc|Dbox2 / Dreambox DM500 and DM500-S|./cfg|off|ppcold
+profile-qnap_armv5|linux|armv5|QNAP Marvell 628x devices, QNAP TS-119P II|./cfg|off|qnap_armv5
+profile-qnap_armv7|linux|armv7|QNAP ARM-Cortex-A9 devices|./cfg|off|qnap_armv7
+profile-qnap_x64|linux|x86_64|QNAP x64 devices|./cfg|off|qnap_x64
+profile-rasb_hard|linux|arm|RaspberryPI Hardware FPU|./cfg|off|rasb_hard
+profile-rpi_aarch64|linux|aarch64|Raspberry Pi 3 Modell B+, 4 Model B|./cfg|off|rpi_aarch64
+profile-rpi_armv6|linux|armv6|Raspberry Pi Zero W / WH, 1 Model A / A+ / B / B+|./cfg|off|rpi_armv6
+profile-rpi_armv7|linux|armv7|Raspberry Pi 2 Model B|./cfg|off|rpi_armv7
+profile-rpi_armv8|linux|armv7|Raspberry Pi 2 Model B v1.2, 3 Modell A+ / B / B+, 4 Model B|./cfg|off|rpi_armv8
+profile-samsungtv|linux|arm|SamsungTV|./cfg|off|samsungtv
+profile-sh4|linux|sh4|SH4|./cfg|off|sh4
+profile-sh4_universal|linux|sh4|sh4 stb's (generic)|./cfg|off|sh4_universal
+profile-sh_4|linux|sh4|SH4|./cfg|off|sh_4
+profile-solo4k|linux|arm|VU+ Solo4k|./cfg|off|solo4k
+profile-syn_atom|linux|x86_64|SYN_ATOM|./cfg|off|syn_atom
+profile-synology_aarch64|linux|aarch64|Synology DS418|./cfg|off|synology_aarch64
+profile-synology_armv5|linux|armv5|Synology Marvell 628x devices, Synology DS112x|./cfg|off|synology_armv5
+profile-synology_armv7|linux|armv7|Synology DS216play, ZyXEL NAS326 / NAS520|./cfg|off|synology_armv7
+profile-synology_armv7a|linux|armv7|Synology Marvell ARMADA 375 devices, Synology DS115|./cfg|off|synology_armv7a
+profile-synology_ppc|linux|powerpc|Synology DS213+|./cfg|off|synology_ppc
+profile-ubnt_aarch64|linux|aarch64|Ubiquiti Networks devices, UDM / UDM-Pro|./cfg|off|ubnt_aarch64
+profile-ubnt_mips64|linux|mips64|Ubiquiti Networks devices, USG / USG-Pro|./cfg|off|ubnt_mips64
+profile-vuplus4k_arm|linux|arm|Vu+ Zero / Uno / Duo / Solo / Ultimo 4K|./cfg|off|vuplus4k_arm
+profile-vuplus4k_armv7|linux|armv7|Vu+ Zero / Uno / Duo / Solo / Ultimo 4K|./cfg|off|vuplus4k_armv7
+profile-vuplus4k_armv7a|linux|armv7|Vu+ Zero / Uno / Duo / Solo / Ultimo 4K|./cfg|off|vuplus4k_armv7a
+profile-vusolo4k_atv|linux|armv7|Vu+ Zero / Uno / Duo / Solo / Ultimo 4K|./cfg|off|vusolo4k_atv

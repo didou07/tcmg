@@ -15,42 +15,11 @@ VERSION="6.2"
 
 mkdir -p "$STATE_DIR" "$TOOLCHAIN_DIR" "$LOG_DIR"
 
-DEVICES=(
-  'tubox|linux|native|Native Linux / Tuxbox-style config|/etc/tuxbox/config|off|native'
-  'generic-linux|linux|native|Native Linux /usr/local/etc|/usr/local/etc|auto|native'
-  'dev-box|linux|native|Native development box ./cfg|./cfg|auto|native'
-  'vuplus-4k|linux|armv7|Vu+ 4K ARMv7 (SimpleBuild4 vuplus4k_armv7)|/etc/tuxbox/config|on|vuplus4k_armv7'
-  'vuplus-4k-legacy|linux|armv7|Vu+ legacy ARMv7 (manual SDK)|/etc/tuxbox/config|on|manual'
-  'dreambox-dm900|linux|armv7|Dreambox DM900 / DM920|/etc/tuxbox/config|on|cortexa15hf_opendreambox_krogoth'
-  'dreambox-one|linux|aarch64|Dreambox ONE / TWO AArch64|/etc/tuxbox/config|on|aarch64_opendreambox_pyro'
-  'dreambox-mipsel|linux|mipsel|Dreambox MIPSel (DM520/7080/820 toolchain)|/etc/tuxbox/config|on|mips32el_opendreambox_krogoth'
-  'dreambox-dm520|linux|mipsel|Dreambox DM520|/etc/tuxbox/config|on|mips32el_opendreambox_krogoth'
-  'dreambox-dm7080|linux|mipsel|Dreambox DM7080|/etc/tuxbox/config|on|mips32el_opendreambox_krogoth'
-  'dreambox-dm820|linux|mipsel|Dreambox DM820|/etc/tuxbox/config|on|mips32el_opendreambox_krogoth'
-  'dreambox-dm500hd|linux|mipsel|Dreambox DM500HD (legacy MIPSel)|/etc/tuxbox/config|on|dream_mipsel'
-  'dreambox-dm800|linux|mipsel|Dreambox DM800 (legacy MIPSel)|/etc/tuxbox/config|on|dream_mipsel'
-  'dreambox-dm7020hd|linux|mipsel|Dreambox DM7020HD (legacy MIPSel)|/etc/tuxbox/config|on|dream_mipsel'
-  'dreambox-dm8000|linux|mipsel|Dreambox DM8000 (legacy MIPSel)|/etc/tuxbox/config|on|dream_mipsel'
-  'dreambox-dm800se|linux|mipsel|Dreambox DM800SE (legacy MIPSel)|/etc/tuxbox/config|on|dream_mipsel'
-  'bootlin-aarch64-generic|linux|aarch64|Generic AArch64 STB toolchain (Bootlin 2018.11)|/etc/tuxbox/config|on|bootlin_aarch64_2018'
-  'bootlin-armv7-generic|linux|armv7|Generic ARMv7 STB toolchain (Bootlin 2018.11)|/etc/tuxbox/config|on|bootlin_armv7_2018'
-  'bootlin-mipsel-generic|linux|mipsel|Generic MIPSel STB toolchain (Bootlin 2018.11)|/etc/tuxbox/config|on|bootlin_mipsel_2018'
-  'bootlin-powerpc-generic|linux|powerpc|Generic PowerPC STB toolchain (Bootlin 2018.11)|/etc/tuxbox/config|on|bootlin_powerpc_2018'
-  'windows-x64|windows|x86_64|Windows x64 MinGW|./|on|native'
-  'macos-native|macos|native|Native macOS target|/usr/local/etc/tcmg|on|native'
-)
+DEVICES=()
+TOOLCHAINS=()
+DEVICE_CATALOG="$ROOT_DIR/catalog/devices.tsv"
+TOOLCHAIN_CATALOG="$ROOT_DIR/catalog/toolchains.tsv"
 
-TOOLCHAINS=(
-  'vuplus4k_armv7|SimpleBuild4 Vu+ 4K ARMv7 toolchain|armv7|https://simplebuild.dedyn.io/toolchains/current/Toolchain-vuplus4k_armv7.tar.xz|8970a65246c85f59a445b91ab1d0251a3143ec18a914c5bb711c11a040841862|armv7-vuplus4k-linux-gnueabihf-|arm-vuplus4k-linux-gnueabihf/sysroot||'
-  'cortexa15hf_opendreambox_krogoth|OpenDreambox Krogoth Cortex-A15|armv7|https://simplebuild.dedyn.io/toolchains/current/Toolchain-cortexa15hf_opendreambox_krogoth.tar.xz|238cf895f437624ecbe4940cd80932f17f74ed9916daf365900c895d243993c2|arm-oe-linux-gnueabi-|sysroots/cortexa15hf-neon-vfpv4-oe-linux-gnueabi|-march=armv7ve -mfpu=neon-vfpv4 -mfloat-abi=hard -mcpu=cortex-a15|-Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3'
-  'aarch64_opendreambox_pyro|OpenDreambox Pyro AArch64|aarch64|https://simplebuild.dedyn.io/toolchains/current/Toolchain-aarch64_opendreambox_pyro.tar.xz|7f41146c1f3023437602d0c80f4d9df4bf13b7e540de596f095a00c92619bdae|aarch64-oe-linux-|sysroots/aarch64-oe-linux||-Wl,--dynamic-linker=/lib/ld-linux-aarch64.so.1'
-  'mips32el_opendreambox_krogoth|OpenDreambox Krogoth MIPSel|mipsel|https://simplebuild.dedyn.io/toolchains/current/Toolchain-mips32el_opendreambox_krogoth.tar.xz|72746de7ed005a6895f4795e66cebc4ebd6b9792b9eb8c0458389929f6666d89|mipsel-oe-linux-|sysroots/mips32el-oe-linux|-mel -mabi=32 -mhard-float -march=mips32|-Wl,--dynamic-linker=/lib/ld-2.23.so'
-  'dream_mipsel|Dreambox legacy MIPSel (DM800/DM800SE/DM500HD/DM7020HD/DM8000)|mipsel|https://simplebuild.dedyn.io/toolchains/current/Toolchain-dream_mipsel.tar.xz|8e8c74ff8e2b9c729f54ec58a36ebd144adda9ba235ba8648eab627d1c21aab3|mipsel-dreambox-linux-gnu-|mipsel-dreambox-linux-gnu/sysroot||'
-  'bootlin_aarch64_2018|Bootlin AArch64 glibc 2018.11|aarch64|https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--glibc--stable-2018.11-1.tar.bz2|abae0522480b9f37ff6cee4249e147e7cb78e1997cc6f76dba7e0fb8ec04221d||||'
-  'bootlin_armv7_2018|Bootlin ARMv7 EABIhf glibc 2018.11|armv7|https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs/armv7-eabihf--glibc--stable-2018.11-1.tar.bz2|c8d4d3ca70442652e0e72f57ae6e878375640508f1e08de3152f63414c43b2e4||||'
-  'bootlin_mipsel_2018|Bootlin MIPSel glibc 2018.11|mipsel|https://toolchains.bootlin.com/downloads/releases/toolchains/mips32el/tarballs/mips32el--glibc--stable-2018.11-1.tar.bz2|5b838521093a9b8c521ff518cc33e80ce8649b1c795013a47e167b79c175c049||||'
-  'bootlin_powerpc_2018|Bootlin PowerPC e500mc glibc 2018.11|powerpc|https://toolchains.bootlin.com/downloads/releases/toolchains/powerpc-e500mc/tarballs/powerpc-e500mc--glibc--stable-2018.11-1.tar.bz2|b06fd8740248309146e212214abf60ae4ba2018480ec42155286cafdcb401af4||||'
-)
 
 TARGET=""
 PLATFORM=""
@@ -78,11 +47,32 @@ ok(){ printf '  %-8s %s\n' OK "$*"; }
 warn(){ printf '  %-8s %s\n' WARN "$*" >&2; }
 err(){ printf '  %-8s %s\n' ERROR "$*" >&2; }
 
+load_catalogs(){
+  local row
+  [[ -f "$DEVICE_CATALOG" ]] || { err "Device catalog missing: $DEVICE_CATALOG"; return 1; }
+  [[ -f "$TOOLCHAIN_CATALOG" ]] || { err "Toolchain catalog missing: $TOOLCHAIN_CATALOG"; return 1; }
+  while IFS= read -r row || [[ -n "$row" ]]; do
+    [[ -z "$row" || "$row" == \#* ]] && continue
+    DEVICES+=("$row")
+  done < "$DEVICE_CATALOG"
+  while IFS= read -r row || [[ -n "$row" ]]; do
+    [[ -z "$row" || "$row" == \#* ]] && continue
+    TOOLCHAINS+=("$row")
+  done < "$TOOLCHAIN_CATALOG"
+  [[ ${#DEVICES[@]} -gt 0 ]] || { err 'Device catalog is empty'; return 1; }
+  [[ ${#TOOLCHAINS[@]} -gt 0 ]] || { err 'Toolchain catalog is empty'; return 1; }
+}
+
+load_catalogs || exit 1
+
+TUI_SCRIPT="$ROOT_DIR/scripts/build_tui.sh"
+[[ -f "$TUI_SCRIPT" ]] && source "$TUI_SCRIPT"
+
 usage(){
   cat <<'TXT'
 TCMG 6.2 - simple device builder
 
-  ./build.sh                 Choose device -> [1=Build, 2=Edit]
+  ./build.sh                 TUI: choose family -> device -> action
   ./build.sh list            List devices
   ./build.sh plan <device>   Show saved settings
   ./build.sh config <device> Edit settings and save
@@ -188,37 +178,19 @@ save_state(){
 }
 
 device_label(){
-  case "$1" in
-    tubox) printf '%s' 'Tuxbox / Native Linux';;
-    generic-linux) printf '%s' 'Linux Generic';;
-    dev-box) printf '%s' 'Development Box';;
-    vuplus-4k) printf '%s' 'Vu+ 4K';;
-    vuplus-4k-legacy) printf '%s' 'Vu+ Legacy';;
-    dreambox-dm900) printf '%s' 'Dreambox DM900 / DM920';;
-    dreambox-one) printf '%s' 'Dreambox ONE / TWO';;
-    dreambox-mipsel) printf '%s' 'Dreambox MIPSel (DM520/7080/820)';;
-    dreambox-dm520) printf '%s' 'Dreambox DM520';;
-    dreambox-dm7080) printf '%s' 'Dreambox DM7080';;
-    dreambox-dm820) printf '%s' 'Dreambox DM820';;
-    dreambox-dm800se) printf '%s' 'Dreambox DM800SE';;
-    dreambox-dm500hd) printf '%s' 'Dreambox DM500HD';;
-    dreambox-dm800) printf '%s' 'Dreambox DM800';;
-    dreambox-dm7020hd) printf '%s' 'Dreambox DM7020HD';;
-    dreambox-dm8000) printf '%s' 'Dreambox DM8000';;
-    bootlin-aarch64-generic) printf '%s' 'Generic AArch64 (Bootlin)';;
-    bootlin-armv7-generic) printf '%s' 'Generic ARMv7 (Bootlin)';;
-    bootlin-mipsel-generic) printf '%s' 'Generic MIPSel (Bootlin)';;
-    bootlin-powerpc-generic) printf '%s' 'Generic PowerPC (Bootlin)';;
-    windows-x64) printf '%s' 'Windows x64';;
-    macos-native) printf '%s' 'macOS Native';;
-    *) printf '%s' "$1";;
-  esac
+  local row name platform arch description conf pcsc tc
+  row="$(find_device "$1" 2>/dev/null || true)"
+  if [[ -n "$row" ]]; then
+    IFS='|' read -r name platform arch description conf pcsc tc <<< "$row"
+    [[ -n "$description" ]] && { printf '%s' "$description"; return 0; }
+  fi
+  printf '%s' "$1"
 }
 
 show_devices(){
   local i=1 row name label
   echo
-  printf '%s\n' "TCMG 6.2 devices"
+  printf '%s\n' "TCMG 6.2 devices (${#DEVICES[@]})"
   line
   for row in "${DEVICES[@]}"; do
     IFS='|' read -r name _ <<< "$row"
@@ -614,7 +586,9 @@ find_installed_toolchain(){
   else
     sysroot="$($cc -print-sysroot 2>/dev/null || true)"
   fi
-  [[ -n "$sysroot" && -d "$sysroot" ]] || return 1
+  if [[ -n "$sysrel" && -d "$root/$sysrel" ]]; then
+    sysroot="$root/$sysrel"
+  fi
   printf '%s|%s|%s\n' "$root" "$cc" "$sysroot"
 }
 
@@ -714,27 +688,28 @@ resolve_compiler(){
 validate_arch(){
   local cc="$1" target
   [[ "$PLATFORM" == linux ]] || return 0
-  if [[ "$TOOLCHAIN" == native ]]; then
-    return 0
-  elif [[ "$TOOLCHAIN" == manual ]]; then
-    :
-  else
-    ok "Compiler target: $ARCH (from toolchain catalog: $TOOLCHAIN)"
-    return 0
-  fi
+  [[ "$TOOLCHAIN" == native ]] && return 0
   target="$($cc -dumpmachine 2>/dev/null || true)"
+  [[ -n "$target" ]] || { err "Compiler target probe failed: $cc"; return 1; }
   case "$ARCH" in
-    armv7) [[ "$target" == arm*-* || "$target" == arm*linux* ]] || { err "Wrong compiler target: $target (need ARMv7)"; return 1; };;
+    arm|armv5|armv6|armv7) [[ "$target" == arm*-* || "$target" == arm*linux* ]] || { err "Wrong compiler target: $target (need $ARCH)"; return 1; };;
     aarch64) [[ "$target" == aarch64-* || "$target" == aarch64* ]] || { err "Wrong compiler target: $target (need AArch64)"; return 1; };;
-    mipsel) [[ "$target" == mipsel-* || "$target" == mipsel* ]] || { err "Wrong compiler target: $target (need MIPSel)"; return 1; };;
+    mipsel|mips32el) [[ "$target" == mipsel-* || "$target" == mipsel* ]] || { err "Wrong compiler target: $target (need MIPSel)"; return 1; };;
+    mips) [[ "$target" == mips-* || ("$target" == mips* && "$target" != mipsel*) ]] || { err "Wrong compiler target: $target (need MIPS)"; return 1; };;
+    mips64) [[ "$target" == mips64-* || "$target" == mips64* ]] || { err "Wrong compiler target: $target (need MIPS64)"; return 1; };;
     powerpc) [[ "$target" == powerpc-* || "$target" == powerpc* ]] || { err "Wrong compiler target: $target (need PowerPC)"; return 1; };;
+    sh4) [[ "$target" == sh4-* || "$target" == sh4* ]] || { err "Wrong compiler target: $target (need SH4)"; return 1; };;
+    csky) [[ "$target" == csky-* || "$target" == csky* ]] || { err "Wrong compiler target: $target (need C-SKY)"; return 1; };;
+    x86) [[ "$target" == i[3-6]86-* || "$target" == i[3-6]86* || "$target" == x86-* ]] || { err "Wrong compiler target: $target (need x86)"; return 1; };;
+    x86_64) [[ "$target" == x86_64-* || "$target" == x86_64* ]] || { err "Wrong compiler target: $target (need x86_64)"; return 1; };;
+    *) warn "No strict architecture matcher for $ARCH (compiler: $target)";;
   esac
   ok "Compiler target: $target"
 }
 
 arch_runtime_ldflags(){
   case "$ARCH" in
-    mipsel) printf '%s' '-latomic';;
+    mipsel|mips32el) printf '%s' '-latomic';;
     *) printf '%s' '';;
   esac
 }
@@ -935,13 +910,13 @@ build_device(){
   echo "Building TCMG 6.2 — $TARGET"
   show_config
   echo "Compiler: $cc"
-  echo "Output  : $build_dir/tcmg"
+  echo "Output  : $build_dir/tcmg-$VERSION-$TARGET"
   [[ "$pcsc_enabled" == 1 && "$PLATFORM" == linux && "$TOOLCHAIN" != native ]] && {
     echo "PCSC CFLAGS: $PCSC_CFLAGS"
     echo "PCSC LIBS  : $PCSC_LIBS"
   }
   line
-  local args=("BUILD_DIR=$build_dir" "RELEASE=$RELEASE" "TCMG_TARGET_OS=$PLATFORM" "TCMG_TARGET_NAME=tcmg" "TCMG_PCSC=$pcsc_enabled" "CC=$cc" "TCMG_CONF_DIR=$CONF_DIR" "TCMG_ASSET_REV=$asset_rev")
+  local args=("BUILD_DIR=$build_dir" "RELEASE=$RELEASE" "TCMG_TARGET_OS=$PLATFORM" "TCMG_TARGET_NAME=tcmg-$VERSION-$TARGET" "TCMG_PCSC=$pcsc_enabled" "CC=$cc" "TCMG_CONF_DIR=$CONF_DIR" "TCMG_ASSET_REV=$asset_rev")
   [[ -n "$CFLAGS_EXTRA" ]] && args+=("CFLAGS_EXTRA=$CFLAGS_EXTRA")
   [[ -n "$PCSC_CFLAGS" ]] && args+=("PCSC_CFLAGS=$PCSC_CFLAGS")
   [[ -n "$PCSC_LIBS" ]] && args+=("PCSC_LIBS=$PCSC_LIBS")
@@ -954,7 +929,7 @@ build_device(){
     echo "Log: $log" >&2
     return 1
   fi
-  ok "Build complete: $build_dir/tcmg"
+  ok "Build complete: $build_dir/tcmg-$VERSION-$TARGET"
   echo "Log: $log"
 }
 
@@ -976,9 +951,13 @@ self_test(){
   local tmp="$STATE_DIR/self-test.$$" row name i
   mkdir -p "$tmp"
   trap 'rm -rf "$tmp"' RETURN
+  [[ ${#DEVICES[@]} -ge 300 ]] || { err "device catalog too small: ${#DEVICES[@]}"; return 1; }
+  [[ ${#TOOLCHAINS[@]} -ge 80 ]] || { err "toolchain catalog too small: ${#TOOLCHAINS[@]}"; return 1; }
   [[ "$(find_device generic-linux)" == generic-linux\|linux\|native* ]] || { err 'device catalog failed'; return 1; }
   [[ "$(find_toolchain vuplus4k_armv7)" == vuplus4k_armv7\|* ]] || { err 'SimpleBuild4 Vu+ toolchain catalog failed'; return 1; }
   [[ "$(find_device dreambox-dm800se)" == dreambox-dm800se\|linux\|mipsel\|* ]] || { err 'Dreambox DM800SE device catalog failed'; return 1; }
+  [[ "$(find_device vuuno4k)" == vuuno4k\|linux\|armv7\|* ]] || { err 'Vu+ device catalog failed'; return 1; }
+  [[ "$(find_device dm800sev2)" == dm800sev2\|linux\|mipsel\|* ]] || { err 'Dreambox DM800SE v2 catalog failed'; return 1; }
   [[ "$(find_device dreambox-dm520)" == dreambox-dm520\|linux\|mipsel\|* ]] || { err 'Dreambox DM520 device catalog failed'; return 1; }
   [[ "$(find_device dreambox-dm7080)" == dreambox-dm7080\|linux\|mipsel\|* ]] || { err 'Dreambox DM7080 device catalog failed'; return 1; }
   [[ "$(find_device dreambox-dm820)" == dreambox-dm820\|linux\|mipsel\|* ]] || { err 'Dreambox DM820 device catalog failed'; return 1; }
@@ -1042,6 +1021,10 @@ DEVICE_ARG=""
 
 case "$COMMAND" in
   ''|wizard|menu)
+    if [[ -t 0 && -t 1 && -f "$TUI_SCRIPT" ]]; then
+      run_tui
+      exit $?
+    fi
     choose_device
     interactive_menu "$CHOSEN_ROW"
     exit $?;;
