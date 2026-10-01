@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-# Family-aware terminal UI for build.sh. Catalogs remain the source of truth.
-
 TUI_ACTIVE=0
 TUI_STTY=''
 
@@ -262,7 +260,11 @@ run_tui(){
     _tui_family_menu || { _tui_stop; return 0; }
     family="$TUI_RESULT"
     while :; do
-      _tui_device_menu "$family"; rc=$?
+      if _tui_device_menu "$family"; then
+        rc=0
+      else
+        rc=$?
+      fi
       [[ "$rc" == 1 ]] && { _tui_stop; return 0; }
       [[ "$rc" == 2 ]] && break
       row="$TUI_RESULT"
@@ -276,8 +278,11 @@ run_tui(){
             load_defaults "$row"
             save_state
             _tui_stop
-            build_device
-            rc=$?
+            if build_device; then
+              rc=0
+            else
+              rc=$?
+            fi
             printf '\n'
             _tui_pause
             [[ "$rc" != 0 ]] && return "$rc"
@@ -285,7 +290,11 @@ run_tui(){
           config)
             load_defaults "$row"
             _tui_stop
-            interactive
+            if interactive; then
+              rc=0
+            else
+              rc=$?
+            fi
             save_state
             _tui_start || return 1
             ;;
@@ -299,8 +308,11 @@ run_tui(){
               err 'Manual toolchain: use --toolchain-dir /path/to/sdk'
               rc=1
             else
-              fetch_toolchain "$TOOLCHAIN"
-              rc=$?
+              if fetch_toolchain "$TOOLCHAIN"; then
+                rc=0
+              else
+                rc=$?
+              fi
             fi
             _tui_pause
             [[ "$rc" != 0 ]] && return "$rc"
@@ -308,8 +320,11 @@ run_tui(){
           clean)
             load_defaults "$row"
             _tui_stop
-            clean_device
-            rc=$?
+            if clean_device; then
+              rc=0
+            else
+              rc=$?
+            fi
             _tui_pause
             [[ "$rc" != 0 ]] && return "$rc"
             ;;

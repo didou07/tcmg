@@ -2,12 +2,14 @@ CC      ?= gcc
 .DEFAULT_GOAL := all
 STRIP   ?= strip
 RELEASE ?= 0
+VERSION := $(strip $(shell cat VERSION 2>/dev/null))
+ifeq ($(VERSION),)
+$(error VERSION file missing or empty)
+endif
 
 BUILD_DIR := build
 OBJ_DIR   := $(BUILD_DIR)/obj
 
-# Single source of truth: every production C translation unit under src/ and webif/
-# is compiled. Test programs live under tests/ and are linked separately below.
 SRCS := $(shell find src webif -type f -name '*.c' -print | sort)
 
 obj_name = $(OBJ_DIR)/$(patsubst %.c,%.o,$(1))
@@ -15,11 +17,6 @@ OBJS := $(patsubst %.c,$(OBJ_DIR)/%.o,$(SRCS))
 
 UNAME_S := $(shell uname -s 2>/dev/null || echo Windows)
 
-# TCMG_TARGET_OS lets a cross build force the right branch below instead of
-# relying on `uname` of the BUILD machine -- essential when cross-compiling
-# for an embedded Linux box (Vu+, Dreambox, ...) from a Windows/MSYS2 host,
-# where `uname` would otherwise report MINGW and wrongly pull in Windows
-# flags/libs. Values: windows | linux | macos. Leave unset for native builds.
 TCMG_TARGET_OS ?=
 
 ifeq ($(TCMG_TARGET_OS),linux)
@@ -55,8 +52,6 @@ else
   LDFLAGS   += -lpthread -lm
 endif
 
-# Optional: rename the output binary (useful when building several device
-# profiles from the same tree so they don't overwrite one another).
 ifneq ($(TCMG_TARGET_NAME),)
   TARGET := $(BUILD_DIR)/$(TCMG_TARGET_NAME)
 endif
@@ -64,16 +59,11 @@ endif
 TCMG_ARCH_FLAGS ?=
 TCMG_SANITIZE ?=
 TCMG_ASSET_REV ?= $(shell date +%Y%m%d%H%M%S)
-# Cross-toolchain linker extras: --sysroot=..., -static, a custom dynamic
-# linker path, etc. Applied after every other LDFLAGS so it can override them.
 TCMG_ARCH_LDFLAGS ?=
 LDFLAGS += $(TCMG_ARCH_LDFLAGS)
-# Keep sanitizer runtime flags on the final link as well as compilation.
 LDFLAGS += $(TCMG_SANITIZE)
 
 TCMG_PCSC ?= auto
-# These are intentionally overrideable from build.sh. Cross builds prepare
-# a target-side static libpcsclite and pass its include/lib directories here.
 PCSC_CFLAGS ?=
 PCSC_LIBS   ?=
 
@@ -92,8 +82,6 @@ ifeq ($(PLATFORM),linux)
     endif
   endif
   ifeq ($(TCMG_PCSC),1)
-    # Explicit native PC/SC builds use pkg-config when available and fall back
-    # to the standard system linker name when it is not.
     ifeq ($(strip $(PCSC_LIBS)),)
       PCSC_LIBS := -lpcsclite
     endif
@@ -130,7 +118,8 @@ BASE_FLAGS := -std=c11 -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Wn
               -Wno-overlength-strings \
               -I. -Isrc -D_FORTIFY_SOURCE=2 -DTCMG_ASSET_REV=\"$(TCMG_ASSET_REV)\" \
               $(TCMG_ARCH_FLAGS) \
-              $(TCMG_SANITIZE)
+              $(TCMG_SANITIZE) \
+              -DTCMG_VERSION=\"$(VERSION)\"
 
 TCMG_STRICT ?= 0
 TCMG_CONF_DIR ?=
@@ -174,14 +163,16 @@ else
   endif
 endif
 
-.PHONY: all clean debug release test-config test-network test-reader-rules test-reader-registry test-proto-registry test-account-core test-session test-ecm-pipeline test-cache test-webif-service test-webif-many-clients test-webif-concurrency test-config-runtime-access test-account-state test-antishare test-internal test-internal-t0 test-internal-ui test-serial check
+.PHONY: all clean debug release test-config test-network test-reader-rules test-reader-registry test-proto-registry test-account-core test-session test-ecm-pipeline test-cache test-webif-service test-webif-many-clients test-webif-concurrency test-config-runtime-access test-account-state test-antishare test-internal test-internal-t0 test-internal-ui test-serial test-log check
 
-# Browser assets (CSS / JS) are plain C headers in webif/assets/*.h -- edited by hand,
-# no generator step.  Every object is rebuilt when one of them changes.
 ASSET_HDRS := $(wildcard webif/assets/*.h)
 
 TEST_COMMON_CFLAGS = -std=c11 -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Werror \
                     -Wno-unused-parameter -Wno-overlength-strings -I. -Isrc -D_FORTIFY_SOURCE=2 -O2 -g $(TCMG_SANITIZE)
+
+test-log: $(TARGET)
+	$(CC) $(TEST_COMMON_CFLAGS) tests/log_smoke.c $(filter-out $(OBJ_DIR)/src/main.o,$(OBJS)) -o $(BUILD_DIR)/test_log_smoke $(LDFLAGS)
+	$(BUILD_DIR)/test_log_smoke
 
 test-config: $(TARGET)
 	@mkdir -p $(BUILD_DIR)
@@ -265,7 +256,7 @@ test-serial: $(TARGET)
 	$(CC) $(TEST_COMMON_CFLAGS) tests/serial_smoke.c $(filter-out $(OBJ_DIR)/src/main.o,$(OBJS)) -o $(BUILD_DIR)/test_serial $(LDFLAGS)
 	$(BUILD_DIR)/test_serial
 
-test: test-config test-network test-reader-rules test-reader-registry test-proto-registry test-account-core test-session test-ecm-pipeline test-cache test-webif-service test-webif-many-clients test-webif-concurrency test-config-runtime-access test-account-state test-antishare test-internal test-internal-t0 test-internal-ui test-serial
+test: test-config test-network test-reader-rules test-reader-registry test-proto-registry test-account-core test-session test-ecm-pipeline test-cache test-webif-service test-webif-many-clients test-webif-concurrency test-config-runtime-access test-account-state test-antishare test-internal test-internal-t0 test-internal-ui test-serial test-log
 
 check: $(ASSET_HDRS)
 	@set -e; \
@@ -297,9 +288,6 @@ ifeq ($(RELEASE),1)
 endif
 	@echo "Built: $@  (platform=$(PLATFORM))"
 
-# Portable pattern rule: preserve the source tree under $(OBJ_DIR).
-# This avoids $(eval)/$(foreach) generated rules, which are fragile on older
-# GNU make versions and were the source of "missing separator" failures.
 $(OBJ_DIR)/%.o: %.c
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) -c $< -o $@

@@ -22,7 +22,6 @@ tok=ck.split(";")[0]
 st,_,b=req("GET","/users",h={"Cookie":tok}); ok("cookie grants access",st==200)
 st,_,b=req("GET","/users",h={"cookie":tok}); ok("lowercase 'cookie' header accepted",st==200,st)
 st,_,b=req("GET","/users",h={"Authorization":b64("admin","secret")}); ok("Basic auth works",st==200,st)
-# Basic auth brute force must now feed the fail-ban
 res=[]
 for i in range(12):
     st,_,_=req("GET","/users",h={"Authorization":b64("admin","wrong%d"%i)}); res.append(st)
@@ -34,7 +33,6 @@ ok("login from banned IP -> 429 with clear message",st==429 and "temporarily blo
 st,hd,b=req("GET","/failban",h={"Cookie":tok}); ok("failban page lists the ban (session cookie still valid)",st==200 and "127.0.0.1" in b,st)
 st,_,_=req("GET","/failban?action=clear&ip=127.0.0.1",h={"Cookie":tok})
 st,_,b=req("GET","/failban",h={"Cookie":tok}); ok("ban cleared",("127.0.0.1" not in b.split("<tbody")[-1]) if "<tbody" in b else True)
-# after clearing, ONE typo must not re-ban at once (fails reset)
 req("POST","/login",{"u":"admin","p":"typo"})
 st,_,b=req("POST","/login",{"u":"admin","p":"secret"}); ok("one typo after unban does not re-ban (fails reset)",st==302,st)
 print("\nFAILED:",len(fails),fails); sys.exit(1 if fails else 0)

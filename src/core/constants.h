@@ -1,9 +1,6 @@
 #ifndef TCMG_CONSTANTS_H_
 #define TCMG_CONSTANTS_H_
 
-#ifndef TCMG_VERSION
-#  define TCMG_VERSION    "6.2"
-#endif
 #define TCMG_BANNER       "tcmg v" TCMG_VERSION
 #ifndef TCMG_BUILD_TIME
 #  define TCMG_BUILD_TIME __DATE__ " " __TIME__

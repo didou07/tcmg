@@ -24,7 +24,6 @@ typedef struct {
     char ecmwl[8];
     char groups[WEBIF_GROUPS_LEN];
     char ecmkeys[WEBIF_ECMKEYS_LEN];
-    char do_ecm[8];
     char fast_reset[16];
     char poll_ms[16];
 } reader_form;
@@ -122,7 +121,6 @@ static const char *parse_reader_form(const char *body, reader_form *f, int index
         webif_form_copy(body, "ecmwhitelist", f->ecmwl, sizeof(f->ecmwl)) < 0 ||
         webif_form_copy(body, "group", f->groups, sizeof(f->groups)) < 0 ||
         webif_form_copy(body, "ecmkeys", f->ecmkeys, sizeof(f->ecmkeys)) < 0 ||
-        webif_form_copy(body, "DO_ECM", f->do_ecm, sizeof(f->do_ecm)) < 0 ||
         webif_form_copy(body, "FAST_RESET", f->fast_reset, sizeof(f->fast_reset)) < 0 ||
         webif_form_copy(body, "POLL_MS", f->poll_ms, sizeof(f->poll_ms)) < 0)
         return "field too long";
@@ -148,7 +146,6 @@ static const char *parse_reader_form(const char *body, reader_form *f, int index
     if (protocol->kind == READER_PROTOCOL_EMU) {
         if (validate_ecmkeys(f->ecmkeys) < 0) return "invalid ECM key list";
     } else if (protocol->kind == READER_PROTOCOL_CARD) {
-        if (rnum(f->do_ecm, 0, 1, &v) < 0) return "DO_ECM must be 0 or 1";
         if (!strcmp(protocol->name, "internal")) {
             if (rnum(f->fast_reset, 0, 86400, &v) < 0) return "FAST_RESET must be 0-86400 seconds for internal readers";
         } else {
@@ -203,12 +200,12 @@ static int view_json(char **dst, int *bsz, int pos, const S_WEBIF_READER_VIEW *r
     }
     if (!strcasecmp(r->protocol, "internal")) {
         pos = buf_printf(dst, bsz, pos,
-            "\",\"DO_ECM\":%d,\"FAST_RESET\":%d,\"cw_ok\":%lld,\"cw_nok\":%lld,\"active\":%d,\"owned\":%d,\"present\":%d,\"ready\":%d",
-            r->do_ecm, r->fast_reset, (long long)r->cw_ok, (long long)r->cw_nok, r->active, owned, present, ready);
+            "\",\"FAST_RESET\":%d,\"cw_ok\":%lld,\"cw_nok\":%lld,\"active\":%d,\"owned\":%d,\"present\":%d,\"ready\":%d",
+            r->fast_reset, (long long)r->cw_ok, (long long)r->cw_nok, r->active, owned, present, ready);
     } else {
         pos = buf_printf(dst, bsz, pos,
-            "\",\"DO_ECM\":%d,\"FAST_RESET\":%d,\"POLL_MS\":%d,\"cw_ok\":%lld,\"cw_nok\":%lld,\"active\":%d,\"owned\":%d,\"present\":%d,\"ready\":%d",
-            r->do_ecm, r->fast_reset, r->poll_ms, (long long)r->cw_ok, (long long)r->cw_nok, r->active, owned, present, ready);
+            "\",\"FAST_RESET\":%d,\"POLL_MS\":%d,\"cw_ok\":%lld,\"cw_nok\":%lld,\"active\":%d,\"owned\":%d,\"present\":%d,\"ready\":%d",
+            r->fast_reset, r->poll_ms, (long long)r->cw_ok, (long long)r->cw_nok, r->active, owned, present, ready);
     }
     if (!detail) return pos;
 
@@ -308,7 +305,7 @@ static void form_to_edit(const reader_form *f, int index, S_WEBIF_READER_EDIT *e
     tcmg_strlcpy(e->caid,f->caid,sizeof(e->caid)); tcmg_strlcpy(e->sid_whitelist,f->sid,sizeof(e->sid_whitelist));
     tcmg_strlcpy(e->ecmwhitelist,f->ecmwl,sizeof(e->ecmwhitelist)); tcmg_strlcpy(e->group,f->groups,sizeof(e->group));
     tcmg_strlcpy(e->ecmkeys,f->ecmkeys,sizeof(e->ecmkeys));
-    tcmg_strlcpy(e->do_ecm,f->do_ecm,sizeof(e->do_ecm)); tcmg_strlcpy(e->fast_reset,f->fast_reset,sizeof(e->fast_reset));
+    tcmg_strlcpy(e->fast_reset,f->fast_reset,sizeof(e->fast_reset));
     tcmg_strlcpy(e->poll_ms,f->poll_ms,sizeof(e->poll_ms));
 }
 

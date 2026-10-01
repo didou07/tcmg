@@ -9,7 +9,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-
 static int write_text(const char *path, const char *text)
 {
     FILE *f = fopen(path, "wb");
@@ -23,7 +22,6 @@ static int write_text(const char *path, const char *text)
     if (fclose(f) != 0) return 0;
     return 1;
 }
-
 static int init_cfg(S_CONFIG *cfg)
 {
     memset(cfg, 0, sizeof(*cfg));
@@ -34,7 +32,6 @@ static int init_cfg(S_CONFIG *cfg)
     }
     return 1;
 }
-
 static void free_cfg(S_CONFIG *cfg)
 {
     if (!cfg) return;
@@ -42,23 +39,19 @@ static void free_cfg(S_CONFIG *cfg)
     pthread_rwlock_destroy(&cfg->acc_lock);
     pthread_mutex_destroy(&cfg->ban_lock);
 }
-
 static int run_save_stress(S_CONFIG *cfg);
-
 static int load_case(const char *dir, const char *global, const char *users, const char *readers, const char *expect)
 {
     char path[1024];
     char text[4096];
     S_CONFIG cfg;
     int ok;
-
     snprintf(path, sizeof(path), "%s/tcmg.conf", dir);
     if (!write_text(path, global)) { fprintf(stderr, "write global: %s\n", strerror(errno)); return 0; }
     snprintf(path, sizeof(path), "%s/tcmg.users", dir);
     if (!write_text(path, users)) { fprintf(stderr, "write users: %s\n", strerror(errno)); return 0; }
     snprintf(path, sizeof(path), "%s/tcmg.readers", dir);
     if (!write_text(path, readers)) { fprintf(stderr, "write readers: %s\n", strerror(errno)); return 0; }
-
     if (!init_cfg(&cfg)) return 0;
     snprintf(path, sizeof(path), "%s/tcmg.conf", dir);
     ok = cfg_load(path, &cfg);
@@ -117,7 +110,6 @@ static int load_case(const char *dir, const char *global, const char *users, con
     free_cfg(&cfg);
     return 1;
 }
-
 static void *save_stress_thread(void *arg)
 {
     S_CONFIG *cfg = (S_CONFIG *)arg;
@@ -125,7 +117,6 @@ static void *save_stress_thread(void *arg)
         if (!cfg_save(cfg)) return (void *)1;
     return NULL;
 }
-
 static int run_save_stress(S_CONFIG *cfg)
 {
     enum { THREADS = 4 };
@@ -141,7 +132,6 @@ static int run_save_stress(S_CONFIG *cfg)
     }
     return 1;
 }
-
 static int run_reload_lifetime(const char *dir)
 {
     const char *global =
@@ -164,21 +154,18 @@ static int run_reload_lifetime(const char *dir)
     char path[1024], users_path[1024];
     char err[256] = "";
     S_ACCOUNT *old, *fresh;
-
     memset(&g_cfg, 0, sizeof(g_cfg));
     if (pthread_rwlock_init(&g_cfg.acc_lock, NULL) != 0) return 0;
     if (pthread_mutex_init(&g_cfg.ban_lock, NULL) != 0) {
         pthread_rwlock_destroy(&g_cfg.acc_lock);
         return 0;
     }
-
     snprintf(path, sizeof(path), "%s/tcmg.conf", dir);
     snprintf(users_path, sizeof(users_path), "%s/tcmg.users", dir);
     if (!write_text(path, global) || !write_text(users_path, users_a)) goto fail;
     snprintf(path, sizeof(path), "%s/tcmg.readers", dir);
     if (!write_text(path, readers)) goto fail;
     snprintf(path, sizeof(path), "%s/tcmg.conf", dir);
-
     if (!cfg_load(path, &g_cfg)) goto fail;
     old = account_acquire("client");
     if (!old) goto fail;
@@ -206,7 +193,6 @@ static int run_reload_lifetime(const char *dir)
     pthread_mutex_destroy(&g_cfg.ban_lock);
     account_retired_free();
     return 1;
-
 fail:
     cfg_accounts_free(&g_cfg);
     account_retired_free();
@@ -214,7 +200,6 @@ fail:
     pthread_mutex_destroy(&g_cfg.ban_lock);
     return 0;
 }
-
 int main(void)
 {
     char dir[] = "/tmp/tcmg-config-smoke-XXXXXX";
@@ -239,31 +224,55 @@ int main(void)
         "[reader]\nlabel = cs378x\nprotocol = cs378x\nenabled = 0\ngroup = 1\ndevice = 127.0.0.1,15052\n"
         "[reader]\nlabel = internal-sci\nprotocol = internal\nenabled = 0\ngroup = 1\ndevice = /dev/sci0\ndo_ecm = 1\nfast_reset = 1\npoll_ms = 100\n";
     if (!mkdtemp(dir)) { perror("mkdtemp"); return 2; }
-
     if (!load_case(dir, global, users, readers, NULL)) return 3;
-
+    const char *tolerant_global =
+        "[global]\n"
+        "socket_timeout = 30\n"
+        "bad_line_without_equals\n"
+        "server_keepalive = broken\n"
+        "[unknown]\n"
+        "foo = bar\n"
+        "[webif]\n"
+        "enabled = 0\nport = 18080\nrefresh = 1\nuser = admin\npassword = change\nbindaddr =\n"
+        "[newcamd]\nport = 18050\nbindaddr =\nkey = 0102030405060708091011121314\nkeepalive = 0\nmode = auto\n"
+        "[cccam]\nport = 18060\nbindaddr =\n"
+        "[cs378x]\nport = 18070\nbindaddr =\n"
+        "[failban]\nenabled = 0\nallowlist =\nmax_fails = 5\nban_secs = 300\n";
+    const char *tolerant_users =
+        "[account]\nuser = client\npwd = one\nenabled = 1\ngroup = 1\ncaid = 0B00\n"
+        "unknown_setting = ignored\nmax_connections = nope\n"
+        "[unknown]\nuser = ignored\n"
+        "[account]\nuser = second\npwd = two\nenabled = 1\ngroup = 2\ncaid = 0B00\n";
+    const char *tolerant_readers =
+        "[reader]\nlabel = emu\nprotocol = emu\nenabled = 1\ngroup = 1\ncaid = 0B00\necm_maxlen = 255\ninactivitytimeout = 30\n"
+        "broken_reader_line\nfast_reset = invalid\n"
+        "ecmkey = 0B00=00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF\n"
+        "[unknown]\nlabel = ignored\n"
+        "[reader]\nlabel = cccam\nprotocol = cccam\nenabled = 0\ngroup = 1\ndevice = 127.0.0.1,12050\n"
+        "unknown_setting = ignored\n"
+        "[reader]\nlabel = newcamd\nprotocol = newcamd\nenabled = 0\ngroup = 1\ndevice = 127.0.0.1,15050\nuser = client\nkey = 0102030405060708091011121314\n"
+        "[reader]\nlabel = mgcamd\nprotocol = mgcamd\nenabled = 0\ngroup = 1\ndevice = 127.0.0.1,15050\nuser = client\nkey = 0102030405060708091011121314\n"
+        "[reader]\nlabel = cs378x\nprotocol = cs378x\nenabled = 0\ngroup = 1\ndevice = 127.0.0.1,15052\n"
+        "[reader]\nlabel = internal-sci\nprotocol = internal\nenabled = 0\ngroup = 1\ndevice = /dev/sci0\ndo_ecm = 1\nfast_reset = 1\npoll_ms = 100\n";
+    if (!load_case(dir, tolerant_global, tolerant_users, tolerant_readers, NULL)) return 4;
     const char *bad_unknown = "[global]\nsocket_timeout = 30\nnot_a_setting = 1\n";
-    if (!load_case(dir, bad_unknown, users, readers, "unknown")) return 4;
-
+    if (!load_case(dir, bad_unknown, users, readers, NULL)) return 5;
     const char *bad_dupe =
         "[global]\nsocket_timeout = 30\n[webif]\nenabled = 0\nport = 18080\n"
         "[newcamd]\nport = 18050\nkey = 0102030405060708091011121314\n[cccam]\nport = 18060\n[cs378x]\nport = 18070\n[failban]\nenabled = 0\n";
     const char *dupe_users =
         "[account]\nuser = client\npwd = one\ngroup = 1\n[account]\nuser = client\npwd = two\ngroup = 1\n";
-    if (!load_case(dir, bad_dupe, dupe_users, readers, "duplicate")) return 5;
-
+    if (!load_case(dir, bad_dupe, dupe_users, readers, "duplicate")) return 6;
     const char *bad_emu =
         "[global]\nsocket_timeout = 30\n[webif]\nenabled = 0\nport = 18080\n"
         "[newcamd]\nport = 18050\nkey = 0102030405060708091011121314\n[cccam]\nport = 18060\n[cs378x]\nport = 18070\n[failban]\nenabled = 0\n";
     const char *bad_reader = "[reader]\nlabel = bad\nprotocol = emu\nenabled = 1\ngroup = 1\ncaid = 0B00\n";
-    if (!load_case(dir, bad_emu, users, bad_reader, "emu-key")) return 6;
-
+    if (!load_case(dir, bad_emu, users, bad_reader, "emu-key")) return 7;
     const char *bad_conflict =
         "[global]\nsocket_timeout = 30\n[webif]\nenabled = 0\nport = 18080\n"
         "[newcamd]\nport = 18050\nkey = 0102030405060708091011121314\n[cccam]\nport = 18050\n[cs378x]\nport = 18070\n[failban]\nenabled = 0\n";
-    if (!load_case(dir, bad_conflict, users, readers, "port-conflict")) return 7;
-
-    if (!run_reload_lifetime(dir)) return 8;
+    if (!load_case(dir, bad_conflict, users, readers, "port-conflict")) return 8;
+    if (!run_reload_lifetime(dir)) return 9;
     snprintf(path, sizeof(path), "%s/tcmg.conf", dir); remove(path);
     snprintf(path, sizeof(path), "%s/tcmg.users", dir); remove(path);
     snprintf(path, sizeof(path), "%s/tcmg.readers", dir); remove(path);

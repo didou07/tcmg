@@ -21,7 +21,6 @@ int32_t reader_pcsc_do_ecm(const S_READER_ECM_REQUEST *req)
     if (!req || !req->reader || !req->request) return -1;
     r = req->request;
     if (!r->cw || !r->ecm) return -1;
-    if (!req->reader->do_ecm) return -2;
     return pcsc_do_ecm_reader(req->reader->device, r->caid,
                               r->ecm, (size_t)r->ecm_len, r->cw,
                               req->reader->ecm_whitelist);
@@ -60,7 +59,6 @@ int32_t reader_internal_do_ecm(const S_READER_ECM_REQUEST *req)
     if (!req || !req->reader || !req->request) return -1;
     r = req->request;
     if (!r->cw || !r->ecm) return -1;
-    if (!req->reader->do_ecm) return -2;
     return internal_do_ecm_reader(req->index, r->caid, r->ecm, (size_t)r->ecm_len,
                                   r->cw, req->reader->ecm_whitelist);
 }
@@ -71,7 +69,6 @@ int32_t reader_serial_do_ecm(const S_READER_ECM_REQUEST *req)
     if (!req || !req->reader || !req->request) return -1;
     r = req->request;
     if (!r->cw || !r->ecm) return -1;
-    if (!req->reader->do_ecm) return -2;
     return serial_do_ecm_reader(req->index, r->caid, r->ecm, (size_t)r->ecm_len,
                                 r->cw, req->reader->ecm_whitelist);
 }

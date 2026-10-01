@@ -19,7 +19,6 @@ static void copy_reader(const S_READER *r, int idx, S_WEBIF_READER_VIEW *v)
     v->enabled = r->enabled;
     v->inactivitytimeout = r->inactivitytimeout;
     v->ecm_whitelist = r->ecm_whitelist;
-    v->do_ecm = r->do_ecm;
     v->fast_reset = r->fast_reset;
     v->poll_ms = r->poll_ms;
     S_READER_STATS_SNAPSHOT stats;
@@ -166,7 +165,6 @@ bool webif_reader_save(const S_WEBIF_READER_EDIT *e)
     memset(&value, 0, sizeof(value));
     value.in_use = 1;
     value.enabled = 1;
-    value.do_ecm = 1;
     value.inactivitytimeout = 30;
     value.ecm_whitelist = 0x37;
     value.poll_ms = 250;
@@ -191,11 +189,9 @@ bool webif_reader_save(const S_WEBIF_READER_EDIT *e)
 
     if (protocol->kind == READER_PROTOCOL_EMU) {
         value.device[0] = 0; value.user[0] = 0; value.password[0] = 0;
-        value.inactivitytimeout = 30; value.do_ecm = 1; value.fast_reset = 0; value.poll_ms = 250;
+        value.inactivitytimeout = 30; value.fast_reset = 0; value.poll_ms = 250;
     } else if (protocol->kind == READER_PROTOCOL_CARD) {
         value.user[0] = 0; value.password[0] = 0; value.inactivitytimeout = 30;
-        if (parse_simple_i32(e->do_ecm, 0, 1, &iv) < 0) return false;
-        value.do_ecm = (int8_t)iv;
         if (parse_simple_i32(e->fast_reset, 0, 86400, &value.fast_reset) < 0) return false;
         if (strcasecmp(value.protocol, "internal") != 0) {
             if (parse_simple_i32(e->poll_ms, 50, 10000, &value.poll_ms) < 0) return false;
@@ -328,4 +324,3 @@ bool webif_reader_delete(int index)
     pthread_mutex_unlock(&g_cfg_transition_mtx);
     return ok;
 }
-

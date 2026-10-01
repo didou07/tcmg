@@ -1,5 +1,4 @@
 #!/bin/bash
-# usage: [HARNESS=/path/to/tharness] [CONF=/tmp/tcu] run.sh <python-script> [args...]
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 CONF=${CONF:-/tmp/tcu}

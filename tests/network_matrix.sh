@@ -55,7 +55,6 @@ ban_secs = 300
 CFG
     if [ "$mode" = mgcamd ]; then
         sed -i "s/^port = $port$/port = $port/" "$d/tcmg.conf"
-        # The server's mode flag identifies the listener as MGcamd/525-capable.
         sed -i 's/^mode = auto$/mode = auto/' "$d/tcmg.conf"
     fi
     cat > "$d/tcmg.users" <<'CFG'
@@ -163,7 +162,6 @@ for mode in cccam newcamd mgcamd cs378x; do
   cd="$sd" >/dev/null
   "$BIN" -c "$sd" >"$sd/server.log" 2>&1 & spid=$!
   sleep 0.25
-  # Fail closed if the listener did not start.
   if ! kill -0 "$spid" 2>/dev/null; then echo "[$mode] server failed" >&2; cat "$sd/server.log" >&2; exit 10; fi
   cdst=$(make_client_conf "$mode" "$port")
   if ! "$SMOKE" "$cdst/tcmg.conf" >"$cdst/smoke.log" 2>&1; then

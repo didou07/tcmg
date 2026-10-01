@@ -80,7 +80,6 @@ int32_t reader_dispatch_ecm(const S_ECM_REQUEST *request, S_READER_RESULT *resul
         S_CW_CACHE_WAIT cache_wait = { .slot = -1, .generation = 0, .reader_index = indices[i] };
         E_CW_CACHE_BEGIN cache_begin = CW_CACHE_BEGIN_LEADER;
 
-        /* Completed cache is global.  Check it before creating reader work. */
         if (cw_cache_lookup(ecm_md5, request->cw, request->account, true)) {
             if (result) {
                 result->status = EMU_OK;
@@ -103,10 +102,6 @@ int32_t reader_dispatch_ecm(const S_ECM_REQUEST *request, S_READER_RESULT *resul
             return EMU_OK;
         }
 
-        /* In-flight work is keyed by (ECM, reader).  This is deliberately
-           before the reader gate: waiters must not hold the gate while the
-           leader performs the actual I/O.  Internal keeps its own ECM queue,
-           so its protocol path remains untouched. */
         if (!reader_is_internal(&readers[i])) {
             cache_begin = cw_cache_begin_reader(ecm_md5, indices[i], request->cw,
                                                 request->account, true, &cache_wait);
@@ -154,8 +149,7 @@ int32_t reader_dispatch_ecm(const S_ECM_REQUEST *request, S_READER_RESULT *resul
                                  indices[i], readers[i].label);
                     return EMU_OK;
                 }
-                /* Leader failed.  Do not stampede this reader again; move on
-                   to normal fallback selection. */
+
                 tcmg_log_dbg(D_READER, "cw cache pending failed reader index=%d label='%s' -> next reader",
                              indices[i], readers[i].label);
                 continue;
@@ -164,9 +158,6 @@ int32_t reader_dispatch_ecm(const S_ECM_REQUEST *request, S_READER_RESULT *resul
 
         if (gate) pthread_mutex_lock(gate);
 
-        /* A different reader or thread may have filled the global cache while
-           this request was registering/picking its reader.  Last check before
-           expensive I/O is intentional. */
         if (cw_cache_lookup(ecm_md5, request->cw, request->account, true)) {
             if (cache_begin == CW_CACHE_BEGIN_LEADER)
                 cw_cache_complete_reader(ecm_md5, indices[i], true);

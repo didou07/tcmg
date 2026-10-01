@@ -64,19 +64,8 @@ int32_t ecm_process(S_CLIENT *client, uint16_t caid, uint16_t sid, uint32_t prov
     memset(cw, 0, CW_LEN);
     start = tcmg_mono_ms();
 
-    /* Completed-result cache is the cheapest path and is deliberately global:
-       if any eligible reader has already produced this ECM's CW, do not touch
-       a reader at all.  In-flight coalescing is handled per reader in
-       reader_dispatch_ecm(), so reader selection/fallback remains intact. */
-    if (cw_cache_lookup(ecm_md5, cw, request.account, true)) {
-        cache_hit = true;
-        res = EMU_OK;
-        reader_result.status = EMU_OK;
-        reader_result.cache_hit = 1;
-    } else {
-        res = reader_dispatch_ecm(&request, &reader_result);
-        cache_hit = reader_result.cache_hit != 0;
-    }
+    res = reader_dispatch_ecm(&request, &reader_result);
+    cache_hit = reader_result.cache_hit != 0;
 
     elapsed = (long)tcmg_elapsed_ms(start);
     E_ACCOUNT_ECM_RESULT stats_result =

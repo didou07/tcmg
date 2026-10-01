@@ -34,7 +34,6 @@ check('FailBan duration max is one week', 'max=\'604800\'' in config and 'Math.m
 
 check('Mobile menu wiring is singular', core.count("id='mnuBtn'") == 1 and core.count("id='mobile-nav'") == 1 and core.count('function toggleMobileNav') == 1)
 
-# One authoritative responsive card layer. Older responsive patches are intentionally consolidated into the single portrait layer.
 check('portrait mode has no width gate', '@media(orientation:portrait){' in css and not re.search(r'@media\([^)]*(?:max|min)-width', css))
 check('landscape uses desktop base without pointer gate', 'orientation:landscape' not in css and 'pointer:coarse' not in css)
 check('no legacy mobile patch markers', not re.search(r'6\.0\.[23]|chocolate-box|mobile card pass|status-card system', css))

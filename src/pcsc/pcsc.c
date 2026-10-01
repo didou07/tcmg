@@ -595,11 +595,6 @@ static int pcsc_select_reader_ex(const char *selector, char *out, size_t out_len
     return -1;
 }
 
-static int pcsc_status_9011(const uint8_t *rsp, size_t rsp_len)
-{
-    return rsp_len >= 2 && rsp[rsp_len - 2] == 0x90 && rsp[rsp_len - 1] == 0x11;
-}
-
 static int pcsc_parse_conax_cw(const uint8_t *rsp, size_t rsp_len, uint8_t cw[CW_LEN], int *found_mask)
 {
     if (!rsp || rsp_len < 2 || !cw || !found_mask) return -1;
@@ -662,6 +657,8 @@ int pcsc_do_ecm_reader(const char *selector, uint16_t caid, const uint8_t *ecm, 
     }
     atomic_fetch_add(&s_ecm_active[active_idx], 1);
 
+    int64_t ecm_t0 = tcmg_mono_ms();
+
     uint8_t apdu[5 + 255];
     uint8_t rsp[TCMG_PCSC_ATR_MAX + 256];
     size_t apdu_len = 5 + ecm_len + 3;
@@ -685,11 +682,6 @@ int pcsc_do_ecm_reader(const char *selector, uint16_t caid, const uint8_t *ecm, 
         goto done;
     }
 
-    if (pcsc_status_9011(rsp, rsp_len)) {
-        rc = -6;
-        goto done;
-    }
-
     if (rsp_len < 2) {
         rc = -7;
         goto done;
@@ -706,11 +698,6 @@ int pcsc_do_ecm_reader(const char *selector, uint16_t caid, const uint8_t *ecm, 
         rsp_len = sizeof(rsp);
         if (pcsc_transmit(reader, ins_ca, sizeof(ins_ca), rsp, &rsp_len) != 0) {
             rc = -8;
-            goto done;
-        }
-
-        if (pcsc_status_9011(rsp, rsp_len)) {
-            rc = -9;
             goto done;
         }
 
@@ -743,8 +730,16 @@ int pcsc_do_ecm_reader(const char *selector, uint16_t caid, const uint8_t *ecm, 
         rc = -13;
 
 done:
-    if (active_idx >= 0 && active_idx < TCMG_PCSC_MAX_READERS)
+    if (active_idx >= 0 && active_idx < TCMG_PCSC_MAX_READERS) {
+        int64_t elapsed_ms = tcmg_mono_ms() - ecm_t0;
+        if (rc == 0)
+            tcmg_log_dbg(D_READER, "pcsc ECM ok reader='%s' elapsed=%lldms",
+                         reader, (long long)elapsed_ms);
+        else
+            tcmg_log_dbg(D_READER, "pcsc ECM failed reader='%s' rc=%d elapsed=%lldms",
+                         reader, rc, (long long)elapsed_ms);
         atomic_fetch_sub(&s_ecm_active[active_idx], 1);
+    }
     return rc;
 #else
     (void)caid;

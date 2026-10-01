@@ -76,15 +76,12 @@ with sync_playwright() as p:
 print("FAILED:", len(fails), fails)
 raise SystemExit(1 if fails else 0)
 
-
-# FailBan UI: compact 4-cell card and no Total Fails/per-ban fails/expiry text.
 system_c = (ROOT / "webif/pages/system.c").read_text()
 assert "Total Fails" not in system_c
 assert "b->fails" not in system_c
 assert "Expires At" not in system_c
 assert "fbc-country" in system_c and "fbc-left" in system_c
 
-# ECM result log classification: whitelist rejection is distinct from not-found.
 log_js = (ROOT / "webif/assets/js_livelog.h").read_text()
 assert "LC_REJECT" in log_js and "#f0973f" in log_js
 log_c = (ROOT / "src/log/log.c").read_text()

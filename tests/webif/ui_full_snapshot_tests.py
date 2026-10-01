@@ -45,7 +45,6 @@ with sync_playwright() as p:
             ok(f'{path} {label} no horizontal overflow', dims['sw'] <= dims['cw'] + 2, dims)
             ok(f'{path} {label} no duplicate ids', not dims['dup'], dims['dup'])
             real_errors=[e for e in errors if 'sessionStorage' not in e]; ok(f'{path} {label} no page errors', not real_errors, real_errors)
-            # Modal fit and escape behavior for pages that own modals.
             if path == '/users':
                 page.get_by_role('button', name='Add User').first.click()
                 visible=page.locator('#uModal').is_visible()
@@ -72,13 +71,10 @@ with sync_playwright() as p:
             page.close()
     b.close()
 
-# Static CSS guard: dashboard/table hover selectors must only appear in a fine-pointer block.
 css_src=open('webif/assets/css.h', encoding='utf-8').read()
 for selector in ('.sc:hover::before', '.sc.bl:hover', '.sc.gr:hover', 'tbody tr:hover', '.cm tbody tr:hover'):
     ok(f'CSS hover selector present: {selector}', selector in css_src)
-# Sticky row hover should not be emitted outside fine-pointer guard.
 for bad in ('@media (hover:hover) and (pointer:fine){.sc:hover::before', '@media (hover:hover) and (pointer:fine){tbody tr:hover'):
-    # Formatting is compacted differently; presence is reported but enforcement is via runtime snapshot.
     pass
 
 print('FAILED:', len(FAILS), FAILS)

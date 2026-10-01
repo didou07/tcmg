@@ -501,4 +501,3 @@ void webif_account_reset_all_stats(void)
     pthread_rwlock_unlock(&g_cfg.acc_lock);
     pthread_mutex_unlock(&g_cfg_transition_mtx);
 }
-

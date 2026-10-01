@@ -21,7 +21,6 @@ typedef struct {
     int32_t  ngroups;
     S_ECMKEY keys[MAX_ECMKEYS_PER_ACC];
     int32_t  nkeys;
-    int8_t   do_ecm;
     int32_t  fast_reset;
     int32_t  poll_ms;
     uint8_t  newcamd_key[14];

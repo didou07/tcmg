@@ -123,8 +123,8 @@ bool cfg_build_server_text(const S_CONFIG *c, char *buf, size_t cap)
 
         if (reader_protocol_kind(r->protocol) == READER_PROTOCOL_CARD) {
             ok = ok && cfg_appendf(buf, cap, &pos,
-                               "device = %s\ndo_ecm = %d\nfast_reset = %d\n",
-                               r->device, r->do_ecm, r->fast_reset);
+                               "device = %s\nfast_reset = %d\n",
+                               r->device, r->fast_reset);
             if (strcasecmp(r->protocol, "pcsc") == 0 ||
                 strcasecmp(r->protocol, "serial") == 0) {
                 ok = ok && cfg_appendf(buf, cap, &pos, "poll_ms = %d\n", r->poll_ms);

@@ -6,10 +6,8 @@ r=S.post(BASE+'/login',data={'u':'admin','p':'secret'},timeout=5,allow_redirects
 assert r.status_code==302, r.status_code
 
 def inline(html):
-    # Inline the actual server assets so Chromium never needs to connect to loopback.
     css=S.get(BASE+'/assets/app.css',timeout=5).text
     html=re.sub(r"<link[^>]+href=['\"]?/assets/app\.css[^>]*>", lambda m: '<style>'+css+'</style>', html, count=1)
-    # Replace each external JS asset used by the page with its actual bytes.
     for name in ('app','users','readers','config','livelog','files','tvcas','power'):
         if ("/assets/"+name+'.js') in html:
             js=S.get(BASE+'/assets/'+name+'.js',timeout=5).text
@@ -40,7 +38,6 @@ with sync_playwright() as p:
     for w in (320,390,430):
         pg=b.new_page(viewport={'width':w,'height':844},reduced_motion='reduce')
         pg.set_content(pages['/users'],wait_until='domcontentloaded'); pg.wait_for_timeout(150)
-        # use first real user row from server output
         if pg.locator('tr.urow').count()==0:
             sample="""<tr class='urow'><td class='c-en'><button class='pw-btn on'></button></td><td class='c-user'><button class='ulink'>alice</button></td><td class='c-conn'>1/2</td><td class='c-ip'>10.0.0.4</td><td class='c-country'><span class='flg'>DZ</span></td><td class='c-caid'>0B00</td><td class='c-ok tg'>124</td><td class='c-nok dim'>2</td><td class='c-proto'><span class='badge'>NC</span></td><td class='c-idle'>4s</td><td class='c-last60 tg'>18</td><td class='c-last'>4s</td><td class='c-exp'>2027-09-01</td><td class='c-btn'><div class='ba'><button class='act-b ed'></button><button class='act-b rs'></button><button class='act-b dl'></button></div></td></tr>"""
             pg.locator('#usrBody').evaluate("(el,h)=>{el.innerHTML=h; const t=document.getElementById('usrTable'); if(t) t.hidden=false}", sample)

@@ -10,7 +10,6 @@ import time
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 BIN = os.environ.get("TCMG_WEBIF_BIN", os.path.join(ROOT, "build", "tcmg"))
 
-
 def wait_http(port, timeout=8.0):
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -22,7 +21,6 @@ def wait_http(port, timeout=8.0):
         except OSError:
             time.sleep(0.05)
     return False
-
 
 def response_code(port):
     with socket.create_connection(("127.0.0.1", port), timeout=3) as s:
@@ -44,7 +42,6 @@ def wait_for_code(port, expected, timeout=2.0):
         time.sleep(0.02)
     return False
 
-
 def main():
     if not os.path.exists(BIN):
         raise SystemExit(f"missing TCMG binary: {BIN}")
@@ -56,7 +53,6 @@ def main():
     if workers < 1:
         raise SystemExit("WEBIF_MAX_THREADS invalid")
 
-    # Pick an unused local port once; the child owns it after startup.
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
@@ -83,7 +79,6 @@ def main():
             if not wait_http(port):
                 raise SystemExit("WebIF did not start")
 
-            # Each partial request occupies a WebIF worker in handle_request().
             for _ in range(workers):
                 s = socket.create_connection(("127.0.0.1", port), timeout=3)
                 s.sendall(b"GET /status HTTP/1.1\r\nHost: 127.0.0.1\r\n")
@@ -113,7 +108,6 @@ def main():
             except Exception:
                 p.kill()
                 p.wait(timeout=2)
-
 
 if __name__ == "__main__":
     main()

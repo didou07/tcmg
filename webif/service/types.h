@@ -71,7 +71,6 @@ typedef struct {
     int enabled;
     int inactivitytimeout;
     int ecm_whitelist;
-    int do_ecm;
     int fast_reset;
     int poll_ms;
     int64_t cw_ok;
@@ -235,7 +234,6 @@ typedef struct {
     char group[WEBIF_GROUPS_LEN];
     char ecmkeys[WEBIF_ECMKEYS_LEN];
     char enabled[8];
-    char do_ecm[8];
     char fast_reset[16];
     char poll_ms[16];
     int index;

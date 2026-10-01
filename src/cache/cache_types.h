@@ -9,6 +9,7 @@ typedef struct {
     uint8_t cw[CW_LEN];
     int64_t ts_ms;
     uint64_t last_used_ms;
+    uint64_t seq;
     uint32_t count;
     int8_t  valid;
     int8_t  scoped;

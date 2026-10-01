@@ -25,7 +25,6 @@ def rawsock(payload,read=True):
     except Exception: pass
     s.close(); return out
 
-# ---- T1 pages
 for pg in ["/status","/users","/readers","/livelog","/config","/failban","/files","/tvcas","/power?action=restart"]:
     st,hd,b=req("GET",pg); ok("page "+pg,st==200 and len(b)>500,st)
 for asset,ctype in [("/assets/app.css","text/css"),("/assets/app.js","application/javascript"),("/assets/users.js","application/javascript")]:
@@ -34,7 +33,6 @@ st,hd,b=req("GET","/users")
 ok("security headers",hd.get("x-frame-options")=="DENY" and hd.get("x-content-type-options")=="nosniff" and "frame-ancestors" in hd.get("content-security-policy",""),hd)
 ok("users page has rows",b.count("class='urow'")>0,b.count("class='urow'"))
 
-# ---- T2 users API
 st,hd,j=req("GET","/api/user/get?user=client"); ok("user get json",st==200 and j.get("user")=="client",j)
 test_user="stage19_"+uuid.uuid4().hex[:8]
 st,_,j=req("POST","/api/user/add",{"user":test_user,"pass":"pw1","caid":"0B00","maxconn":"2","enabled":"1","expiry":"2030-12-31","anti_share":"1","as_max_sids":"1","as_max_ecm":"30","as_ecm_window_s":"45","as_channel_timeout_s":"12","as_switch_delay_s":"2"}); ok("add valid",st==200 and j.get("ok"),j)
@@ -47,7 +45,6 @@ bads={"caid zz":{"user":"b1","pass":"x","caid":"ZZZZ"},"caid long":{"user":"b2",
 for k,v in bads.items():
     st,_,j=req("POST","/api/user/add",v); ok("reject: "+k,st==400 and j.get("ok") is False,(st,j))
 st,_,j=req("POST","/api/user/add",{"user":test_user,"pass":"x"}); ok("duplicate -> 409",st==409,(st,j))
-# save without 'enabled' must NOT disable the account
 st,_,j=req("POST","/api/user/save",{"user":test_user,"pass":"pw2","caid":"0604","maxconn":"3","expiry":"0","anti_share":"1","as_max_sids":"2","as_max_ecm":"60","as_ecm_window_s":"90","as_channel_timeout_s":"20","as_switch_delay_s":"0"}); ok("save w/o enabled ok",st==200,j)
 st,_,j=req("GET","/api/user/get?user="+urllib.parse.quote(test_user)); ok("save w/o enabled keeps enabled=1 and antishare settings",j.get("enabled")==1 and j.get("caid")=="0604" and j.get("expiry")=="0" and j.get("as_max_sids")==2 and j.get("as_max_ecm")==60 and j.get("as_ecm_window_s")==90 and j.get("as_channel_timeout_s")==20 and j.get("as_switch_delay_s")==0,j)
 st,_,j=req("POST","/api/user/toggle?user="+urllib.parse.quote(test_user)); ok("toggle off",j.get("enabled")==0,j)
@@ -61,11 +58,8 @@ for _ in range(10):
     st,_,j=req("GET","/api/user/get?user="+urllib.parse.quote(test_user))
     if st==200 and j.get("enabled")==1: break
 ok("toggle on applied",st==200 and j.get("enabled")==1,j)
-# JSON escaping of odd (but valid) names comes from config file: tested via file save below
-# reset stats on an ONLINE user, then idle must be sane
 st,_,j=req("POST","/api/user/resetstats?user=client"); ok("resetstats",st==200 and j.get("ok"),j)
 st,_,rj=req("GET","/api/readers"); ok("readers API returns JSON",st==200 and rj.get("ok") is True and isinstance(rj.get("readers"),list) and all("cw_ok" in r and "cw_nok" in r and "active" in r for r in rj.get("readers",[])),rj)
-# reader CRUD: add, edit, validate, and delete through the same endpoints used by the WebIf modal
 reader_base={"index":"-1","label":"Test EMU","protocol":"emu","enabled":"1","device":"","user":"","password":"","key":"","inactivitytimeout":"30","caid":"","sid_whitelist":"","ecmwhitelist":"37","group":"1","ecmkeys":"0B00="+"A"*64,"DO_ECM":"1","FAST_RESET":"0","POLL_MS":"250"}
 large_keys=";".join("%04X="%(0x1000+i)+"A"*64 for i in range(8))
 large_reader=dict(reader_base)
@@ -103,7 +97,6 @@ for k,bad in [("label",dict(reader_base, label="")), ("protocol",dict(reader_bas
     st,_,j=req("POST","/api/reader/save",bad); ok("reject reader "+k,st==400 and j.get("ok") is False,(st,j))
 st,_,j=req("POST",f"/api/reader/delete?index={reader_test_index}"); ok("delete reader",st==200 and j.get("ok"),j)
 st,_,j=req("GET",f"/api/reader/get?index={reader_test_index}"); ok("deleted reader -> 404",st==404 and j.get("ok") is False,j)
-# exercise every reader protocol exposed by the WebIf modal
 reader_protocol_base={"index":"-1","enabled":"1","device":"host:10000","user":"u","password":"p","key":"","inactivitytimeout":"30","caid":"0B00","sid_whitelist":"","ecmwhitelist":"37","group":"1","ecmkeys":"","DO_ECM":"1","FAST_RESET":"10","POLL_MS":"400"}
 for _proto in ["cccam","mgcamd","newcamd","cs378x","pcsc","serial"]:
     _d=dict(reader_protocol_base)
@@ -129,7 +122,6 @@ if cl:
     st,_,j=req("POST","/api/client/kill?tid="+urllib.parse.quote(str(tid))+"&user="+urllib.parse.quote(uname)); ok("client kill API",st==200 and j.get("ok"),j)
 else:
     ok("client kill API",True,"no active client fixture")
-# delete an active user when one exists; otherwise verify the endpoint remains stable.
 online_user=cl[0].get("user") if cl else ""
 if online_user:
     st,_,j=req("POST","/api/user/delete?user="+urllib.parse.quote(online_user)); ok("delete active user",st==200,j)
@@ -140,16 +132,13 @@ for i in range(3):
 ok("no crash after deleting active user",st1==200 and st2==200 and st3==200)
 st,_,j=req("POST","/api/user/delete?user=nobody"); ok("delete unknown -> 404",st==404,j)
 
-# ---- T3 config
 st,_,c=req("GET","/api/config/get"); ok("config get omits reader-only pcsc settings","pcsc_poll_ms" not in c and "pcsc_reader" not in c,c)
 c2=dict(c)
 d=dict((k, str(v)) for k,v in c.items() if isinstance(v, (int, str)))
 def cfgbody(**kw):
     x=dict(d); x.update(kw); return x
 st,_,j=req("POST","/api/config/save",cfgbody()); ok("config save ok",st==200 and j.get("ok"),(st,j))
-# Partial config update must not erase fields that were not submitted.
 orig_cccam=c2.get("cccam_port"); orig_webif_user=c2.get("webif_user"); orig_logfile=c2.get("logfile")
-# Listener changes are saved but must explicitly request a process restart rather than a rejected live reload.
 st,_,jr=req("POST","/api/config/save",{"cccam_port":str((orig_cccam or 0)+1)}); ok("listener config reports restart required",st==200 and jr.get("ok") and jr.get("restart_required") is True,jr)
 for k,v in {"bad port":{"cccam_port":"70000"},"bad key":{"newcamd_key":"XYZ"},"bad ip":{"webif_bindaddr":"not-an-ip"},"hash in logfile":{"logfile":"/tmp/a#b"},"bad flag":{"ecm_log":"7"}}.items():
     st,_,j=req("POST","/api/config/save",cfgbody(**v)); ok("config reject: "+k,st==400 and "invalid" in str(j.get("msg","")),(st,j))
@@ -158,7 +147,6 @@ st,_,c3=req("GET","/api/config/get"); ok("logfile can be cleared",c3.get("logfil
 st,_,j=req("POST","/api/config/save",cfgbody(newcamd_port="5050")); st,_,j=req("POST","/api/config/save",cfgbody(newcamd_port="0"))
 st,_,c4=req("GET","/api/config/get"); ok("newcamd_port can be set to 0 (disabled)",c4.get("newcamd_port")==0,c4.get("newcamd_port"))
 
-# ---- T4 file editor: config/users/readers/srvid2 + size/validation behavior
 st,_,b=req("GET","/files"); import re, html
 ok("files page exposes config tabs", all(x in b for x in ("tcmg.conf","tcmg.users","tcmg.readers","tcmg.srvid2")), len(b))
 ok("files page exposes keyboard tabs", "role='tablist'" in b and "aria-selected='true'" in b, None)
@@ -195,7 +183,6 @@ st,_,j=req("POST","/api/config/file/save",{"file":"srv","content":huge}); ok("2M
 ok("srvid2 untouched after 413",open(TEST_DIR + "/tcmg.srvid2").read()==srv)
 import os; ok("no leftover .new/.chk files",not any(f.endswith((".new",".chk",".tmp")) for f in os.listdir(TEST_DIR)),os.listdir(TEST_DIR))
 
-# ---- T5 protocol robustness
 body=urllib.parse.urlencode({"user":"lc1","pass":"x"})
 body=urllib.parse.urlencode({"user":"stage_http_"+uuid.uuid4().hex[:6],"pass":"x"})
 out=rawsock(("POST /api/user/add HTTP/1.1\r\nHost: x\r\ncontent-length: %d\r\ncontent-type: application/x-www-form-urlencoded\r\n\r\n%s"%(len(body),body)).encode())
@@ -208,7 +195,6 @@ out=rawsock(b"POST /api/user/add HTTP/1.1\r\nHost: x\r\nContent-Length: 100\r\n\
 out=rawsock(b"GET /users HTTP/1.1\r\nX-Junk: "+b"j"*20000+b"\r\n\r\n"); ok("oversize headers -> 431 (or handled)",b" 431 " in out[:40] or b"HTTP/1.1" in out[:10] or out==b"",out[:60])
 st,_,b=req("GET","/users"); ok("server still alive after abuse",st==200)
 
-# ---- T7 CSRF guard
 st,_,j=req("POST","/api/user/toggle?user="+urllib.parse.quote(test_user),headers={"Sec-Fetch-Site":"cross-site"}); ok("cross-site state change blocked",st==403,(st,j))
 st,_,j=req("POST","/api/user/toggle?user="+urllib.parse.quote(test_user),headers={"Sec-Fetch-Site":"same-origin"}); ok("same-origin allowed",st==200,(st,j))
 time.sleep(0.2)
@@ -221,7 +207,6 @@ st,_,j=req("POST","/api/user/add",{"user":csrf_same,"pass":"x"},headers={"Origin
 st,_,j=req("GET","/api/status",headers={"Sec-Fetch-Site":"cross-site"}); ok("read-only GET not blocked",st==200)
 st,_,j=req("POST","/api/user/delete?user="+urllib.parse.quote(test_user)); ok("cleanup test user",st in (200,404),j)
 
-# ---- T8 power
 st,_,b=req("GET","/power?action=bogus&confirm=yes"); time.sleep(0.6)
 st2,_,_=req("GET","/status"); ok("bogus action does NOT shut the server down",st2==200)
 st,_,b=req("GET","/power?action=bogus"); ok("bogus action shows normal power page",st==200 and "Confirm" not in b)

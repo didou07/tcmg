@@ -217,9 +217,6 @@
 "    $('rInternalFast').value = 0;\n" \
 "    $('rSerialFast').value = 0;\n" \
 	"    $('rEnabled').checked = true;\n" \
-	"    $('rDoEcm').checked = true;\n" \
-	"    $('rInternalDoEcm').checked = true;\n" \
-	"    $('rSerialDoEcm').checked = true;\n" \
 	"    clearReaderError();\n" \
 	"  }\n" \
 	"\n" \
@@ -251,10 +248,7 @@
 	"      $('rFast').value = data.protocol === 'pcsc' ? (data.FAST_RESET || 0) : 0;\n" \
 "      $('rInternalFast').value = data.protocol === 'internal' ? (data.FAST_RESET || 0) : 0;\n" \
 "      $('rSerialFast').value = data.protocol === 'serial' ? (data.FAST_RESET || 0) : 0;\n" \
-	"      $('rInternalDoEcm').checked = !!data.DO_ECM;\n" \
-	"      $('rSerialDoEcm').checked = !!data.DO_ECM;\n" \
 	"      $('rEnabled').checked = !!data.enabled;\n" \
-	"      $('rDoEcm').checked = !!data.DO_ECM;\n" \
 	"      $('rKeys').value = data.ecmkeys || '';\n" \
 	"      clearReaderError();\n" \
 	"      $('rModal').hidden = false;\n" \
@@ -332,12 +326,9 @@
 	"    $('rSerialDevice').disabled = protocol !== 'serial';\n" \
 	"    $('rPoll').disabled = protocol !== 'pcsc';\n" \
 	"    $('rFast').disabled = protocol !== 'pcsc';\n" \
-	"    $('rDoEcm').disabled = protocol !== 'pcsc';\n" \
 	"    $('rInternalFast').disabled = protocol !== 'internal';\n" \
-	"    $('rInternalDoEcm').disabled = protocol !== 'internal';\n" \
 	"    $('rSerialPoll').disabled = protocol !== 'serial';\n" \
 	"    $('rSerialFast').disabled = protocol !== 'serial';\n" \
-	"    $('rSerialDoEcm').disabled = protocol !== 'serial';\n" \
 	"    $('rKeys').disabled = protocol !== 'emu';\n" \
 	"    if (card && protocol === 'serial') loadSerialPorts();\n" \
 	"    if (protocol !== 'pcsc') $('rPoll').value = 250;\n" \
@@ -368,7 +359,6 @@
 	"    request.set('sid_whitelist', $('rSid').value.trim());\n" \
 	"    request.set('ecmwhitelist', $('rWl').value.trim());\n" \
 	"    request.set('ecmkeys', protocol === 'emu' ? $('rKeys').value : '');\n" \
-	"    request.set('DO_ECM', protocol === 'pcsc' ? ($('rDoEcm').checked ? '1' : '0') : protocol === 'internal' ? ($('rInternalDoEcm').checked ? '1' : '0') : protocol === 'serial' ? ($('rSerialDoEcm').checked ? '1' : '0') : '1');\n" \
 	"    request.set('FAST_RESET', protocol === 'pcsc' ? $('rFast').value : protocol === 'internal' ? $('rInternalFast').value : protocol === 'serial' ? $('rSerialFast').value : '0');\n" \
 	"    if (protocol === 'pcsc') request.set('POLL_MS', $('rPoll').value); else if (protocol === 'serial') request.set('POLL_MS', $('rSerialPoll').value);\n" \
 	"    request.set('enabled', $('rEnabled').checked ? '1' : '0');\n" \

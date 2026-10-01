@@ -2,6 +2,7 @@
 #include "log.h"
 #include "../core/constants.h"
 #include "../core/utils.h"
+#include "../platform/platform.h"
 #include "../srvid/srvid.h"
 #include <stdatomic.h>
 
@@ -108,16 +109,22 @@ static int8_t s_pending_reopen          = 0;
 
 static int8_t s_ecm_log = 1;
 
-static __thread char    t_log_user[CFGKEY_LEN] = "";
-static __thread char    t_log_type              = 's';
-static __thread uint64_t t_last_hash            = 0;
-static __thread int8_t   t_have_last            = 0;
-static __thread int32_t t_dup_count             = 0;
+static __thread char t_log_user[CFGKEY_LEN] = "";
+static __thread char t_log_type = 's';
+static pthread_mutex_t s_dedupe_mtx = PTHREAD_MUTEX_INITIALIZER;
+static uint64_t s_last_hash = 0;
+static int8_t s_have_last = 0;
+static int32_t s_dup_count = 0;
+static int64_t s_dup_started_ms = 0;
+static char s_last_key[LOG_BODY_MAX + CFGKEY_LEN + LOG_PREFIX_MAX + 16] = "";
 
 static uint64_t log_hash(const char *s)
 {
 	uint64_t h = 1469598103934665603ULL;
-	while (*s) { h ^= (uint8_t)*s++; h *= 1099511628211ULL; }
+	while (*s) {
+		h ^= (uint8_t)*s++;
+		h *= 1099511628211ULL;
+	}
 	return h;
 }
 
@@ -390,6 +397,13 @@ static void *writer_thread(void *arg)
 
 void log_init(void)
 {
+	pthread_mutex_lock(&s_dedupe_mtx);
+	s_last_hash = 0;
+	s_last_key[0] = '\0';
+	s_have_last = 0;
+	s_dup_count = 0;
+	s_dup_started_ms = 0;
+	pthread_mutex_unlock(&s_dedupe_mtx);
 	atomic_store(&s_wq_running, 1);
 	pthread_create(&s_wq_tid, NULL, writer_thread, NULL);
 }
@@ -457,55 +471,91 @@ static void wq_push(const char *line, const char *usr, const char *usr_line)
 	pthread_mutex_unlock(&s_wq_mtx);
 }
 
-static void emit_line(const char *mod, const char *body, int dedupe)
+static int dedupe_check(const char *mod, const char *body, const char *usr, int dedupe, int32_t *summary_count)
 {
-	char     ts[24];
-	char     line[LOG_LINE_MAX];
+	char key[sizeof(s_last_key)];
+	const char *m = mod ? mod : "";
+	const char *u = usr ? usr : "";
+	int64_t now = tcmg_mono_ms();
+	int32_t summary = 0;
+	snprintf(key, sizeof(key), "%c|%s|%s|%s", t_log_type, m, u, body ? body : "");
+	uint64_t hash = log_hash(key);
+	pthread_mutex_lock(&s_dedupe_mtx);
+	if (dedupe && s_have_last && hash == s_last_hash && strcmp(key, s_last_key) == 0) {
+		if (s_dup_count > 0 && now - s_dup_started_ms >= 60000) {
+			summary = s_dup_count;
+			s_dup_count = 1;
+			s_dup_started_ms = now;
+		} else {
+			if (s_dup_count == 0) s_dup_started_ms = now;
+			s_dup_count++;
+		}
+		pthread_mutex_unlock(&s_dedupe_mtx);
+		if (summary_count) *summary_count = summary;
+		return 1;
+	}
+	if (s_dup_count > 0) summary = s_dup_count;
+	s_dup_count = 0;
+	s_last_hash = hash;
+	tcmg_strlcpy(s_last_key, key, sizeof(s_last_key));
+	s_have_last = 1;
+	pthread_mutex_unlock(&s_dedupe_mtx);
+	if (summary_count) *summary_count = summary;
+	return 0;
+}
+
+static void emit_line_ex(const char *mod, const char *body, int dedupe, const char *usr, const char *usr_line)
+{
+	char ts[24];
+	char line[LOG_LINE_MAX];
 	uint32_t tid = (uint32_t)(uintptr_t)pthread_self();
-
+	int32_t summary_count = 0;
+	const char *log_usr = usr ? usr : "";
 	ts_now(ts, sizeof(ts));
-
 	if (mod) {
 		char modbuf[LOG_PREFIX_MAX + 2];
 		snprintf(modbuf, sizeof(modbuf), "(%s)", mod);
-		snprintf(line, sizeof(line), "%s %08X %c %10s %s",
-		         ts, tid, t_log_type, modbuf, body);
+		snprintf(line, sizeof(line), "%s %08X %c %10s %s", ts, tid, t_log_type, modbuf, body ? body : "");
 	} else {
-		snprintf(line, sizeof(line), "%s %08X %c            %s",
-		         ts, tid, t_log_type, body);
+		snprintf(line, sizeof(line), "%s %08X %c            %s", ts, tid, t_log_type, body ? body : "");
 	}
-
-	const uint64_t line_hash = log_hash(line);
-	if (dedupe && t_have_last && line_hash == t_last_hash) {
-		t_dup_count++;
+	if (dedupe_check(mod, body, log_usr, dedupe, &summary_count)) {
+		if (summary_count > 0) {
+			char dup[LOG_LINE_MAX];
+			snprintf(dup, sizeof(dup), "%s %08X %c            -- last line repeated %d time(s) --", ts, tid, t_log_type, summary_count);
+			if (atomic_load_explicit(&s_wq_running, memory_order_acquire))
+				wq_push(dup, log_usr, NULL);
+			else {
+				print_colored(stdout, dup);
+				fflush(stdout);
+				ring_push(dup, log_usr);
+			}
+		}
 		return;
 	}
-
-	if (t_dup_count > 0) {
+	if (summary_count > 0) {
 		char dup[LOG_LINE_MAX];
-		snprintf(dup, sizeof(dup),
-		         "%s %08X %c            -- last line repeated %d time(s) --",
-		         ts, tid, t_log_type, t_dup_count);
-		t_dup_count = 0;
+		snprintf(dup, sizeof(dup), "%s %08X %c            -- last line repeated %d time(s) --", ts, tid, t_log_type, summary_count);
 		if (atomic_load_explicit(&s_wq_running, memory_order_acquire))
-			wq_push(dup, t_log_user, NULL);
+			wq_push(dup, log_usr, NULL);
 		else {
 			print_colored(stdout, dup);
 			fflush(stdout);
-			ring_push(dup, t_log_user);
+			ring_push(dup, log_usr);
 		}
 	}
-
-	t_last_hash = line_hash;
-	t_have_last = 1;
-
 	if (atomic_load_explicit(&s_wq_running, memory_order_acquire))
-		wq_push(line, t_log_user, NULL);
+		wq_push(line, log_usr, usr_line);
 	else {
 		print_colored(stdout, line);
 		fflush(stdout);
-		ring_push(line, t_log_user);
+		ring_push(line, log_usr);
 	}
+}
+
+static void emit_line(const char *mod, const char *body, int dedupe)
+{
+	emit_line_ex(mod, body, dedupe, t_log_user, NULL);
 }
 
 void log_set_file(const char *path)
@@ -682,8 +732,6 @@ void log_cw_result(uint16_t caid, uint16_t sid, int32_t len,
 	char body[512];
 	char usr_line[LOG_LINE_MAX];
 	char ts[24];
-	char line[LOG_LINE_MAX];
-	uint32_t tid;
 
 	if (!s_ecm_log) return;
 
@@ -752,19 +800,7 @@ void log_cw_result(uint16_t caid, uint16_t sid, int32_t len,
 		}
 	}
 
-	tid = (uint32_t)(uintptr_t)pthread_self();
-	ts_now(ts, sizeof(ts));
-	snprintf(line, sizeof(line), "%s %08X %c      (ecm) %s",
-	         ts, tid, t_log_type, body);
-
-	if (atomic_load_explicit(&s_wq_running, memory_order_acquire))
-		wq_push(line, user ? user : "",
-		        usr_line[0] ? usr_line : NULL);
-	else {
-		print_colored(stdout, line);
-		fflush(stdout);
-		ring_push(line, user ? user : "");
-	}
+	emit_line_ex("ecm", body, 1, user, usr_line[0] ? usr_line : NULL);
 }
 
 void   log_ecm_set(int8_t on) { s_ecm_log = on ? 1 : 0; }

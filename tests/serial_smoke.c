@@ -21,7 +21,6 @@ int main(void)
     snprintf(cfg.readers[0].label, sizeof(cfg.readers[0].label), "serial1");
     snprintf(cfg.readers[0].protocol, sizeof(cfg.readers[0].protocol), "serial");
     snprintf(cfg.readers[0].device, sizeof(cfg.readers[0].device), "/dev/ttyUSB0");
-    cfg.readers[0].do_ecm = 1;
     cfg.readers[0].poll_ms = 250;
     cfg.readers[0].ecm_whitelist = 0x37;
     cfg.readers[0].ngroups = 1;

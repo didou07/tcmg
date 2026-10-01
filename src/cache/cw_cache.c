@@ -5,6 +5,7 @@
 #include "../log/log.h"
 #include "../crypto/crypto.h"
 #include "cw_cache.h"
+#include <stdatomic.h>
 
 #define CW_PENDING_SIZE 1024
 #define CW_PENDING_RUNNING 1
@@ -22,6 +23,7 @@ struct s_cw_pending {
 static struct s_cw_pending s_pending[CW_PENDING_SIZE];
 static pthread_mutex_t s_pending_mtx = PTHREAD_MUTEX_INITIALIZER;
 static pthread_once_t s_pending_once = PTHREAD_ONCE_INIT;
+static _Atomic uint64_t s_cache_seq;
 
 static void pending_init(void)
 {
@@ -107,8 +109,8 @@ static S_CW_CACHE_ENTRY *cw_cache_find_best_locked(const uint8_t *ecm_md5,
         if (!ct_memeq(e->ecm_md5, ecm_md5, 16)) continue;
         if (require_group && !account_has_cached_group(acc, e)) continue;
 
-        if (!best || e->count > best->count ||
-            (e->count == best->count && e->last_used_ms > best->last_used_ms))
+        if (!best || e->seq > best->seq ||
+            (e->seq == best->seq && e->last_used_ms > best->last_used_ms))
             best = e;
     }
     return best;
@@ -159,8 +161,6 @@ E_CW_CACHE_BEGIN cw_cache_begin_reader(const uint8_t *ecm_md5, int32_t reader_in
 
     pthread_mutex_lock(&s_pending_mtx);
 
-    /* Recheck after acquiring the pending lock so a just-completed reader
-       result is consumed instead of creating unnecessary work. */
     if (cw_cache_lookup(ecm_md5, cw_out, acc, require_group)) {
         pthread_mutex_unlock(&s_pending_mtx);
         return CW_CACHE_BEGIN_HIT;
@@ -196,7 +196,7 @@ E_CW_CACHE_BEGIN cw_cache_begin_reader(const uint8_t *ecm_md5, int32_t reader_in
         p->reader_index = reader_index;
         p->running = CW_PENDING_RUNNING;
         p->success = 0;
-        p->refs = 1; /* leader */
+        p->refs = 1;
         wait->slot = free_slot;
         wait->generation = p->generation;
         pthread_mutex_unlock(&s_pending_mtx);
@@ -206,7 +206,6 @@ E_CW_CACHE_BEGIN cw_cache_begin_reader(const uint8_t *ecm_md5, int32_t reader_in
         return CW_CACHE_BEGIN_LEADER;
     }
 
-    /* Keep the fast path non-blocking if the pending table is exhausted. */
     pthread_mutex_unlock(&s_pending_mtx);
     tcmg_log_dbg(D_CCCAM|D_NEWCAMD,
                  "cw cache pending table full reader=%d -> reader fallback",
@@ -239,8 +238,6 @@ bool cw_cache_wait(S_CW_CACHE_WAIT *wait, const uint8_t *ecm_md5, uint8_t *cw_ou
     }
     pthread_mutex_unlock(&s_pending_mtx);
 
-    /* Even if this reader failed, another reader may have filled the global
-       cache while we were waiting.  Always perform a final cache lookup. */
     if (cw_cache_lookup(ecm_md5, cw_out, acc, require_group))
         return true;
     return false;
@@ -262,7 +259,7 @@ void cw_cache_complete_reader(const uint8_t *ecm_md5, int32_t reader_index, bool
     p->success = success ? 1 : 0;
     p->running = 0;
     pthread_cond_broadcast(&p->cond);
-    if (p->refs > 0) p->refs--; /* leader releases its reference */
+    if (p->refs > 0) p->refs--;
     uint32_t waiters = p->refs;
     if (p->refs == 0) {
         secure_zero(p->ecm_md5, sizeof(p->ecm_md5));
@@ -287,9 +284,6 @@ void cw_cache_store_groups(const uint8_t *ecm_md5, const uint8_t *cw,
 
     pthread_mutex_lock(&g_cw_cache_mtx[shard]);
 
-    /* Same ECM + same CW: update the existing candidate, merge groups and
-       refresh its age.  This mirrors OSCam's accumulation instead of losing
-       group information when another reader answers the same ECM. */
     for (uint32_t way = 0; way < CW_CACHE_WAYS; way++) {
         S_CW_CACHE_ENTRY *candidate = &g_cw_cache[base + way];
         if (!candidate->valid) continue;
@@ -310,6 +304,7 @@ void cw_cache_store_groups(const uint8_t *ecm_md5, const uint8_t *cw,
         if (e->count < UINT32_MAX) e->count++;
         e->ts_ms = (int64_t)now_ms;
         e->last_used_ms = now_ms;
+        e->seq = atomic_fetch_add_explicit(&s_cache_seq, 1, memory_order_relaxed) + 1;
         uint32_t updated_count = e->count;
         int32_t updated_groups = e->ngroups;
         pthread_mutex_unlock(&g_cw_cache_mtx[shard]);
@@ -319,8 +314,6 @@ void cw_cache_store_groups(const uint8_t *ecm_md5, const uint8_t *cw,
         return;
     }
 
-    /* A different CW for the same ECM is retained as another candidate when
-       possible, just like OSCam's multiple-CW cache entries. */
     uint32_t replace_way = 0;
     uint64_t oldest = UINT64_MAX;
     for (uint32_t way = 0; way < CW_CACHE_WAYS; way++) {
@@ -345,6 +338,7 @@ void cw_cache_store_groups(const uint8_t *ecm_md5, const uint8_t *cw,
     memcpy(e->cw, cw, CW_LEN);
     e->ts_ms = (int64_t)now_ms;
     e->last_used_ms = now_ms;
+    e->seq = atomic_fetch_add_explicit(&s_cache_seq, 1, memory_order_relaxed) + 1;
     e->count = 1;
     e->valid = 1;
     e->scoped = 1;

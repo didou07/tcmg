@@ -727,6 +727,7 @@ static int sci_reset_card(S_INTERNAL_SLOT *s, const char *reason)
 {
 #ifdef __linux__
     if (!s || s->fd < 0) return -1;
+    int64_t reset_t0 = mono_ms();
 
     if (reader_present(s) <= 0) {
         s->ready = 0;
@@ -801,11 +802,16 @@ static int sci_reset_card(S_INTERNAL_SLOT *s, const char *reason)
     if (success == 0) {
         const uint32_t actual_clock = s->sci_fs ?
             TCMG_INTERNAL_DREAMBOX_CARDMHZ / s->sci_fs : 0;
-        tcmg_log_force("card reset ok reason=%s device=%s T=%d ATR=%zu fs=%u clock=%u.%02uMHz ETU=%u WWT=%ums D=%u WI=%u FI=%u",
+        tcmg_log_force("card reset ok reason=%s device=%s T=%d ATR=%zu fs=%u clock=%u.%02uMHz ETU=%u WWT=%ums D=%u WI=%u FI=%u elapsed=%lldms",
                        reason && *reason ? reason : "unknown",
                        s->device, s->protocol, s->atr_len,
                        s->sci_fs, actual_clock / 100u, (actual_clock % 100u) * 10u,
-                       s->sci_etu, s->t0_wwt_ms, s->t0_d, s->t0_wi, s->t0_fi);
+                       s->sci_etu, s->t0_wwt_ms, s->t0_d, s->t0_wi, s->t0_fi,
+                       (long long)(mono_ms() - reset_t0));
+    } else {
+        tcmg_log("card reset failed reason=%s device=%s elapsed=%lldms",
+                 reason && *reason ? reason : "unknown", s->device,
+                 (long long)(mono_ms() - reset_t0));
     }
     return success;
 #else
@@ -1047,19 +1053,24 @@ static void *internal_reader_worker(void *arg)
             memcpy(ecm, job->ecm, ecm_len);
             pthread_mutex_unlock(&s->mtx);
 
+            int64_t ecm_t0 = mono_ms();
             uint8_t cw[16] = {0};
             int recoverable = 0;
             int rc = internal_conax_ecm(s, ecm, ecm_len, cw, &recoverable);
+            int64_t ecm_ms = mono_ms() - ecm_t0;
 
-            if (rc < 0 && recoverable) {
-                pthread_mutex_lock(&s->mtx);
-                int reset_rc = sci_reset_card(s, "ecm-recovery");
-                pthread_mutex_unlock(&s->mtx);
-                if (reset_rc == 0) {
-                    memset(cw, 0, sizeof(cw));
-                    recoverable = 0;
-                    rc = internal_conax_ecm(s, ecm, ecm_len, cw, &recoverable);
+            if (rc < 0) {
+                if (recoverable) {
+                    pthread_mutex_lock(&s->mtx);
+                    s->ready = 0;
+                    pthread_mutex_unlock(&s->mtx);
                 }
+                tcmg_log_dbg(D_READER,
+                             "internal ECM failed device=%s rc=%d recoverable=%d elapsed=%lldms%s",
+                             s->device, rc, recoverable, (long long)ecm_ms,
+                             recoverable ? "; reader marked unavailable" : "; keeping reader ready");
+            } else {
+                tcmg_log_dbg(D_READER, "internal ECM ok device=%s elapsed=%lldms", s->device, (long long)ecm_ms);
             }
 
             pthread_mutex_lock(&s->mtx);
@@ -1253,7 +1264,7 @@ int internal_do_ecm_reader(int index, uint16_t caid,
     slots_init();
     S_READER cfg;
     if (!cfg_runtime_reader_get(index, &cfg)) return -4;
-    if (!cfg.enabled || strcasecmp(cfg.protocol, "internal") != 0 || !cfg.do_ecm) return -5;
+    if (!cfg.enabled || strcasecmp(cfg.protocol, "internal") != 0) return -5;
 
     S_INTERNAL_SLOT *s = &s_slots[index];
     pthread_mutex_lock(&s->mtx);

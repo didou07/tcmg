@@ -67,23 +67,19 @@ int main(void)
     assert(cw_cache_lookup(md5, out, &two, false));
     assert(memcmp(out, cw, CW_LEN) == 0);
 
-    /* Same ECM + same CW merges groups instead of replacing the old scope. */
     int32_t group8[] = { 8 };
     cw_cache_store_groups(md5, cw, group8, 1);
     memset(out, 0, sizeof(out));
     assert(cw_cache_lookup(md5, out, &two, true));
     assert(memcmp(out, cw, CW_LEN) == 0);
 
-    /* Different CWs for the same ECM may coexist; the more frequently
-       observed candidate remains preferred for an eligible group. */
     uint8_t cw2[CW_LEN];
     for (int i = 0; i < CW_LEN; i++) cw2[i] = (uint8_t)(0xE0 + i);
     cw_cache_store_groups(md5, cw2, groups, 1);
     memset(out, 0, sizeof(out));
     assert(cw_cache_lookup(md5, out, &one, true));
-    assert(memcmp(out, cw, CW_LEN) == 0);
+    assert(memcmp(out, cw2, CW_LEN) == 0);
 
-    /* Concurrent same-ECM test: one leader, all other requests wait for it. */
     for (int i = 0; i < 16; i++) md5[i] = (uint8_t)(0x40 + i);
     for (int i = 0; i < CW_LEN; i++) cw[i] = (uint8_t)(0x10 + i);
 
@@ -123,7 +119,6 @@ int main(void)
     assert(cw_cache_lookup(md5, out, &one, true));
     assert(memcmp(out, cw, CW_LEN) == 0);
 
-    /* Failed leader must wake waiters, and the next request can become leader. */
     for (int i = 0; i < 16; i++) md5[i] = (uint8_t)(0x80 + i);
     assert(cw_cache_begin_reader(md5, 3, out, &one, true, &leader_wait) == CW_CACHE_BEGIN_LEADER);
 

@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STATE_DIR="$ROOT_DIR/.tcmg-build"
 TOOLCHAIN_DIR="$STATE_DIR/toolchains"
 LOG_DIR="$STATE_DIR/logs"
-VERSION="6.2"
+VERSION="$(tr -d '\r\n' < "$ROOT_DIR/VERSION")"
 
 [[ -f "$ROOT_DIR/Makefile" && -f "$ROOT_DIR/src/main.c" ]] || {
   echo "ERROR: run this script from the TCMG source tree" >&2
@@ -19,7 +18,6 @@ DEVICES=()
 TOOLCHAINS=()
 DEVICE_CATALOG="$ROOT_DIR/catalog/devices.tsv"
 TOOLCHAIN_CATALOG="$ROOT_DIR/catalog/toolchains.tsv"
-
 
 TARGET=""
 PLATFORM=""
@@ -70,7 +68,7 @@ TUI_SCRIPT="$ROOT_DIR/scripts/build_tui.sh"
 
 usage(){
   cat <<'TXT'
-TCMG 6.2 - simple device builder
+TCMG $VERSION - simple device builder
 
   ./build.sh                 TUI: choose family -> device -> action
   ./build.sh list            List devices
@@ -190,7 +188,7 @@ device_label(){
 show_devices(){
   local i=1 row name label
   echo
-  printf '%s\n' "TCMG 6.2 devices (${#DEVICES[@]})"
+  printf '%s\n' "TCMG $VERSION devices (${#DEVICES[@]})"
   line
   for row in "${DEVICES[@]}"; do
     IFS='|' read -r name _ <<< "$row"
@@ -907,7 +905,7 @@ build_device(){
   log="$LOG_DIR/${TARGET}-${stamp}.log"
   echo
   line
-  echo "Building TCMG 6.2 — $TARGET"
+  echo "Building TCMG $VERSION — $TARGET"
   show_config
   echo "Compiler: $cc"
   echo "Output  : $build_dir/tcmg-$VERSION-$TARGET"
