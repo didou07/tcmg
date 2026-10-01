@@ -112,7 +112,7 @@ bool webif_config_apply(const S_WEBIF_CONFIG_PATCH *p, bool *restart_required)
     if (p->has_server_keepalive_misses) g_cfg.server_keepalive_misses = p->server_keepalive_misses;
     if (p->has_ecm_log) g_cfg.ecm_log = p->ecm_log;
     if (p->has_scheduled_restart) g_cfg.scheduled_restart_enabled = p->scheduled_restart_enabled;
-    if (p->has_scheduled_restart_time) { int hh = (p->scheduled_restart_time[0]-'0')*10 + (p->scheduled_restart_time[1]-'0'); int mm = (p->scheduled_restart_time[3]-'0')*10 + (p->scheduled_restart_time[4]-'0'); g_cfg.scheduled_restart_minutes = hh*60 + mm; }
+    if (p->has_scheduled_restart_time) { int hh = (p->scheduled_restart_time[0]-'0')*10 + (p->scheduled_restart_time[1]-'0'); int mm = (p->scheduled_restart_time[3]-'0')*10 + (p->scheduled_restart_time[4]-'0'); g_cfg.scheduled_restart_minutes = (int16_t)(hh*60 + mm); }
     if (p->has_logfile) tcmg_strlcpy(g_cfg.logfile, p->logfile, sizeof(g_cfg.logfile));
     if (p->has_webif_port) g_cfg.webif_port = p->webif_port;
     if (p->has_webif_refresh) g_cfg.webif_refresh = p->webif_refresh;
@@ -152,7 +152,7 @@ bool webif_config_apply(const S_WEBIF_CONFIG_PATCH *p, bool *restart_required)
         g_cfg.server_keepalive_misses = old_server_keepalive_misses;
         g_cfg.ecm_log = old_ecm_log;
         g_cfg.scheduled_restart_enabled = old_sched_enabled;
-        g_cfg.scheduled_restart_minutes = old_sched_minutes;
+        g_cfg.scheduled_restart_minutes = (int16_t)old_sched_minutes;
         g_cfg.webif_refresh = old_webif_refresh;
         tcmg_strlcpy(g_cfg.webif_user, old_webif_user, sizeof(g_cfg.webif_user));
         tcmg_strlcpy(g_cfg.webif_pass, old_webif_pass, sizeof(g_cfg.webif_pass));

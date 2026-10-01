@@ -97,7 +97,7 @@ int main(void)
     n = webif_reader_snapshot_all(readers, 2);
     if (n != 1 || strcmp(readers[0].label, "emu") != 0 ||
         strcmp(readers[0].protocol, "emu") != 0 || strcmp(readers[0].groups, "1") != 0 ||
-        strcmp(readers[0].caids, "0B00") != 0 || readers[0].ecm_whitelist != 255) return 8;
+        strcmp(readers[0].caids, "0B00") != 0 || readers[0].ecm_whitelist != 0) return 8;
     if (!webif_reader_get(0, &one_reader) || strcmp(one_reader.ecmkeys,
         "0B00=00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF") != 0) return 9;
     if (webif_reader_get(9, &one_reader)) return 10;

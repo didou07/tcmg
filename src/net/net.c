@@ -9,11 +9,12 @@
 int32_t net_recv_all(int fd, void *buf, int32_t len)
 {
     uint8_t *p = (uint8_t *)buf;
-    int32_t total = 0;
+    size_t total = 0;
     if (len < 0) return -1;
-    while (total < len)
+    const size_t want = (size_t)len;
+    while (total < want)
     {
-        ssize_t n = recv(fd, RECV_CAST(p + total), len - total, 0);
+        ssize_t n = recv(fd, RECV_CAST(p + total), want - total, 0);
         if (n == 0) return -1;
         if (n < 0) {
 #ifdef TCMG_OS_WINDOWS
@@ -27,19 +28,20 @@ int32_t net_recv_all(int fd, void *buf, int32_t len)
 #endif
             return -1;
         }
-        total += (int32_t)n;
+        total += (size_t)n;
     }
-    return total;
+    return (int32_t)total;
 }
 
 int32_t net_send_all(int fd, const void *buf, int32_t len)
 {
     const uint8_t *p = (const uint8_t *)buf;
-    int32_t total = 0;
+    size_t total = 0;
     if (len < 0) return -1;
-    while (total < len)
+    const size_t want = (size_t)len;
+    while (total < want)
     {
-        ssize_t n = send(fd, SO_CAST(p + total), len - total, 0);
+        ssize_t n = send(fd, SO_CAST(p + total), want - total, 0);
         if (n < 0) {
 #ifdef TCMG_OS_WINDOWS
             int e = WSAGetLastError();
@@ -50,9 +52,9 @@ int32_t net_send_all(int fd, const void *buf, int32_t len)
             return -1;
         }
         if (n == 0) return -1;
-        total += (int32_t)n;
+        total += (size_t)n;
     }
-    return total;
+    return (int32_t)total;
 }
 
 int net_parse_host_port(const char *device, char *host, size_t host_len, uint16_t *port)

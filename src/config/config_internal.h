@@ -27,10 +27,11 @@ void cfg_default_runtime(S_CONFIG *cfg);
 void cfg_str_trim(char *s);
 bool cfg_parse_file(const char *path, cfg_kv_callback cb, void *ctx,
                     char *err, size_t errsz);
-bool cfg_parse_bool(const char *s, int *out);
-bool cfg_parse_long_range(const char *s, long lo, long hi, long *out);
+bool cfg_parse_bool(const char *s, bool *out);
+bool cfg_parse_i32_range(const char *s, int32_t lo, int32_t hi, int32_t *out);
 bool cfg_parse_hex_bytes(const char *s, uint8_t *out, size_t n);
 bool cfg_parse_u16_hex(const char *s, uint16_t *out);
+bool cfg_parse_u8_hex(const char *s, uint8_t *out);
 bool cfg_parse_group_list(const char *s, int32_t *groups, int32_t *count);
 bool cfg_parse_u16_list(const char *s, uint16_t *out, int32_t *count, int32_t maxn);
 bool cfg_parse_ipv4_list(const char *s, char out[][MAXIPLEN], int32_t *count);

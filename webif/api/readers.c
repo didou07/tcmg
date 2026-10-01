@@ -134,8 +134,7 @@ static const char *parse_reader_form(const char *body, reader_form *f, int index
 
     long v;
     if (rnum(f->enabled, 0, 1, &v) < 0) return "enabled must be 0 or 1";
-    if (!f->ecmwl[0]) return "ecmwhitelist is required";
-    {
+    if (f->ecmwl[0]) {
         char *e = NULL; unsigned long x = strtoul(f->ecmwl, &e, 16);
         if (e == f->ecmwl || *e || x > 0xFF) return "ecmwhitelist must be 00-FF";
     }

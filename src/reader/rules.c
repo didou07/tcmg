@@ -91,7 +91,7 @@ E_READER_RULE_RESULT reader_rule_check(const S_READER *reader, const S_ACCOUNT *
         if (!sid_ok) return READER_RULE_SID;
     }
 
-    if (reader->ecm_whitelist > 0 && ecm_len > reader->ecm_whitelist)
+    if (reader->ecm_whitelist > 0 && ecm_len != reader->ecm_whitelist)
         return READER_RULE_ECM_WHITELIST;
 
     return READER_RULE_ALLOW;

@@ -2,6 +2,7 @@
 #define TCMG_READER_PROTOCOL_H_
 
 #include "ecm/request.h"
+#include "failure.h"
 #include "core/constants.h"
 #include "core/reader_types.h"
 #include <stddef.h>
@@ -11,6 +12,7 @@ typedef struct {
     int index;
     const S_READER *reader;
     const S_ECM_REQUEST *request;
+    E_READER_FAILURE *failure;
 } S_READER_ECM_REQUEST;
 
 typedef int32_t (*reader_protocol_do_ecm_fn)(const S_READER_ECM_REQUEST *req);

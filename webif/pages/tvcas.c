@@ -387,9 +387,10 @@ void send_page_tvcas(int fd)
 		"tvSave();}\n"
 
 		"function sr(id,html){document.getElementById(id).innerHTML=html;}\n"
-		"function row(k,v){return '<tr><td class=tk>'+k+'</td><td class=tv>'+v+'</td></tr>';}\n"
+		"function row(k,v){return '<tr><td class=tk>'+k+'</td><td class=tv>'+v+'</td></tr>';}\n");
 
-		"function tvDec(){"
+	pos = buf_printf(&buf, &bsz, pos,
+"function tvDec(){"
 		"tvSave();"
 		"try{"
 		"const ecm=document.getElementById('ecm_in').value.trim().replace(/[\\s]+/g,'');"
@@ -433,9 +434,10 @@ void send_page_tvcas(int fd)
 		"+'</table></div>'"
 		"+'</div>'"
 		");"
-		"}catch(e){sr('ecm_res','<div class=tv-res-empty><span class=tv-er>'+e.message+'</span></div>');}}\n"
+		"}catch(e){sr('ecm_res','<div class=tv-res-empty><span class=tv-er>'+e.message+'</span></div>');}}\n");
 
-		"function tvConv(){"
+	pos = buf_printf(&buf, &bsz, pos,
+"function tvConv(){"
 		"tvSave();"
 		"try{"
 		"const k=document.getElementById('cv_in').value.trim().replace(/[\\s]+/g,'');"

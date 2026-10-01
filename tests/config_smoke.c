@@ -149,7 +149,7 @@ static int run_reload_lifetime(const char *dir)
         "[account]\nuser = client\npwd = changed\nenabled = 1\ngroup = 1\ncaid = 0B00\n"
         "[account]\nuser = second\npwd = two\nenabled = 1\ngroup = 2\ncaid = 0B00\n";
     const char *readers =
-        "[reader]\nlabel = emu\nprotocol = emu\nenabled = 1\ngroup = 1\ncaid = 0B00\necm_maxlen = 255\ninactivitytimeout = 30\n"
+        "[reader]\nlabel = emu\nprotocol = emu\nenabled = 1\ngroup = 1\ncaid = 0B00\necmwhitelist = 37\ninactivitytimeout = 30\n"
         "ecmkey = 0B00=00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF\n";
     char path[1024], users_path[1024];
     char err[256] = "";
@@ -167,6 +167,7 @@ static int run_reload_lifetime(const char *dir)
     if (!write_text(path, readers)) goto fail;
     snprintf(path, sizeof(path), "%s/tcmg.conf", dir);
     if (!cfg_load(path, &g_cfg)) goto fail;
+    if (g_cfg.readers[0].ecm_whitelist != 0x37) goto fail;
     old = account_acquire("client");
     if (!old) goto fail;
     if (!write_text(users_path, users_b)) {
@@ -216,7 +217,7 @@ int main(void)
         "[account]\nuser = client\npwd = one\nenabled = 1\ngroup = 1\ncaid = 0B00\nmax_connections = 2\nexpiration = 0\n"
         "[account]\nuser = second\npwd = two\nenabled = 1\ngroup = 2\ncaid = 0B00\nmax_connections = 1\nexpiration = 0\n";
     const char *readers =
-        "[reader]\nlabel = emu\nprotocol = emu\nenabled = 1\ngroup = 1\ncaid = 0B00\necm_maxlen = 255\ninactivitytimeout = 30\n"
+        "[reader]\nlabel = emu\nprotocol = emu\nenabled = 1\ngroup = 1\ncaid = 0B00\necmwhitelist = 00\ninactivitytimeout = 30\n"
         "ecmkey = 0B00=00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF\n"
         "[reader]\nlabel = cccam\nprotocol = cccam\nenabled = 0\ngroup = 1\ndevice = 127.0.0.1,12050\n"
         "[reader]\nlabel = newcamd\nprotocol = newcamd\nenabled = 0\ngroup = 1\ndevice = 127.0.0.1,15050\nuser = client\nkey = 0102030405060708091011121314\n"
@@ -244,7 +245,7 @@ int main(void)
         "[unknown]\nuser = ignored\n"
         "[account]\nuser = second\npwd = two\nenabled = 1\ngroup = 2\ncaid = 0B00\n";
     const char *tolerant_readers =
-        "[reader]\nlabel = emu\nprotocol = emu\nenabled = 1\ngroup = 1\ncaid = 0B00\necm_maxlen = 255\ninactivitytimeout = 30\n"
+        "[reader]\nlabel = emu\nprotocol = emu\nenabled = 1\ngroup = 1\ncaid = 0B00\necmwhitelist = 00\ninactivitytimeout = 30\n"
         "broken_reader_line\nfast_reset = invalid\n"
         "ecmkey = 0B00=00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF\n"
         "[unknown]\nlabel = ignored\n"

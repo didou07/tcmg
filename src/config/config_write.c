@@ -105,8 +105,8 @@ bool cfg_build_server_text(const S_CONFIG *c, char *buf, size_t cap)
             ok = cfg_appendf(buf, cap, &pos, "%s%04X", j ? "," : "", r->caids[j]);
 
         ok = ok && cfg_appendf(buf, cap, &pos,
-                           "\necm_maxlen = %d\ninactivitytimeout = %d\n",
-                           r->ecm_whitelist, r->inactivitytimeout);
+                           "\necmwhitelist = %02X\ninactivitytimeout = %d\n",
+                           (unsigned)(r->ecm_whitelist & 0xFF), r->inactivitytimeout);
 
         if (reader_protocol_kind(r->protocol) == READER_PROTOCOL_NETWORK) {
             ok = ok && cfg_appendf(buf, cap, &pos,
@@ -285,7 +285,7 @@ bool cfg_write_default(const char *path)
         "enabled = 0\n"
         "group = 1\n"
         "caid = 0B00\n"
-        "ecm_maxlen = 255\n"
+        "ecmwhitelist = 00\n"
         "inactivitytimeout = 30\n"
         "ecmkey = 0B00=0000000000000000000000000000000000000000000000000000000000000000\n";
 

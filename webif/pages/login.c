@@ -2,14 +2,11 @@
 #include "../internal/proto.h"
 #include "../assets/css.h"
 
-#pragma GCC diagnostic ignored "-Wformat"
-#pragma GCC diagnostic ignored "-Wformat-extra-args"
-#pragma GCC diagnostic ignored "-Woverlength-strings"
 
 void send_login_page(int fd, int failed)
 {
 	int   bsz = 8192, pos = 0;
-	char *buf = (char *)malloc(bsz);
+	char *buf = (char *)malloc((size_t)bsz);
 	if (!buf) { send_json_error(fd, 503, "Service Unavailable", "out of memory"); return; }
 
 	pos = buf_printf(&buf, &bsz, pos,

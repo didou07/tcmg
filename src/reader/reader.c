@@ -26,6 +26,17 @@ static bool reader_is_internal(const S_READER *reader)
     return reader && strcasecmp(reader->protocol, "internal") == 0;
 }
 
+static int failure_rank(E_READER_FAILURE failure)
+{
+    switch (failure) {
+    case READER_FAILURE_TRANSPORT_ERROR: return 3;
+    case READER_FAILURE_CARD_ERROR:
+    case READER_FAILURE_READER_ERROR: return 2;
+    case READER_FAILURE_NOT_FOUND: return 1;
+    default: return 0;
+    }
+}
+
 int32_t reader_dispatch_ecm(const S_ECM_REQUEST *request, S_READER_RESULT *result)
 {
     S_READER readers[MAX_READERS];
@@ -49,6 +60,7 @@ int32_t reader_dispatch_ecm(const S_ECM_REQUEST *request, S_READER_RESULT *resul
     uint8_t ecm_md5[TCMG_ECM_MD5_LEN];
     bool attempted = false;
     bool whitelist_rejected = false;
+    E_READER_FAILURE failure_summary = READER_FAILURE_NONE;
 
     crypt_md5_hash(request->ecm, (size_t)request->ecm_len, ecm_md5);
     pthread_once(&s_reader_cache_once, reader_cache_locks_init);
@@ -181,12 +193,16 @@ int32_t reader_dispatch_ecm(const S_ECM_REQUEST *request, S_READER_RESULT *resul
             return EMU_OK;
         }
 
+        E_READER_FAILURE failure = READER_FAILURE_READER_ERROR;
         S_READER_ECM_REQUEST call = {
             .index = indices[i],
             .reader = &readers[i],
             .request = request,
+            .failure = &failure,
         };
         int rc = protocol->do_ecm(&call);
+        if (failure_rank(failure) > failure_rank(failure_summary))
+            failure_summary = failure;
         reader_stats_record(indices[i], rc == EMU_OK);
         if (rc == EMU_OK) {
             int32_t cache_groups[MAX_GROUPS_PER_READER] = {0};
@@ -226,7 +242,11 @@ int32_t reader_dispatch_ecm(const S_ECM_REQUEST *request, S_READER_RESULT *resul
 
     int32_t final_result = (!attempted && whitelist_rejected) ? READER_RESULT_REJECTED : READER_RESULT_NOT_FOUND;
     secure_zero(ecm_md5, sizeof(ecm_md5));
-    if (result) result->status = final_result;
+    if (result) {
+        result->status = final_result;
+        result->failure = (!attempted && whitelist_rejected) ? READER_FAILURE_REJECTED :
+                          (failure_summary == READER_FAILURE_NONE ? READER_FAILURE_NOT_FOUND : failure_summary);
+    }
     return final_result;
 }
 

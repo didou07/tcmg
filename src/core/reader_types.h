@@ -6,7 +6,7 @@
 typedef struct {
     char     label[READER_LABEL_LEN];
     char     protocol[READER_PROTOCOL_LEN];
-    int8_t   enabled;
+    bool     enabled;
     int8_t   in_use;
     char     device[CFGVAL_LEN];
     char     user[CFGKEY_LEN];

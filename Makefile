@@ -114,8 +114,7 @@ else ifeq ($(PLATFORM),macos)
   endif
 endif
 
-BASE_FLAGS := -std=c11 -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Wno-unused-parameter \
-              -Wno-overlength-strings \
+BASE_FLAGS := -std=c11 -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L -Wall -Wextra \
               -I. -Isrc -D_FORTIFY_SOURCE=2 -DTCMG_ASSET_REV=\"$(TCMG_ASSET_REV)\" \
               $(TCMG_ARCH_FLAGS) \
               $(TCMG_SANITIZE) \
@@ -126,7 +125,7 @@ TCMG_CONF_DIR ?=
 
 CFLAGS_EXTRA ?=
 ifeq ($(TCMG_STRICT),1)
-  BASE_FLAGS += -Werror -Wpedantic -Wshadow -Wstrict-prototypes -Wold-style-definition -Wredundant-decls
+  BASE_FLAGS += -Werror -Wpedantic -Wshadow -Wstrict-prototypes -Wold-style-definition -Wredundant-decls -Wconversion -Wsign-conversion -Wformat=2
 endif
 BASE_FLAGS += $(CFLAGS_EXTRA)
 
@@ -167,8 +166,8 @@ endif
 
 ASSET_HDRS := $(wildcard webif/assets/*.h)
 
-TEST_COMMON_CFLAGS = -std=c11 -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Werror \
-                    -Wno-unused-parameter -Wno-overlength-strings -I. -Isrc -D_FORTIFY_SOURCE=2 -O2 -g $(TCMG_SANITIZE)
+TEST_COMMON_CFLAGS = -std=c11 -D_GNU_SOURCE -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Werror -Wpedantic -Wshadow -Wstrict-prototypes -Wold-style-definition -Wredundant-decls -Wconversion -Wsign-conversion -Wformat=2 \
+                    -I. -Isrc -D_FORTIFY_SOURCE=2 -O2 -g $(TCMG_SANITIZE)
 
 test-log: $(TARGET)
 	$(CC) $(TEST_COMMON_CFLAGS) tests/log_smoke.c $(filter-out $(OBJ_DIR)/src/main.o,$(OBJS)) -o $(BUILD_DIR)/test_log_smoke $(LDFLAGS)

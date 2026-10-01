@@ -57,6 +57,9 @@ typedef enum {
     LOG_ECM_NOT_FOUND = 0,
     LOG_ECM_FOUND = 1,
     LOG_ECM_REJECTED = 2,
+    LOG_ECM_CARD_ERROR = 3,
+    LOG_ECM_READER_ERROR = 4,
+    LOG_ECM_TRANSPORT_ERROR = 5,
 } E_LOG_ECM_RESULT;
 
 void    log_cw_result(uint16_t caid, uint16_t sid, int32_t len,

@@ -103,7 +103,9 @@ static void doPC1(uint8_t data[])
 		for(i = 0; i < 8; i++)
 		{
 			uint8_t lookup = PC1[j][i];
-			buf[j] |= ((data[(lookup >> 3)] >> (8 - (lookup & 7))) & 1) << (7 - i);
+			uint8_t bit_value = (uint8_t)((data[(lookup >> 3)] >> (8U - (lookup & 7U))) & 1);
+			bit_value = (uint8_t)(bit_value << (7U - i));
+			buf[j] = (uint8_t)(buf[j] | bit_value);
 		}
 	}
 
@@ -174,7 +176,8 @@ static void doIp_1(uint8_t data[])
 static void makeK(uint8_t *left, uint8_t *right, uint8_t *K)
 {
 	uint8_t i, j;
-	uint8_t bit, val;
+	uint8_t bit;
+	uint16_t val;
 	uint8_t *p;
 
 	for(i = 0; i < 8; i++)
@@ -193,10 +196,10 @@ static void makeK(uint8_t *left, uint8_t *right, uint8_t *K)
 				bit = 56 - bit;
 				p = right;
 			}
-			val <<= 1;
-			if(p[bit >> 3] & (1 << (bit & 7))) { val |= 1; }
+			val = (uint16_t)(val << 1);
+			if(p[bit >> 3] & (uint8_t)(1U << (bit & 7U))) { val |= 1U; }
 		}
-		*K = val;
+		*K = (uint8_t)val;
 		K++;
 	}
 }
@@ -218,10 +221,11 @@ static void rightRotKeys(uint8_t left[], uint8_t right[])
 static void leftRot(uint8_t key[])
 {
 	uint8_t carry = key[3] >> 3;
-	key[3] = 0x0F & ((key[3] << 1) | !!(key[2] & 0x80));
-	key[2] = (key[2] << 1) | !!(key[1] & 0x80);
-	key[1] = (key[1] << 1) | !!(key[0] & 0x80);
-	key[0] = (key[0] << 1) | carry;
+	key[3] = (uint8_t)(((uint16_t)key[3] << 1) | (uint16_t)!!(key[2] & 0x80));
+	key[3] = (uint8_t)(key[3] & 0x0F);
+	key[2] = (uint8_t)(((uint16_t)key[2] << 1) | (uint8_t)!!(key[1] & 0x80U));
+	key[1] = (uint8_t)(((uint16_t)key[1] << 1) | (uint8_t)!!(key[0] & 0x80U));
+	key[0] = (uint8_t)(((uint16_t)key[0] << 1) | carry);
 }
 
 static void leftRotKeys(uint8_t left[], uint8_t right[])
@@ -233,7 +237,8 @@ static void leftRotKeys(uint8_t left[], uint8_t right[])
 static void desCore(uint8_t data[], uint8_t K[], uint8_t result[])
 {
 	uint8_t i, j;
-	uint8_t bit, val;
+	uint8_t bit;
+	uint16_t val;
 
 	memset(result, 0, 4);
 
@@ -243,17 +248,18 @@ static void desCore(uint8_t data[], uint8_t K[], uint8_t result[])
 		for(j = 0; j < 6; j++)
 		{
 			bit = 32 - E[i][j];
-			val <<= 1;
-			if(data[3 - (bit >> 3)] & (1 << (bit & 7))) { val |= 1; }
+			val = (uint16_t)(val << 1);
+			if(data[3 - (bit >> 3)] & (uint8_t)(1U << (bit & 7U))) { val |= 1U; }
 		}
 		val ^= K[i];
-		val = SBOXES[i & 3][val];
-		if(i > 3)
+		val = SBOXES[i & 3U][(uint8_t)val];
+		if(i > 3U)
 		{
 			val >>= 4;
 		}
-		val &= 0x0f;
-		result[i >> 1] |= (i & 1) ? val : (val << 4);
+		val &= 0x0FU;
+		if(i & 1U) result[i >> 1] = (uint8_t)(result[i >> 1] | (uint8_t)val);
+		else result[i >> 1] = (uint8_t)(result[i >> 1] | (uint8_t)(val << 4));
 	}
 }
 
@@ -270,11 +276,12 @@ static void permut32(uint8_t data[])
 		p = r;
 		for(j = 0; j < 3; j++)
 		{
-			*p = (*p << 1) | ((p[1] & 0x80) ? 1 : 0);
+			uint16_t carry = (uint16_t)((p[1] & 0x80) ? 1 : 0);
+			*p = (uint8_t)(((uint16_t)*p << 1) | carry);
 			p++;
 		}
-		*p <<= 1;
-		if(data[3 - (bit >> 3)] & (1 << (bit & 7))) { *p |= 1; }
+		*p = (uint8_t)((uint16_t)*p << 1);
+		if(data[3 - (bit >> 3)] & (uint8_t)(1U << (bit & 7U))) { *p = (uint8_t)(*p | 1U); }
 	}
 
 	memcpy(data, r, 4);
@@ -295,14 +302,16 @@ static void desRound(uint8_t left[], uint8_t right[], uint8_t data[], uint8_t mo
 	uint8_t K[8];
 	uint8_t r[4];
 	uint8_t tempr[4];
-	unsigned short temp;
+	int32_t temp;
 
 	memcpy(tempr, data + 4, 4);
 
-	temp = (short)k8 * (short)tempr[0] + (short)k8 + (short)tempr[0];
-	tempr[0] = (temp & 0xff) - ((temp >> 8) & 0xff);
-	if((temp & 0xff) - (temp >> 8) < 0)
-		{ tempr[0]++; }
+	temp = (int32_t)k8 * (int32_t)tempr[0] + (int32_t)k8 + (int32_t)tempr[0];
+	{
+		int32_t diff = (temp & 0xff) - ((temp >> 8) & 0xff);
+		tempr[0] = (uint8_t)diff;
+		if (diff < 0) tempr[0]++;
+	}
 
 	makeK(left, right, K);
 	desCore(tempr, K, r);
@@ -335,7 +344,7 @@ static void nc_des(uint8_t key[], uint8_t mode, uint8_t data[])
 
 	for(i = 3; i > 0; i--)
 	{
-		*p = (key[i - 1] << 4) | (key[i] >> 4);
+		*p = (uint8_t)(((uint16_t)key[i - 1] << 4) | (key[i] >> 4));
 		p++;
 	}
 	left[3] = key[0] >> 4;
@@ -360,7 +369,7 @@ static void nc_des(uint8_t key[], uint8_t mode, uint8_t data[])
 			rightRotKeys(left, right);
 			if(!(DESShift & 0x8000)) { rightRotKeys(left, right); }
 		}
-		DESShift <<= 1;
+		DESShift = (uint16_t)(DESShift << 1);
 	}
 	while(DESShift);
 
@@ -384,21 +393,21 @@ static void des_key_parity_adjust(uint8_t *key, uint8_t len)
 static uint8_t *des_key_spread(uint8_t *normal, uint8_t *spread)
 {
 	spread[ 0] = normal[ 0] & 0xfe;
-	spread[ 1] = ((normal[ 0] << 7) | (normal[ 1] >> 1)) & 0xfe;
-	spread[ 2] = ((normal[ 1] << 6) | (normal[ 2] >> 2)) & 0xfe;
-	spread[ 3] = ((normal[ 2] << 5) | (normal[ 3] >> 3)) & 0xfe;
-	spread[ 4] = ((normal[ 3] << 4) | (normal[ 4] >> 4)) & 0xfe;
-	spread[ 5] = ((normal[ 4] << 3) | (normal[ 5] >> 5)) & 0xfe;
-	spread[ 6] = ((normal[ 5] << 2) | (normal[ 6] >> 6)) & 0xfe;
-	spread[ 7] = normal[ 6] << 1;
+	spread[ 1] = (uint8_t)(((uint16_t)normal[ 0] << 7) | (normal[ 1] >> 1)); spread[ 1] &= 0xFEU;
+	spread[ 2] = (uint8_t)(((uint16_t)normal[ 1] << 6) | (normal[ 2] >> 2)); spread[ 2] &= 0xFEU;
+	spread[ 3] = (uint8_t)(((uint16_t)normal[ 2] << 5) | (normal[ 3] >> 3)); spread[ 3] &= 0xFEU;
+	spread[ 4] = (uint8_t)(((uint16_t)normal[ 3] << 4) | (normal[ 4] >> 4)); spread[ 4] &= 0xFEU;
+	spread[ 5] = (uint8_t)(((uint16_t)normal[ 4] << 3) | (normal[ 5] >> 5)); spread[ 5] &= 0xFEU;
+	spread[ 6] = (uint8_t)(((uint16_t)normal[ 5] << 2) | (normal[ 6] >> 6)); spread[ 6] &= 0xFEU;
+	spread[ 7] = (uint8_t)((uint16_t)normal[ 6] << 1);
 	spread[ 8] = normal[ 7] & 0xfe;
-	spread[ 9] = ((normal[ 7] << 7) | (normal[ 8] >> 1)) & 0xfe;
-	spread[10] = ((normal[ 8] << 6) | (normal[ 9] >> 2)) & 0xfe;
-	spread[11] = ((normal[ 9] << 5) | (normal[10] >> 3)) & 0xfe;
-	spread[12] = ((normal[10] << 4) | (normal[11] >> 4)) & 0xfe;
-	spread[13] = ((normal[11] << 3) | (normal[12] >> 5)) & 0xfe;
-	spread[14] = ((normal[12] << 2) | (normal[13] >> 6)) & 0xfe;
-	spread[15] = normal[13] << 1;
+	spread[ 9] = (uint8_t)(((uint16_t)normal[ 7] << 7) | (normal[ 8] >> 1)); spread[ 9] &= 0xFEU;
+	spread[10] = (uint8_t)(((uint16_t)normal[ 8] << 6) | (normal[ 9] >> 2)); spread[10] &= 0xFEU;
+	spread[11] = (uint8_t)(((uint16_t)normal[ 9] << 5) | (normal[10] >> 3)); spread[11] &= 0xFEU;
+	spread[12] = (uint8_t)(((uint16_t)normal[10] << 4) | (normal[11] >> 4)); spread[12] &= 0xFEU;
+	spread[13] = (uint8_t)(((uint16_t)normal[11] << 3) | (normal[12] >> 5)); spread[13] &= 0xFEU;
+	spread[14] = (uint8_t)(((uint16_t)normal[12] << 2) | (normal[13] >> 6)); spread[14] &= 0xFEU;
+	spread[15] = (uint8_t)((uint16_t)normal[13] << 1);
 
 	des_key_parity_adjust(spread, 16);
 	return spread;
@@ -431,22 +440,22 @@ int32_t tcmg_ncd_des_encrypt(uint8_t *buffer, int len, uint8_t *deskey)
 	uint8_t checksum = 0;
 	uint8_t noPadBytes;
 	uint8_t padBytes[7];
-	char ivec[8];
-	short i;
+	uint8_t ivec[8];
+	int i;
 
 	if(!deskey) { return len; }
-	noPadBytes = (8 - ((len - 1) % 8)) % 8;
+	if (len < 1) return -1;
+	noPadBytes = (uint8_t)((8 - ((len - 1) % 8)) % 8);
 	if(len + noPadBytes + 1 >= CWS_NETMSGSIZE - 8) { return -1; }
 	des_random_get(padBytes, noPadBytes);
 	for(i = 0; i < noPadBytes; i++) { buffer[len++] = padBytes[i]; }
 	for(i = 2; i < len; i++) { checksum ^= buffer[i]; }
 	buffer[len++] = checksum;
-	des_random_get((uint8_t *)ivec, 8);
+	des_random_get(ivec, 8);
 	memcpy(buffer + len, ivec, 8);
 	for(i = 2; i < len; i += 8)
 	{
-		uint8_t j;
-		for(j = 0; j < 8; j++) { buffer[i + j] ^= ivec[j]; }
+			for (uint8_t j = 0; j < 8; j++) buffer[i + j] = (uint8_t)(buffer[i + j] ^ ivec[j]);
 		EuroDes(deskey, HASH, buffer + i);
 		memcpy(ivec, buffer + i, 8);
 	}
@@ -456,8 +465,8 @@ int32_t tcmg_ncd_des_encrypt(uint8_t *buffer, int len, uint8_t *deskey)
 
 int32_t tcmg_ncd_des_decrypt(uint8_t *buffer, int len, uint8_t *deskey)
 {
-	char ivec[8];
-	char nextIvec[8];
+	uint8_t ivec[8];
+	uint8_t nextIvec[8];
 	int i;
 	uint8_t checksum = 0;
 
@@ -467,13 +476,11 @@ int32_t tcmg_ncd_des_decrypt(uint8_t *buffer, int len, uint8_t *deskey)
 	memcpy(nextIvec, buffer + len, 8);
 	for(i = 2; i < len; i += 8)
 	{
-		uint8_t j;
-
 		memcpy(ivec, nextIvec, 8);
 		memcpy(nextIvec, buffer + i, 8);
 		EuroDes(deskey, CRYPT, buffer + i);
-		for(j = 0; j < 8; j++)
-			{ buffer[i + j] ^= ivec[j]; }
+		for (uint8_t j = 0; j < 8; j++)
+			buffer[i + j] = (uint8_t)(buffer[i + j] ^ ivec[j]);
 	}
 	for(i = 2; i < len; i++) { checksum ^= buffer[i]; }
 	if(checksum) { return -1; }

@@ -115,7 +115,7 @@ bool cfg_validate(S_CONFIG *c, char *err, size_t esz)
         }
         else if (reader_protocol_kind(r->protocol) == READER_PROTOCOL_NETWORK) {
             const char *comma;
-            long port;
+            int32_t port;
 
             if (!r->enabled) continue;
             if (!r->device[0]) {
@@ -129,7 +129,7 @@ bool cfg_validate(S_CONFIG *c, char *err, size_t esz)
                          i, r->label, r->device);
                 return false;
             }
-            if (!cfg_parse_long_range(comma + 1, 1, 65535, &port)) {
+            if (!cfg_parse_i32_range(comma + 1, 1, 65535, &port)) {
                 snprintf(err, esz, "reader[%d] '%s': invalid port", i, r->label);
                 return false;
             }

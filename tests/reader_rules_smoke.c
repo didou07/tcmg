@@ -12,8 +12,9 @@ int main(void)
     a.group = 1;
     r.in_use = 1;
     r.enabled = 1;
-    r.ecm_whitelist = 64;
-    if (reader_rule_check(&r, &a, 0x0100, 0x0001, 64) != READER_RULE_ALLOW) return 1;
-    if (reader_rule_check(&r, &a, 0x0100, 0x0001, 65) != READER_RULE_ECM_WHITELIST) return 2;
+    r.ecm_whitelist = 0x37;
+    if (reader_rule_check(&r, &a, 0x0100, 0x0001, 55) != READER_RULE_ALLOW) return 1;
+    if (reader_rule_check(&r, &a, 0x0100, 0x0001, 54) != READER_RULE_ECM_WHITELIST) return 2;
+    if (reader_rule_check(&r, &a, 0x0100, 0x0001, 56) != READER_RULE_ECM_WHITELIST) return 3;
     return 0;
 }

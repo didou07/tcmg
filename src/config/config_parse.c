@@ -92,22 +92,22 @@ bool cfg_parse_file(const char *path,cfg_kv_callback cb,void *ctx,char *err,size
     fclose(f);
     return true;
 }
-bool cfg_parse_bool(const char*s,int*out)
+bool cfg_parse_bool(const char*s,bool*out)
 {
     if(!s||!out)return false;
-    if(!strcasecmp(s,"1")||!strcasecmp(s,"yes")||!strcasecmp(s,"true")||!strcasecmp(s,"on")){*out=1;return true;}
-    if(!strcasecmp(s,"0")||!strcasecmp(s,"no")||!strcasecmp(s,"false")||!strcasecmp(s,"off")){*out=0;return true;}
+    if(!strcasecmp(s,"1")||!strcasecmp(s,"yes")||!strcasecmp(s,"true")||!strcasecmp(s,"on")){*out=true;return true;}
+    if(!strcasecmp(s,"0")||!strcasecmp(s,"no")||!strcasecmp(s,"false")||!strcasecmp(s,"off")){*out=false;return true;}
     return false;
 }
-bool cfg_parse_long_range(const char*s,long lo,long hi,long*out)
+bool cfg_parse_i32_range(const char*s,int32_t lo,int32_t hi,int32_t*out)
 {
     char*e=NULL;
-    long v;
+    int64_t v;
     if(!s||!*s||!out)return false;
     errno=0;
-    v=strtol(s,&e,10);
-    if(errno||e==s||*e||v<lo||v>hi)return false;
-    *out=v;
+    v=strtoll(s,&e,10);
+    if(errno||e==s||*e||v<(int64_t)lo||v>(int64_t)hi)return false;
+    *out=(int32_t)v;
     return true;
 }
 bool cfg_parse_hex_bytes(const char*s,uint8_t*out,size_t n)
@@ -119,6 +119,17 @@ bool cfg_parse_hex_bytes(const char*s,uint8_t*out,size_t n)
         if(sscanf(s+i*2,"%02X",&v)!=1)return false;
         out[i]=(uint8_t)v;
     }
+    return true;
+}
+bool cfg_parse_u8_hex(const char*s,uint8_t*out)
+{
+    char*e=NULL;
+    unsigned long v;
+    if(!s||!*s||!out)return false;
+    errno=0;
+    v=strtoul(s,&e,16);
+    if(errno||e==s||*e||v>0xFFUL)return false;
+    *out=(uint8_t)v;
     return true;
 }
 bool cfg_parse_u16_hex(const char*s,uint16_t*out)
@@ -140,11 +151,11 @@ bool cfg_parse_group_list(const char*s,int32_t*groups,int32_t*count)
     if(!buf[0])return false;
     tok=strtok_r(buf,",",&save);
     while(tok){
-        long v;
+        int32_t v;
         cfg_str_trim(tok);
-        if(!*tok||n>=MAX_GROUPS_PER_ACC||!cfg_parse_long_range(tok,1,65535,&v))return false;
+        if(!*tok||n>=MAX_GROUPS_PER_ACC||!cfg_parse_i32_range(tok,1,65535,&v))return false;
         for(int i=0;i<n;i++)if(groups[i]==(int32_t)v)return false;
-        groups[n++]=(int32_t)v;
+        groups[n++]=v;
         tok=strtok_r(NULL,",",&save);
     }
     *count=n;
@@ -224,7 +235,7 @@ bool cfg_parse_date(const char*s,time_t*out)
     struct tm t,check;
     time_t value;
     if(!s||!out)return false;
-    if(!strcmp(s,"0")||!*s){*out=0;return true;}
+    if(!strcmp(s,"0")||!*s){*out=false;return true;}
     if(sscanf(s,"%d-%d-%d%c",&y,&m,&d,&extra)!=3)return false;
     if(y<1970||y>2200||m<1||m>12||d<1||d>31)return false;
     memset(&t,0,sizeof(t));
@@ -267,10 +278,10 @@ bool cfg_parse_schedule(const char*s,S_ACCOUNT*a)
     }
     if(from<0||to<0||sscanf(sp+1,"%d:%d-%d:%d%c",&h1,&m1,&h2,&m2,&extra)!=4)return false;
     if(h1<0||h1>23||m1<0||m1>59||h2<0||h2>23||m2<0||m2>59)return false;
-    a->sched_day_from=from;
-    a->sched_day_to=to;
-    a->sched_hhmm_from=h1*100+m1;
-    a->sched_hhmm_to=h2*100+m2;
+    a->sched_day_from=(int8_t)from;
+    a->sched_day_to=(int8_t)to;
+    a->sched_hhmm_from=(int16_t)(h1*100+m1);
+    a->sched_hhmm_to=(int16_t)(h2*100+m2);
     tcmg_strlcpy(a->schedule,s,sizeof(a->schedule));
     return true;
 }

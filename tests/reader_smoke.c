@@ -76,7 +76,7 @@ int main(int argc, char **argv) {
         for (int i = 0; i < MAX_READERS; i++) {
             if (!g_cfg.readers[i].in_use) continue;
             g_cfg.readers[i].enabled = 1;
-            g_cfg.readers[i].ecm_whitelist = 1;
+            g_cfg.readers[i].ecm_whitelist = (int32_t)sizeof(ecm) - 1;
             if (first_reader < 0) first_reader = i;
             configured_readers++;
         }

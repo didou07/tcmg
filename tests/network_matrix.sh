@@ -76,7 +76,7 @@ enabled = 1
 group = 1
 caid = 0B00
 sid_whitelist = 0064
-ecm_maxlen = 255
+ecmwhitelist = 00
 inactivitytimeout = 30
 ecmkey = 0B00=9F3C17A2B5D0481E6A7B92F4C8E05D13A1B9E4F276C3058D4ACF19B08273DE5F
 CFG
@@ -136,7 +136,7 @@ CFG
       printf '%s\n' "device = 127.0.0.1,$port"
       printf '%s\n' 'user = serveruser0123456789'
       printf '%b\n' "$extra"
-      printf '%s\n' 'ecm_maxlen = 255'
+      printf '%s\n' 'ecmwhitelist = 00'
       printf '%s\n' 'inactivitytimeout = 5'
     } > "$d/tcmg.readers"
     cat > "$d/tcmg.users" <<'CFG'

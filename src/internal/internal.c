@@ -71,6 +71,7 @@ enum internal_job_state {
 typedef struct {
     int state;
     int rc;
+    int recoverable;
     uint8_t ecm[249];
     size_t ecm_len;
     uint8_t cw[16];
@@ -192,6 +193,7 @@ static void queue_reset_locked(S_INTERNAL_SLOT *s)
         s->queue_slots[i] = -1;
         s->jobs[i].state = INTERNAL_JOB_FREE;
         s->jobs[i].rc = -1;
+        s->jobs[i].recoverable = 0;
         s->jobs[i].ecm_len = 0;
         memset(s->jobs[i].ecm, 0, sizeof(s->jobs[i].ecm));
         memset(s->jobs[i].cw, 0, sizeof(s->jobs[i].cw));
@@ -228,6 +230,7 @@ static int queue_submit_locked(S_INTERNAL_SLOT *s, const uint8_t *ecm,
     S_INTERNAL_JOB *job = &s->jobs[job_index];
     job->state = INTERNAL_JOB_QUEUED;
     job->rc = -1;
+    job->recoverable = 0;
     job->ecm_len = ecm_len;
     memcpy(job->ecm, ecm, ecm_len);
     memset(job->cw, 0, sizeof(job->cw));
@@ -351,7 +354,7 @@ static int configure_tty(int fd, const char *device)
     tio.c_cflag |= CLOCAL | CREAD;
     tio.c_cflag &= ~(CSIZE | CRTSCTS | CSTOPB);
     tio.c_cflag |= CS8 | PARENB;
-    tio.c_cflag &= ~PARODD;
+    tio.c_cflag &= (tcflag_t)~PARODD;
     cfsetispeed(&tio, B9600);
     cfsetospeed(&tio, B9600);
     tio.c_cc[VMIN] = 0;
@@ -1057,6 +1060,29 @@ static void *internal_reader_worker(void *arg)
             uint8_t cw[16] = {0};
             int recoverable = 0;
             int rc = internal_conax_ecm(s, ecm, ecm_len, cw, &recoverable);
+            if (rc < 0 && recoverable) {
+                int reinitialized = -1;
+                int retry_recoverable = 0;
+                pthread_mutex_lock(&s->mtx);
+                s->ready = 0;
+                if (!s->worker_stop && reader_present(s) > 0)
+                    reinitialized = sci_reset_card(s, "transport");
+                pthread_mutex_unlock(&s->mtx);
+                tcmg_log_dbg(D_READER,
+                             "internal transport recovery device=%s status=%s",
+                             s->device, reinitialized == 0 ? "ready" : "failed");
+                if (reinitialized == 0) {
+                    int retry_rc = internal_conax_ecm(s, ecm, ecm_len, cw, &retry_recoverable);
+                    tcmg_log_dbg(D_READER,
+                                 "internal transport retry device=%s result=%s",
+                                 s->device, retry_rc == 0 ? "found" :
+                                 (retry_rc == -13 ? "not-found" : "failed"));
+                    rc = retry_rc;
+                    recoverable = retry_recoverable;
+                }
+            } else if (rc < 0) {
+                recoverable = 0;
+            }
             int64_t ecm_ms = mono_ms() - ecm_t0;
 
             if (rc < 0) {
@@ -1079,6 +1105,7 @@ static void *internal_reader_worker(void *arg)
                 queue_release_locked(job);
             } else {
                 job->rc = rc;
+                job->recoverable = recoverable;
                 if (rc == 0)
                     memcpy(job->cw, cw, sizeof(job->cw));
                 job->state = INTERNAL_JOB_DONE;
@@ -1254,12 +1281,13 @@ int internal_reader_count(void)
 
 int internal_do_ecm_reader(int index, uint16_t caid,
                            const uint8_t *ecm, size_t ecm_len,
-                           uint8_t cw[16], int32_t whitelist)
+                           uint8_t cw[16], int32_t whitelist, E_READER_FAILURE *failure)
 {
+    if (failure) *failure = READER_FAILURE_READER_ERROR;
     if (index < 0 || index >= MAX_READERS || !ecm || !cw || ecm_len == 0 || ecm_len > 249)
         return -1;
     if ((caid & 0xFF00u) != 0x0B00u) return -2;
-    if (whitelist > 0 && ecm_len > (size_t)whitelist) return -3;
+    if (whitelist > 0 && ecm_len != (size_t)whitelist) return -3;
 
     slots_init();
     S_READER cfg;
@@ -1269,6 +1297,7 @@ int internal_do_ecm_reader(int index, uint16_t caid,
     S_INTERNAL_SLOT *s = &s_slots[index];
     pthread_mutex_lock(&s->mtx);
     if (!s->worker_running || s->fd < 0 || !s->ready || !s->present) {
+        if (failure) *failure = READER_FAILURE_TRANSPORT_ERROR;
         pthread_mutex_unlock(&s->mtx);
         return -6;
     }
@@ -1289,10 +1318,12 @@ int internal_do_ecm_reader(int index, uint16_t caid,
         if (job_index >= 0) break;
         int wait_rc = pthread_cond_timedwait(&s->cv, &s->mtx, &ts);
         if (wait_rc == ETIMEDOUT || !s->worker_running || s->worker_stop) {
+            if (failure) *failure = READER_FAILURE_TRANSPORT_ERROR;
             pthread_mutex_unlock(&s->mtx);
             return -7;
         }
         if (!s->ready || !s->present) {
+            if (failure) *failure = READER_FAILURE_TRANSPORT_ERROR;
             pthread_mutex_unlock(&s->mtx);
             return -6;
         }
@@ -1309,6 +1340,7 @@ int internal_do_ecm_reader(int index, uint16_t caid,
     while (job->state != INTERNAL_JOB_DONE && s->worker_running && !s->worker_stop) {
         int wait_rc = pthread_cond_timedwait(&s->cv, &s->mtx, &ts);
         if (wait_rc == ETIMEDOUT) {
+            if (failure) *failure = READER_FAILURE_TRANSPORT_ERROR;
             if (job->waiters > 0) job->waiters--;
             if (job->state == INTERNAL_JOB_QUEUED && job->waiters == 0)
                 job->state = INTERNAL_JOB_CANCELLED;
@@ -1319,6 +1351,7 @@ int internal_do_ecm_reader(int index, uint16_t caid,
     }
 
     if (job->state != INTERNAL_JOB_DONE) {
+        if (failure) *failure = READER_FAILURE_TRANSPORT_ERROR;
         if (job->waiters > 0) job->waiters--;
         if (job->state == INTERNAL_JOB_CANCELLED && job->waiters == 0)
             queue_release_locked(job);
@@ -1328,6 +1361,12 @@ int internal_do_ecm_reader(int index, uint16_t caid,
     }
 
     int rc = job->rc;
+    if (failure) {
+        if (rc == 0) *failure = READER_FAILURE_NONE;
+        else if (job->recoverable) *failure = READER_FAILURE_TRANSPORT_ERROR;
+        else if (rc == -13) *failure = READER_FAILURE_NOT_FOUND;
+        else *failure = READER_FAILURE_CARD_ERROR;
+    }
     if (rc == 0) memcpy(cw, job->cw, sizeof(job->cw));
     if (job->waiters > 0) job->waiters--;
     if (job->waiters == 0) queue_release_locked(job);
@@ -1350,8 +1389,9 @@ int internal_reader_get(int index, S_INTERNAL_READER *out)
 int internal_reader_count(void) { return 0; }
 int internal_do_ecm_reader(int index, uint16_t caid,
                            const uint8_t *ecm, size_t ecm_len,
-                           uint8_t cw[16], int32_t whitelist)
+                           uint8_t cw[16], int32_t whitelist, E_READER_FAILURE *failure)
 {
+    if (failure) *failure = READER_FAILURE_READER_ERROR;
     (void)index;
     (void)caid;
     (void)ecm;

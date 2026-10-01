@@ -3,7 +3,7 @@
 
 #define PAGE_INIT(initial_sz) \
 	int   bsz = (initial_sz), pos = 0; \
-	char *buf = (char *)malloc(bsz); \
+	char *buf = (char *)malloc((size_t)bsz); \
 	if (!buf) { send_json_error(fd, 503, "Service Unavailable", "out of memory"); return; }
 
 #define PAGE_SEND_AND_FREE(fd) \

@@ -46,7 +46,7 @@ typedef struct {
     time_t expirationdate;
     int64_t cw_found;
     int64_t cw_not;
-    int64_t ecm_total;
+    uint64_t ecm_total;
     int64_t cw_time_total_ms;
     int64_t cw_time_min_ms;
     int64_t cw_time_max_ms;

@@ -166,7 +166,7 @@ bool webif_reader_save(const S_WEBIF_READER_EDIT *e)
     value.in_use = 1;
     value.enabled = 1;
     value.inactivitytimeout = 30;
-    value.ecm_whitelist = 0x37;
+    value.ecm_whitelist = 0;
     value.poll_ms = 250;
     snprintf(value.label, sizeof(value.label), "reader%d", e->index);
     tcmg_strlcpy(value.protocol, "emu", sizeof(value.protocol));
@@ -180,9 +180,11 @@ bool webif_reader_save(const S_WEBIF_READER_EDIT *e)
     if (parse_simple_i32(e->enabled, 0, 1, &iv) < 0) return false;
     value.enabled = (int8_t)iv;
     {
-        char *end = NULL; unsigned long x = strtoul(e->ecmwhitelist, &end, 16);
-        if (end == e->ecmwhitelist || *end || x > 0xFF) return false;
-        value.ecm_whitelist = (int32_t)x;
+        if (e->ecmwhitelist[0]) {
+            char *end = NULL; unsigned long x = strtoul(e->ecmwhitelist, &end, 16);
+            if (end == e->ecmwhitelist || *end || x > 0xFF) return false;
+            value.ecm_whitelist = (int32_t)x;
+        } else value.ecm_whitelist = 0;
     }
     const S_READER_PROTOCOL *protocol = reader_protocol_find(e->protocol);
     if (!protocol) return false;

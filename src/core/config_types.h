@@ -9,13 +9,13 @@ typedef struct {
     int32_t  sock_timeout;
     int32_t  server_keepalive;
     int32_t  server_keepalive_misses;
-    int8_t   ecm_log;
-    int8_t   scheduled_restart_enabled;
+    bool     ecm_log;
+    bool     scheduled_restart_enabled;
     int16_t  scheduled_restart_minutes;
     char     logfile[CFGPATH_LEN];
     char     usrfile[CFGPATH_LEN];
 
-    int8_t   webif_enabled;
+    bool     webif_enabled;
     int32_t  webif_port;
     int32_t  webif_refresh;
     char     webif_user[CFGKEY_LEN];
@@ -31,8 +31,8 @@ typedef struct {
     int32_t  newcamd_port;
     char     newcamd_bindaddr[MAXIPLEN];
     uint8_t  newcamd_key[14];
-    int8_t   newcamd_keepalive;
-    int8_t   newcamd_mgclient;
+    bool     newcamd_keepalive;
+    bool     newcamd_mgclient;
 
     char      config_file[CFGPATH_LEN];
     char      user_file[CFGPATH_LEN];
@@ -44,7 +44,7 @@ typedef struct {
     pthread_rwlock_t acc_lock;
     S_BAN_ENTRY *ban_table[BAN_BUCKETS];
     pthread_mutex_t ban_lock;
-    int8_t    failban_enabled;
+    bool     failban_enabled;
     char      failban_allowlist[CFGVAL_LEN];
     int32_t   failban_max_fails;
     int32_t   failban_ban_secs;

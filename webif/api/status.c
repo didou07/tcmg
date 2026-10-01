@@ -54,7 +54,7 @@ void send_api_status(int fd, const char *qs)
         "\"banned_ips\":%d,"
         "\"cw_found\":%lld,"
         "\"cw_not\":%lld,"
-        "\"ecm_total\":%lld,"
+        "\"ecm_total\":%llu,"
         "\"hit_rate_pct\":%.1f,"
         "\"debug_mask\":%u,"
         "\"pcsc_enabled\":%d,"
@@ -65,7 +65,7 @@ void send_api_status(int fd, const char *qs)
         (long)st.uptime_s, st.uptime_str,
         cfg.newcamd_port, cfg.cccam_port, cfg.cs378x_port, st.active_conns,
         st.naccounts, st.nbans,
-        (long long)st.cw_found, (long long)st.cw_not, (long long)st.ecm_total,
+        (long long)st.cw_found, (long long)st.cw_not, (unsigned long long)st.ecm_total,
         st.hit_rate, g_dblevel,
         webif_pcsc_enabled(), pcsc_available(), pcsc_reader_count());
 

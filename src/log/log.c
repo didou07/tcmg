@@ -752,7 +752,10 @@ void log_cw_result(uint16_t caid, uint16_t sid, int32_t len,
 		}
 
 		const char *result_text = result == LOG_ECM_FOUND ? (from_cache ? "cache" : "found") :
-		                          (result == LOG_ECM_REJECTED ? "ECM rejected" : "not found");
+		                          (result == LOG_ECM_REJECTED ? "ECM rejected" :
+		                           result == LOG_ECM_TRANSPORT_ERROR ? "transport error" :
+		                           result == LOG_ECM_CARD_ERROR ? "card error" :
+		                           result == LOG_ECM_READER_ERROR ? "reader error" : "not found");
 
 		const char *display_user = (user && *user) ? user : "?";
 		if (result == LOG_ECM_FOUND) {
@@ -778,18 +781,21 @@ void log_cw_result(uint16_t caid, uint16_t sid, int32_t len,
 		} else {
 			if (ch)
 				snprintf(body, sizeof(body),
-				         "(%04X:%04X:%02X): not found (%d ms) by %s  [%s]",
-				         caid, sid, (int)len, ms, display_user, ch);
+				         "(%04X:%04X:%02X): %s (%d ms) by %s  [%s]",
+				         caid, sid, (int)len, result_text, ms, display_user, ch);
 			else
 				snprintf(body, sizeof(body),
-				         "(%04X:%04X:%02X): not found (%d ms) by %s",
-				         caid, sid, (int)len, ms, display_user);
+				         "(%04X:%04X:%02X): %s (%d ms) by %s",
+				         caid, sid, (int)len, result_text, ms, display_user);
 		}
 
 		usr_line[0] = '\0';
 		if (user && *user) {
 			const char *usr_result = hit ? "hit" :
-			                         (result == LOG_ECM_REJECTED ? "rejected" : "miss");
+			                         (result == LOG_ECM_REJECTED ? "rejected" :
+			                          result == LOG_ECM_TRANSPORT_ERROR ? "transport" :
+			                          result == LOG_ECM_CARD_ERROR ? "card_error" :
+			                          result == LOG_ECM_READER_ERROR ? "reader_error" : "miss");
 			ts_now(ts, sizeof(ts));
 			snprintf(usr_line, sizeof(usr_line),
 			         "%s\t%s\t%04X\t%04X\t%s\t%d\t%02X\t%s",

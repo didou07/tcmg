@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "../reader/failure.h"
 
 #define TCMG_SERIAL_MAX_ATR 64
 #define TCMG_SERIAL_MAX_PORTS 64
@@ -23,7 +24,7 @@ int serial_reader_get(int index, S_SERIAL_READER *out);
 int serial_reader_count(void);
 int serial_do_ecm_reader(int index, uint16_t caid,
                          const uint8_t *ecm, size_t ecm_len,
-                         uint8_t cw[16], int32_t whitelist);
+                         uint8_t cw[16], int32_t whitelist, E_READER_FAILURE *failure);
 
 size_t serial_list_ports(char out[][TCMG_SERIAL_PORT_LEN], size_t max_ports);
 

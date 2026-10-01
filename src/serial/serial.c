@@ -261,11 +261,11 @@ static int unix_configure(int fd, int parity)
     tio.c_cflag &= ~(CSIZE | CRTSCTS | CSTOPB);
     tio.c_cflag |= CS8 | CSTOPB;
     if (parity == 2) {
-        tio.c_cflag &= ~PARENB;
-        tio.c_cflag &= ~PARODD;
+        tio.c_cflag &= (tcflag_t)~PARENB;
+        tio.c_cflag &= (tcflag_t)~PARODD;
     } else {
         tio.c_cflag |= PARENB;
-        if (parity == 0) tio.c_cflag &= ~PARODD;
+        if (parity == 0) tio.c_cflag &= (tcflag_t)~PARODD;
         else tio.c_cflag |= PARODD;
     }
     cfsetispeed(&tio, B9600);
@@ -707,6 +707,56 @@ static int serial_quick_probe(S_SERIAL_SLOT *s)
     return serial_fast_reset_mode(s, 1);
 }
 
+static void serial_purge_and_close(S_SERIAL_SLOT *s)
+{
+    if (!s) return;
+#ifdef TCMG_OS_WINDOWS
+    if (s->h != INVALID_HANDLE_VALUE) PurgeComm(s->h, PURGE_RXABORT | PURGE_RXCLEAR | PURGE_TXABORT | PURGE_TXCLEAR);
+#else
+    if (s->fd >= 0) tcflush(s->fd, TCIOFLUSH);
+#endif
+    slot_close(s);
+}
+
+static void serial_reset_runtime_state(S_SERIAL_SLOT *s)
+{
+    if (!s) return;
+    char device[TCMG_SERIAL_PORT_LEN];
+    tcmg_strlcpy(device, s->device, sizeof(device));
+    serial_purge_and_close(s);
+    s->present = 0;
+    s->ready = 0;
+    s->protocol = 0;
+    s->parity = -1;
+    s->t0_fi = 1;
+    s->t0_di = 1;
+    s->t0_d = 1;
+    s->t0_wi = 10;
+    s->t0_n = 0;
+    s->t0_ta1 = 0x11;
+    s->t0_ta1_present = 0;
+    s->t0_ta2 = 0;
+    s->t0_ta2_present = 0;
+    s->current_baud = SERIAL_BAUD;
+    s->requested_baud = SERIAL_BAUD;
+    s->t0_wwt_ms = 1000;
+    s->last_reset_ms = 0;
+    s->last_attempt_ms = 0;
+    s->last_poll_ms = 0;
+    s->ecm_active = 0;
+    s->atr_len = 0;
+    memset(s->atr, 0, sizeof(s->atr));
+    tcmg_strlcpy(s->device, device, sizeof(s->device));
+}
+
+static int serial_reinitialize(S_SERIAL_SLOT *s)
+{
+    if (!s || !s->device[0]) return -1;
+    serial_reset_runtime_state(s);
+    tcmg_sleep_ms(100);
+    return serial_fast_reset_mode(s, 1);
+}
+
 static void serial_mark_unavailable(S_SERIAL_SLOT *s)
 {
     if (!s) return;
@@ -972,11 +1022,12 @@ int serial_reader_count(void)
 
 int serial_do_ecm_reader(int index, uint16_t caid,
                          const uint8_t *ecm, size_t ecm_len,
-                         uint8_t cw[16], int32_t whitelist)
+                         uint8_t cw[16], int32_t whitelist, E_READER_FAILURE *failure)
 {
+    if (failure) *failure = READER_FAILURE_READER_ERROR;
     if (index < 0 || index >= MAX_READERS || !ecm || !cw || ecm_len == 0 || ecm_len > 249) return -1;
     if ((caid & 0xFF00u) != 0x0B00u) return -2;
-    if (whitelist > 0 && ecm_len > (size_t)whitelist) return -3;
+    if (whitelist > 0 && ecm_len != (size_t)whitelist) return -3;
 
     slots_init();
     S_READER cfg;
@@ -986,6 +1037,7 @@ int serial_do_ecm_reader(int index, uint16_t caid,
     S_SERIAL_SLOT *s = &s_slots[index];
     pthread_mutex_lock(&s->mtx);
     if (serial_open_and_reset(s, cfg.device) < 0) {
+        if (failure) *failure = READER_FAILURE_TRANSPORT_ERROR;
         pthread_mutex_unlock(&s->mtx);
         return -6;
     }
@@ -993,11 +1045,32 @@ int serial_do_ecm_reader(int index, uint16_t caid,
     int64_t ecm_t0 = mono_ms();
     s->ecm_active++;
     int rc = conax_ecm(s, ecm, ecm_len, cw);
+    if (rc < 0 && rc != SERIAL_ECM_NOT_FOUND && (rc == -2 || rc == -7)) {
+        serial_mark_unavailable(s);
+        int reinitialized = serial_reinitialize(s);
+        tcmg_log_dbg(D_READER,
+                     "serial transport recovery device=%s status=%s",
+                     s->device, reinitialized == 0 ? "ready" : "failed");
+        if (reinitialized == 0) {
+            int retry_rc = conax_ecm(s, ecm, ecm_len, cw);
+            tcmg_log_dbg(D_READER,
+                         "serial transport retry device=%s result=%s",
+                         s->device, retry_rc == 0 ? "found" :
+                         (retry_rc == SERIAL_ECM_NOT_FOUND ? "not-found" : "failed"));
+            rc = retry_rc;
+        }
+    } else if (rc < 0 && rc != SERIAL_ECM_NOT_FOUND) {
+        serial_mark_unavailable(s);
+    }
+    if (failure) {
+        if (rc == 0) *failure = READER_FAILURE_NONE;
+        else if (rc == SERIAL_ECM_NOT_FOUND) *failure = READER_FAILURE_NOT_FOUND;
+        else if (rc == -2 || rc == -7) *failure = READER_FAILURE_TRANSPORT_ERROR;
+        else *failure = READER_FAILURE_CARD_ERROR;
+    }
     if (s->ecm_active > 0) s->ecm_active--;
     int64_t ecm_ms = mono_ms() - ecm_t0;
     if (rc < 0) {
-        if (rc != SERIAL_ECM_NOT_FOUND)
-            serial_mark_unavailable(s);
         tcmg_log_dbg(D_READER,
                      "serial ECM failed device=%s rc=%d elapsed=%lldms%s",
                      s->device, rc, (long long)ecm_ms,

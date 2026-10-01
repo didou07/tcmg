@@ -238,7 +238,7 @@ void crypt_ede2_cbc(const uint8_t *k16, const uint8_t *iv,
                      size_t len, bool encrypt)
 {
 	uint8_t ivec[8], tmp[8];
-	size_t i; int j;
+	size_t i, j;
 	memcpy(ivec, iv, 8);
 	if (encrypt)
 	{
@@ -361,7 +361,7 @@ static const char MD5B64[] =
 	"./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 static const char MD5_MAGIC[] = "$1$";
 
-static void to64(uint32_t v, int n, char *dst, int *pos)
+static void to64(uint32_t v, int n, char *dst, size_t *pos)
 {
 	int i;
 	for (i = 0; i < n; i++) dst[(*pos)++] = MD5B64[v & 0x3f], v >>= 6;
@@ -369,83 +369,88 @@ static void to64(uint32_t v, int n, char *dst, int *pos)
 
 bool crypt_md5_crypt(const char *pw, const char *salt_in, char *out, size_t outsz)
 {
-	const char *sp = salt_in;
-	const char *ep;
-	int         sl, i, pl;
-	size_t      pw_len = strlen(pw);
+    const char *sp = salt_in;
+    const char *ep;
+    size_t sl, i;
+    size_t pw_len = strlen(pw);
 
-	if (strncmp(sp, MD5_MAGIC, 3) == 0) sp += 3;
-	ep = strchr(sp, '$');
-	if (!ep) return false;
-	sl = (int)(ep - sp);
-	if (sl > 8) sl = 8;
+    if (strncmp(sp, MD5_MAGIC, 3) == 0) sp += 3;
+    ep = strchr(sp, '$');
+    if (!ep) return false;
+    sl = (size_t)(ep - sp);
+    if (sl > 8) sl = 8;
 
-	size_t  bsz  = pw_len * 2 + 128;
-	size_t  absz = pw_len * 2 + 32;
+    if (pw_len > (SIZE_MAX - 128U) / 2U || pw_len > (SIZE_MAX - 32U) / 2U) return false;
+    size_t bsz  = pw_len * 2U + 128U;
+    size_t absz = pw_len * 2U + 32U;
 
-	uint8_t tmp_stack[384], atmp_stack[288];
-	uint8_t *tmp  = bsz  <= sizeof(tmp_stack)  ? tmp_stack  : (uint8_t *)malloc(bsz);
-	uint8_t *atmp = absz <= sizeof(atmp_stack) ? atmp_stack : (uint8_t *)malloc(absz);
-	uint8_t alt[16], fh[16];
-	size_t  pos = 0, apos = 0;
+    uint8_t tmp_stack[384], atmp_stack[288];
+    uint8_t *tmp  = bsz  <= sizeof(tmp_stack)  ? tmp_stack  : (uint8_t *)malloc(bsz);
+    uint8_t *atmp = absz <= sizeof(atmp_stack) ? atmp_stack : (uint8_t *)malloc(absz);
+    uint8_t alt[16], fh[16];
+    size_t pos = 0, apos = 0;
 
-	if (!tmp || !atmp) {
-		if (tmp  && tmp  != tmp_stack)  free(tmp);
-		if (atmp && atmp != atmp_stack) free(atmp);
-		return false;
-	}
+    if (!tmp || !atmp) {
+        if (tmp  && tmp  != tmp_stack)  free(tmp);
+        if (atmp && atmp != atmp_stack) free(atmp);
+        return false;
+    }
 
-	memcpy(tmp + pos, pw, pw_len);     pos += pw_len;
-	memcpy(tmp + pos, MD5_MAGIC, 3);   pos += 3;
-	memcpy(tmp + pos, sp, sl);         pos += sl;
+    memcpy(tmp + pos, pw, pw_len);     pos += pw_len;
+    memcpy(tmp + pos, MD5_MAGIC, 3);   pos += 3;
+    memcpy(tmp + pos, sp, sl);         pos += sl;
 
-	memcpy(atmp + apos, pw, pw_len);   apos += pw_len;
-	memcpy(atmp + apos, sp, sl);       apos += sl;
-	memcpy(atmp + apos, pw, pw_len);   apos += pw_len;
-	crypt_md5_hash(atmp, apos, alt);
+    memcpy(atmp + apos, pw, pw_len);   apos += pw_len;
+    memcpy(atmp + apos, sp, sl);       apos += sl;
+    memcpy(atmp + apos, pw, pw_len);   apos += pw_len;
+    crypt_md5_hash(atmp, apos, alt);
 
-	for (pl = (int)pw_len; pl > 0; pl -= 16)
-	{
-		int take = pl > 16 ? 16 : pl;
-		memcpy(tmp + pos, alt, take); pos += take;
-	}
-	secure_zero(alt, 16);
+    size_t remaining = pw_len;
+    while (remaining > 0)
+    {
+        size_t take = remaining > 16U ? 16U : remaining;
+        memcpy(tmp + pos, alt, take);
+        pos += take;
+        remaining -= take;
+    }
+    secure_zero(alt, 16);
 
-	for (i = (int)pw_len; i; i >>= 1)
-		tmp[pos++] = (i & 1) ? 0 : pw[0];
-	crypt_md5_hash(tmp, pos, fh);
+    for (size_t bit = pw_len; bit != 0; bit >>= 1)
+        tmp[pos++] = (uint8_t)(((bit & 1U) != 0U) ? 0U : (uint8_t)(unsigned char)pw[0]);
+    crypt_md5_hash(tmp, pos, fh);
 
-	for (i = 0; i < 1000; i++)
-	{
-		pos = 0;
-		if (i & 1)  { memcpy(tmp+pos, pw, pw_len); pos += pw_len; }
-		else        { memcpy(tmp+pos, fh, 16);      pos += 16;     }
-		if (i % 3)  { memcpy(tmp+pos, sp, sl);      pos += sl;     }
-		if (i % 7)  { memcpy(tmp+pos, pw, pw_len);  pos += pw_len; }
-		if (i & 1)  { memcpy(tmp+pos, fh, 16);      pos += 16;     }
-		else        { memcpy(tmp+pos, pw, pw_len);   pos += pw_len; }
-		crypt_md5_hash(tmp, pos, fh);
-	}
+    for (i = 0; i < 1000U; i++)
+    {
+        pos = 0;
+        if (i & 1U)  { memcpy(tmp+pos, pw, pw_len); pos += pw_len; }
+        else         { memcpy(tmp+pos, fh, 16);      pos += 16U;     }
+        if (i % 3U)  { memcpy(tmp+pos, sp, sl);      pos += sl;     }
+        if (i % 7U)  { memcpy(tmp+pos, pw, pw_len);  pos += pw_len; }
+        if (i & 1U)  { memcpy(tmp+pos, fh, 16);      pos += 16U;     }
+        else         { memcpy(tmp+pos, pw, pw_len);  pos += pw_len; }
+        crypt_md5_hash(tmp, pos, fh);
+    }
 
-	int opos = 0;
-	char result[64] = {0};
-	opos += snprintf(result + opos, sizeof(result) - opos, "%s", MD5_MAGIC);
-	for (i = 0; i < sl; i++) result[opos++] = sp[i];
-	result[opos++] = '$';
+    size_t opos = 0;
+    char result[64] = {0};
+    memcpy(result + opos, MD5_MAGIC, 3);
+    opos += 3;
+    for (size_t j = 0; j < sl; j++) result[opos++] = sp[j];
+    result[opos++] = '$';
 
 #define EM(a,b,c,n) do { uint32_t v=((uint32_t)fh[a]<<16)|((uint32_t)fh[b]<<8)|fh[c]; to64(v,n,result,&opos); } while(0)
-	EM(0,6,12,4); EM(1,7,13,4); EM(2,8,14,4); EM(3,9,15,4); EM(4,10,5,4);
+    EM(0,6,12,4); EM(1,7,13,4); EM(2,8,14,4); EM(3,9,15,4); EM(4,10,5,4);
 #undef EM
-	to64(fh[11], 2, result, &opos);
-	result[opos] = '\0';
+    to64(fh[11], 2, result, &opos);
+    result[opos] = '\0';
 
-	secure_zero(fh,  sizeof(fh));
-	secure_zero(tmp, bsz);
-	secure_zero(atmp, absz);
-	if (tmp  != tmp_stack)  free(tmp);
-	if (atmp != atmp_stack) free(atmp);
+    secure_zero(fh,  sizeof(fh));
+    secure_zero(tmp, bsz);
+    secure_zero(atmp, absz);
+    if (tmp  != tmp_stack)  free(tmp);
+    if (atmp != atmp_stack) free(atmp);
 
-	if ((size_t)opos >= outsz) return false;
-	memcpy(out, result, opos + 1);
-	return true;
+    if (opos >= outsz) return false;
+    memcpy(out, result, opos + 1U);
+    return true;
 }

@@ -114,8 +114,8 @@ bool cfg_parse_users(const char*path,S_CONFIG*c,char*err,size_t esz)
         if(strlen(eq+1)>=sizeof(val)){fprintf(stderr,"WARNING: %s line %d value too long for '%s' ignored\n",path,ln,line);continue;}
         tcmg_strlcpy(key,line,sizeof(key));
         tcmg_strlcpy(val,eq+1,sizeof(val));
-        long v;
-        int b;
+        int32_t v;
+        bool b;
         if(!strcasecmp(key,"user")){if(!val[0]||strlen(val)>=sizeof(a->user)){fprintf(stderr,"WARNING: %s line %d invalid value for 'user' ignored\n",path,ln);continue;}tcmg_strlcpy(a->user,val,sizeof(a->user));}
         else if(!strcasecmp(key,"pwd")||!strcasecmp(key,"password")){if(strlen(val)>=sizeof(a->pass)){fprintf(stderr,"WARNING: %s line %d invalid value for '%s' ignored\n",path,ln,key);continue;}tcmg_strlcpy(a->pass,val,sizeof(a->pass));}
         else if(!strcasecmp(key,"enabled")){if(!cfg_parse_bool(val,&b)){fprintf(stderr,"WARNING: %s line %d invalid value for 'enabled' ignored\n",path,ln);continue;}a->enabled=b;}
@@ -124,17 +124,17 @@ bool cfg_parse_users(const char*path,S_CONFIG*c,char*err,size_t esz)
         else if(!strcasecmp(key,"caid")){uint16_t list[MAX_CAIDS_PER_ACC];int32_t n;if(!cfg_parse_u16_list(val,list,&n,MAX_CAIDS_PER_ACC)){fprintf(stderr,"WARNING: %s line %d invalid value for 'caid' ignored\n",path,ln);continue;}a->caid=n?list[0]:0;a->ncaids=0;for(int i=1;i<n;i++)a->caids[a->ncaids++]=list[i];}
         else if(!strcasecmp(key,"ip_whitelist")){if(!cfg_parse_ipv4_list(val,a->ip_whitelist,&a->nwhitelist)){fprintf(stderr,"WARNING: %s line %d invalid value for 'ip_whitelist' ignored\n",path,ln);continue;}}
         else if(!strcasecmp(key,"sid_whitelist")){if(!cfg_parse_u16_list(val,a->sid_whitelist,&a->nsid_whitelist,MAX_SID_WHITELIST)){fprintf(stderr,"WARNING: %s line %d invalid value for 'sid_whitelist' ignored\n",path,ln);continue;}}
-        else if(!strcasecmp(key,"max_connections")){if(!cfg_parse_long_range(val,0,9999,&v)){fprintf(stderr,"WARNING: %s line %d invalid value for 'max_connections' ignored\n",path,ln);continue;}a->max_connections=v;}
-        else if(!strcasecmp(key,"max_idle")){if(!cfg_parse_long_range(val,0,86400,&v)){fprintf(stderr,"WARNING: %s line %d invalid value for 'max_idle' ignored\n",path,ln);continue;}a->max_idle=v;}
+        else if(!strcasecmp(key,"max_connections")){if(!cfg_parse_i32_range(val,0,9999,&v)){fprintf(stderr,"WARNING: %s line %d invalid value for 'max_connections' ignored\n",path,ln);continue;}a->max_connections=v;}
+        else if(!strcasecmp(key,"max_idle")){if(!cfg_parse_i32_range(val,0,86400,&v)){fprintf(stderr,"WARNING: %s line %d invalid value for 'max_idle' ignored\n",path,ln);continue;}a->max_idle=v;}
         else if(!strcasecmp(key,"expiration")){if(!cfg_parse_date(val,&a->expirationdate)){fprintf(stderr,"WARNING: %s line %d invalid value for 'expiration' ignored\n",path,ln);continue;}}
         else if(!strcasecmp(key,"schedule")){if(!cfg_parse_schedule(val,a)){fprintf(stderr,"WARNING: %s line %d invalid value for 'schedule' ignored\n",path,ln);continue;}}
         else if(!strcasecmp(key,"anti_share")){if(!cfg_parse_bool(val,&b)){fprintf(stderr,"WARNING: %s line %d invalid value for 'anti_share' ignored\n",path,ln);continue;}a->anti_share=b;}
-        else if(!strcasecmp(key,"as_max_sids")){if(!cfg_parse_long_range(val,1,32,&v)){fprintf(stderr,"WARNING: %s line %d invalid value for 'as_max_sids' ignored\n",path,ln);continue;}a->as_max_sids=v;}
-        else if(!strcasecmp(key,"as_max_ecm")){if(!cfg_parse_long_range(val,0,100000,&v)){fprintf(stderr,"WARNING: %s line %d invalid value for 'as_max_ecm' ignored\n",path,ln);continue;}a->as_max_ecm=v;}
-        else if(!strcasecmp(key,"as_ecm_window_s")){if(!cfg_parse_long_range(val,1,3600,&v)){fprintf(stderr,"WARNING: %s line %d invalid value for 'as_ecm_window_s' ignored\n",path,ln);continue;}a->as_ecm_window_s=v;}
-        else if(!strcasecmp(key,"as_channel_timeout_s")){if(!cfg_parse_long_range(val,1,3600,&v)){fprintf(stderr,"WARNING: %s line %d invalid value for 'as_channel_timeout_s' ignored\n",path,ln);continue;}a->as_channel_timeout_s=v;}
-        else if(!strcasecmp(key,"as_switch_delay_s")){if(!cfg_parse_long_range(val,0,30,&v)){fprintf(stderr,"WARNING: %s line %d invalid value for 'as_switch_delay_s' ignored\n",path,ln);continue;}a->as_switch_delay_s=v;}
-        else if(!strcasecmp(key,"as_max_ecm_min")){if(!cfg_parse_long_range(val,0,100000,&v)){fprintf(stderr,"WARNING: %s line %d invalid value for 'as_max_ecm_min' ignored\n",path,ln);continue;}a->as_max_ecm=v;a->as_ecm_window_s=60;}
+        else if(!strcasecmp(key,"as_max_sids")){if(!cfg_parse_i32_range(val,1,32,&v)){fprintf(stderr,"WARNING: %s line %d invalid value for 'as_max_sids' ignored\n",path,ln);continue;}a->as_max_sids=v;}
+        else if(!strcasecmp(key,"as_max_ecm")){if(!cfg_parse_i32_range(val,0,100000,&v)){fprintf(stderr,"WARNING: %s line %d invalid value for 'as_max_ecm' ignored\n",path,ln);continue;}a->as_max_ecm=v;}
+        else if(!strcasecmp(key,"as_ecm_window_s")){if(!cfg_parse_i32_range(val,1,3600,&v)){fprintf(stderr,"WARNING: %s line %d invalid value for 'as_ecm_window_s' ignored\n",path,ln);continue;}a->as_ecm_window_s=v;}
+        else if(!strcasecmp(key,"as_channel_timeout_s")){if(!cfg_parse_i32_range(val,1,3600,&v)){fprintf(stderr,"WARNING: %s line %d invalid value for 'as_channel_timeout_s' ignored\n",path,ln);continue;}a->as_channel_timeout_s=v;}
+        else if(!strcasecmp(key,"as_switch_delay_s")){if(!cfg_parse_i32_range(val,0,30,&v)){fprintf(stderr,"WARNING: %s line %d invalid value for 'as_switch_delay_s' ignored\n",path,ln);continue;}a->as_switch_delay_s=v;}
+        else if(!strcasecmp(key,"as_max_ecm_min")){if(!cfg_parse_i32_range(val,0,100000,&v)){fprintf(stderr,"WARNING: %s line %d invalid value for 'as_max_ecm_min' ignored\n",path,ln);continue;}a->as_max_ecm=v;a->as_ecm_window_s=60;}
         else if(!strcasecmp(key,"ecmkey")){if(a->nkeys>=MAX_ECMKEYS_PER_ACC){fprintf(stderr,"WARNING: %s line %d too many ecmkey entries ignored\n",path,ln);continue;}S_ECMKEY ek;if(!cfg_parse_ecm_key(val,a->caid,&ek)){fprintf(stderr,"WARNING: %s line %d invalid value for 'ecmkey' ignored\n",path,ln);continue;}bool found=false;for(int i=0;i<a->nkeys;i++)if(a->keys[i].caid==ek.caid){a->keys[i]=ek;found=true;break;}if(!found)a->keys[a->nkeys++]=ek;}
         else fprintf(stderr,"WARNING: %s line %d section [account] contains unknown setting '%s=%s' ignored\n",path,ln,key,val);
     }

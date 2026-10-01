@@ -21,10 +21,10 @@ static S_PROTO_SERVER s_server;
 
 static void cc_rc4_init(S_CC_CRYPT *b, const uint8_t *key, int klen)
 {
-    uint8_t j=0,tmp; int i;
+    uint32_t j=0; uint8_t tmp; int i;
     for(i=0;i<256;i++) b->keytable[i]=(uint8_t)i;
     for(i=0;i<256;i++){
-        j+=key[i%klen]+b->keytable[i];
+        j=(j+(uint32_t)key[i%klen]+(uint32_t)b->keytable[i])&0xFFU;
         tmp=b->keytable[i];b->keytable[i]=b->keytable[j];b->keytable[j]=tmp;}
     b->state=key[0];b->counter=0;b->sum=0;
 }
@@ -101,7 +101,7 @@ static int cc_recv_msg(S_CCCAM_CLIENT *cc, uint8_t *seq_out, uint8_t *cmd,
     *seq_out=hdr[0];
     cc->g_flag=hdr[0];
     *cmd=hdr[1];
-    len=((uint16_t)hdr[2]<<8)|hdr[3];
+    len=(uint16_t)(((uint16_t)hdr[2]<<8)|(uint16_t)hdr[3]);
     if(len>CCCAM_MSG_MAX) return -1;
     *plen=len;
     if(len==0) return 0;
@@ -123,9 +123,12 @@ static void cc_cw_crypt(S_CCCAM_CLIENT *cc, uint8_t *cw, uint32_t card_id)
     for(i=0;i<8;i++) nod[i]=nid[7-i];
     for(i=0;i<16;i++){
         j=i>>1;
-        if(i&1)
-            n=(i!=15)?((nod[j]>>4)|(nod[j+1]<<4))&0xFF:(nod[j]>>4)&0xFF;
-        else
+        if(i&1){
+            if(i!=15){
+                uint16_t merged = (uint16_t)(((uint16_t)nod[j] >> 4) | ((uint16_t)nod[j+1] << 4));
+                n=(uint8_t)merged;
+            }else n=(uint8_t)(nod[j] >> 4);
+        }else
             n=nod[j];
         tmp=(uint8_t)(cw[i]^n);
         if(i&1) tmp=(uint8_t)(~tmp);

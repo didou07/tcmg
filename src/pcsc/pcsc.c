@@ -636,7 +636,7 @@ int pcsc_do_ecm_reader(const char *selector, uint16_t caid, const uint8_t *ecm, 
     if ((caid & 0xFF00u) != 0x0B00u) return -2;
 
     if (!pcsc_available()) return -3;
-    if (whitelist > 0 && ecm_len > (size_t)whitelist) {
+    if (whitelist > 0 && ecm_len != (size_t)whitelist) {
         tcmg_log_dbg(D_READER, "ECM denied: length=%u > whitelist=%02X (%d bytes)",
                      (unsigned)ecm_len, (unsigned)(whitelist & 0xFF), whitelist);
         return -13;
@@ -742,10 +742,12 @@ done:
     }
     return rc;
 #else
+    (void)selector;
     (void)caid;
     (void)ecm;
     (void)ecm_len;
     (void)cw;
-    return -1;
+    (void)whitelist;
+    return -3;
 #endif
 }

@@ -21,7 +21,7 @@ typedef struct s_account {
     int32_t  group;
     int32_t  groups[MAX_GROUPS_PER_ACC];
     int32_t  ngroups;
-    int8_t   enabled;
+    bool     enabled;
 
     uint16_t caids[MAX_CAIDS_PER_ACC];
     int32_t  ncaids;
@@ -46,7 +46,7 @@ typedef struct s_account {
     int32_t  nsid_whitelist;
 
 #define AS_MAX_CHANNELS 32
-    int8_t   anti_share;
+    bool     anti_share;
     int32_t  as_max_sids;
     int32_t  as_max_ecm;
     int32_t  as_ecm_window_s;

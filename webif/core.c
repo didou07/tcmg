@@ -184,7 +184,7 @@ const char *web_header_get(const char *raw, const char *name, char *buf, int buf
 static int send_all(int fd, const char *p, int n)
 {
 	while (n > 0) {
-		int k = (int)send(fd, SO_CAST(p), n, MSG_NOSIGNAL);
+		int k = (int)send(fd, SO_CAST(p), (size_t)n, MSG_NOSIGNAL);
 		if (k < 0) { if (errno == EINTR) continue; return -1; }
 		if (k == 0) return -1;
 		p += k; n -= k;
@@ -355,7 +355,7 @@ void get_param(const char *qs, const char *key, char *out, int outsz)
 	if (!out || outsz <= 0) return;
 	out[0] = '\0';
 	if (!qs || !*qs || !key || !*key) return;
-	int         klen = (int)strlen(key);
+	size_t      klen = strlen(key);
 	const char *p    = qs;
 	while (*p) {
 		if (strncmp(p, key, klen) == 0 && p[klen] == '=') {
@@ -377,7 +377,7 @@ void form_get(const char *body, const char *key, char *out, int outsz)
 	if (!out || outsz <= 0) return;
 	out[0] = '\0';
 	if (!body || !key || !*key) return;
-	int klen = (int)strlen(key);
+	size_t klen = strlen(key);
 	const char *p = body;
 	while (*p) {
 		if (strncmp(p, key, klen) == 0 && p[klen] == '=') {
@@ -731,23 +731,23 @@ void send_webif_asset(int fd, const char *path)
 	int len = 0;
 	if (!strcmp(path, "/assets/app.css")) {
 		body = TCMG_CSS;
-		len = (int)(sizeof(TCMG_CSS) - 1);
+		len = (int)TCMG_CSS_LEN;
 		ctype = "text/css; charset=utf-8";
 	} else if (!strcmp(path, "/assets/app.js")) {
 		body = TCMG_JS;
-		len = (int)(sizeof(TCMG_JS) - 1);
+		len = (int)TCMG_JS_LEN;
 		ctype = "application/javascript; charset=utf-8";
 	} else if (!strcmp(path, "/assets/users.js")) {
 		body = TCMG_USERS_JS;
-		len = (int)(sizeof(TCMG_USERS_JS) - 1);
+		len = (int)TCMG_USERS_JS_LEN;
 		ctype = "application/javascript; charset=utf-8";
 	} else if (!strcmp(path, "/assets/readers.js")) {
 		body = TCMG_READERS_JS;
-		len = (int)(sizeof(TCMG_READERS_JS) - 1);
+		len = (int)TCMG_READERS_JS_LEN;
 		ctype = "application/javascript; charset=utf-8";
 	} else if (!strcmp(path, "/assets/livelog.js")) {
 		body = TCMG_LIVELOG_JS;
-		len = (int)(sizeof(TCMG_LIVELOG_JS) - 1);
+		len = (int)TCMG_LIVELOG_JS_LEN;
 		ctype = "application/javascript; charset=utf-8";
 	} else {
 		send_response(fd, 404, "Not Found", "text/plain", "not found", 9);
@@ -792,9 +792,6 @@ void handle_reset_stats(void)
 	tcmg_log("%s", "all user stats reset");
 }
 
-#pragma GCC diagnostic ignored "-Wformat"
-#pragma GCC diagnostic ignored "-Wformat-extra-args"
-#pragma GCC diagnostic ignored "-Woverlength-strings"
 
 #define ICO_LOGO \
  "<svg width='18' height='18' viewBox='0 0 24 24' fill='none' aria-hidden='true'>" \
@@ -828,9 +825,8 @@ int emit_header(char **buf, int *bsz, int pos,
         "<link rel='stylesheet' href='/assets/app.css?v=%s'>"
         "<script>window.TCMG_WEB_POLL=%d;</script>"
         "<script src='/assets/app.js?v=%s' defer></script>"
-        "</head><body class='pg-%s'>"
-        GLOBAL_ICON_SPRITE,
-        title, TCMG_ASSET_REV, refresh, TCMG_ASSET_REV, active);
+        "</head><body class='pg-%s'>%s",
+        title, TCMG_ASSET_REV, refresh, TCMG_ASSET_REV, active, GLOBAL_ICON_SPRITE);
 
     pos = buf_printf(buf, bsz, pos,
         "<nav id='tb'>"

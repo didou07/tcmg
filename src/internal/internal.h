@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "../reader/failure.h"
 
 #define TCMG_INTERNAL_MAX_ATR 64
 
@@ -23,6 +24,6 @@ int internal_reader_get(int index, S_INTERNAL_READER *out);
 int internal_reader_count(void);
 int internal_do_ecm_reader(int index, uint16_t caid,
                            const uint8_t *ecm, size_t ecm_len,
-                           uint8_t cw[16], int32_t whitelist);
+                           uint8_t cw[16], int32_t whitelist, E_READER_FAILURE *failure);
 
 #endif

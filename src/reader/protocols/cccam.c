@@ -187,8 +187,12 @@ static void cc_cw_crypt(S_CC_READER_STATE *s, uint8_t *cw, uint32_t card_id)
     for (int i = 0; i < 8; i++) nod[i] = s->node_id[7 - i];
     for (int i = 0; i < 16; i++) {
         int j = i >> 1;
-        if (i & 1) n = (i != 15) ? (uint8_t)(((nod[j] >> 4) | (nod[j + 1] << 4)) & 0xFF) : (uint8_t)(nod[j] >> 4);
-        else n = nod[j];
+        if (i & 1) {
+            if (i != 15) {
+                uint16_t merged = (uint16_t)(((uint16_t)nod[j] >> 4) | ((uint16_t)nod[j + 1] << 4));
+                n = (uint8_t)merged;
+            } else n = (uint8_t)(nod[j] >> 4);
+        } else n = nod[j];
         tmp = (uint8_t)(cw[i] ^ n);
         if (i & 1) tmp = (uint8_t)~tmp;
         cw[i] = (uint8_t)(((card_id >> (2 * i)) ^ tmp) & 0xFF);
