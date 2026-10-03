@@ -12,6 +12,55 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+static void trim_field(char *s)
+{
+    char *p = s;
+    while (*p && isspace((unsigned char)*p)) p++;
+    if (p != s) memmove(s, p, strlen(p) + 1);
+    size_t n = strlen(s);
+    while (n && isspace((unsigned char)s[n - 1])) s[--n] = '\0';
+}
+
+static bool parse_ident_field(const char *s, S_IDENT_FILTER *out, int32_t *n)
+{
+    char buf[WEBIF_IDENT_LIST_LEN];
+    char *save = NULL, *tok;
+    *n = 0;
+    if (!s || !*s) return true;
+    tcmg_strlcpy(buf, s, sizeof(buf));
+    tok = strtok_r(buf, ",;", &save);
+    while (tok) {
+        char *colon, *end;
+        unsigned long caid, provid;
+        trim_field(tok);
+        if (!tok[0] || *n >= MAX_IDENT_FILTERS) return false;
+        colon = strchr(tok, ':');
+        if (!colon || colon == tok || strchr(colon + 1, ':')) return false;
+        *colon++ = '\0';
+        trim_field(tok); trim_field(colon);
+        if (strlen(tok) > 4 || strlen(colon) > 8 || !tok[0] || !colon[0]) return false;
+        caid = strtoul(tok, &end, 16);
+        if (end == tok || *end || caid == 0 || caid > 0xFFFF) return false;
+        provid = strtoul(colon, &end, 16);
+        if (end == colon || *end || provid > 0xFFFFFFFFUL) return false;
+        for (int i = 0; i < *n; i++) if (out[i].caid == (uint16_t)caid && out[i].provid == (uint32_t)provid) return false;
+        out[*n].caid = (uint16_t)caid; out[*n].provid = (uint32_t)provid; (*n)++;
+        tok = strtok_r(NULL, ",;", &save);
+    }
+    return true;
+}
+
+static void format_reader_idents(const S_READER *r, char *out, size_t out_sz)
+{
+    out[0] = '\0';
+    for (int i = 0; i < r->nidents && i < MAX_IDENT_FILTERS; i++) {
+        char item[32];
+        if (i) tcmg_strlcat(out, ",", out_sz);
+        snprintf(item, sizeof(item), "%04X:%08X", r->idents[i].caid, r->idents[i].provid);
+        tcmg_strlcat(out, item, out_sz);
+    }
+}
+
 static void copy_reader(const S_READER *r, int idx, S_WEBIF_READER_VIEW *v)
 {
     memset(v, 0, sizeof(*v));
@@ -20,6 +69,7 @@ static void copy_reader(const S_READER *r, int idx, S_WEBIF_READER_VIEW *v)
     v->inactivitytimeout = r->inactivitytimeout;
     v->ecm_whitelist = r->ecm_whitelist;
     v->fast_reset = r->fast_reset;
+    v->fast_reset_idle = r->fast_reset_idle;
     v->poll_ms = r->poll_ms;
     S_READER_STATS_SNAPSHOT stats;
     reader_stats_snapshot(idx, &stats);
@@ -28,6 +78,7 @@ static void copy_reader(const S_READER *r, int idx, S_WEBIF_READER_VIEW *v)
     v->active = r->enabled && stats.active;
     tcmg_strlcpy(v->label, r->label, sizeof(v->label));
     tcmg_strlcpy(v->protocol, r->protocol, sizeof(v->protocol));
+    format_reader_idents(r, v->idents, sizeof(v->idents));
     tcmg_strlcpy(v->device, r->device, sizeof(v->device));
     tcmg_strlcpy(v->user, r->user, sizeof(v->user));
     tcmg_strlcpy(v->password, r->password, sizeof(v->password));
@@ -191,10 +242,11 @@ bool webif_reader_save(const S_WEBIF_READER_EDIT *e)
 
     if (protocol->kind == READER_PROTOCOL_EMU) {
         value.device[0] = 0; value.user[0] = 0; value.password[0] = 0;
-        value.inactivitytimeout = 30; value.fast_reset = 0; value.poll_ms = 250;
+        value.inactivitytimeout = 30; value.fast_reset = 0; value.fast_reset_idle = 300; value.poll_ms = 250;
     } else if (protocol->kind == READER_PROTOCOL_CARD) {
         value.user[0] = 0; value.password[0] = 0; value.inactivitytimeout = 30;
         if (parse_simple_i32(e->fast_reset, 0, 86400, &value.fast_reset) < 0) return false;
+        if (parse_simple_i32(e->fast_reset_idle, 0, 86400, &value.fast_reset_idle) < 0) return false;
         if (strcasecmp(value.protocol, "internal") != 0) {
             if (parse_simple_i32(e->poll_ms, 50, 10000, &value.poll_ms) < 0) return false;
         }
@@ -223,6 +275,8 @@ bool webif_reader_save(const S_WEBIF_READER_EDIT *e)
         for (int i = 0; i < value.ncaids; i++) if (value.caids[i] == (uint16_t)x) return false;
         value.caids[value.ncaids++] = (uint16_t)x; tok = strtok_r(NULL, ", ;", &save);
     }
+    if (strlen(e->ident) >= sizeof(e->ident)) return false;
+    if (!parse_ident_field(e->ident, value.idents, &value.nidents)) return false;
     char sid[sizeof(e->sid_whitelist)]; tcmg_strlcpy(sid, e->sid_whitelist, sizeof(sid)); save = NULL; tok = strtok_r(sid, ", ;", &save);
     while (tok) {
         char *end = NULL; unsigned long x = strtoul(tok, &end, 16);

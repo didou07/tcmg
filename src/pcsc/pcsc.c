@@ -34,6 +34,7 @@ static _Atomic int8_t  s_running = 0;
 static _Atomic int8_t  s_available = 0;
 #ifdef TCMG_PCSC
 static _Atomic int32_t s_ecm_active[TCMG_PCSC_MAX_READERS];
+static _Atomic int64_t s_last_activity_ms[TCMG_PCSC_MAX_READERS];
 static pthread_t       s_tid;
 #endif
 
@@ -51,6 +52,7 @@ static void pcsc_drop_card_locked(int idx);
 static void pcsc_drop_all_cards_locked(void);
 static void pcsc_drop_stale_cards_locked(const S_PCSC_READER *readers, int count);
 static int pcsc_ensure_card_locked(const char *reader);
+static int pcsc_card_slot_locked(const char *reader);
 #endif
 
 #ifdef TCMG_PCSC
@@ -128,9 +130,9 @@ static int pcsc_reader_status_locked(const char *name, S_PCSC_READER *out)
     tcmg_strlcpy(out->name, name, sizeof(out->name));
     if (rc == SCARD_S_SUCCESS) {
         out->present = (state != SCARD_ABSENT && state != SCARD_UNKNOWN) ? 1 : 0;
-        out->protocol = protocol;
+        out->protocol = (uint32_t)protocol;
         if (atr_len > TCMG_PCSC_ATR_MAX) atr_len = TCMG_PCSC_ATR_MAX;
-        out->atr_len = atr_len;
+        out->atr_len = (uint32_t)atr_len;
         if (atr_len) memcpy(out->atr, atr, atr_len);
         return out->present;
     }
@@ -290,8 +292,17 @@ static void *pcsc_thread(void *arg)
 {
     (void)arg;
     int64_t last_fast_reset_ms[MAX_READERS];
+    int fast_reset_paused[MAX_READERS];
+    int64_t last_activity_seen_ms[MAX_READERS];
     S_READER pcsc_readers[MAX_READERS];
-    for (int i = 0; i < MAX_READERS; i++) last_fast_reset_ms[i] = tcmg_mono_ms();
+    const int64_t start_ms = tcmg_mono_ms();
+    for (int i = 0; i < MAX_READERS; i++) {
+        last_fast_reset_ms[i] = start_ms;
+        last_activity_seen_ms[i] = start_ms;
+        fast_reset_paused[i] = 0;
+    }
+    for (int i = 0; i < TCMG_PCSC_MAX_READERS; i++)
+        atomic_store(&s_last_activity_ms[i], start_ms);
 
     while (atomic_load(&s_running)) {
         int32_t poll_ms = 250;
@@ -322,7 +333,14 @@ static void *pcsc_thread(void *arg)
             }
             pcsc_clear_snapshot_locked();
             pthread_mutex_unlock(&s_pcsc_mtx);
-            for (int i = 0; i < MAX_READERS; i++) last_fast_reset_ms[i] = tcmg_mono_ms();
+            const int64_t reset_ms = tcmg_mono_ms();
+            for (int i = 0; i < MAX_READERS; i++) {
+                last_fast_reset_ms[i] = reset_ms;
+                last_activity_seen_ms[i] = reset_ms;
+                fast_reset_paused[i] = 0;
+            }
+            for (int i = 0; i < TCMG_PCSC_MAX_READERS; i++)
+                atomic_store(&s_last_activity_ms[i], reset_ms);
         } else {
             pthread_mutex_lock(&s_pcsc_mtx);
 #ifdef TCMG_PCSC
@@ -331,11 +349,12 @@ static void *pcsc_thread(void *arg)
 
             int64_t now_ms = tcmg_mono_ms();
             for (int i = 0; i < reader_count; i++) {
-                if (pcsc_readers[i].fast_reset <= 0) continue;
-                int64_t due = (int64_t)pcsc_readers[i].fast_reset * 1000LL;
-                if (now_ms - last_fast_reset_ms[i] < due) continue;
+                if (pcsc_readers[i].fast_reset <= 0) {
+                    fast_reset_paused[i] = 0;
+                    continue;
+                }
                 int target_idx = -1;
-                if (pcsc_readers[i].device && *pcsc_readers[i].device) {
+                if (*pcsc_readers[i].device) {
                     char *end = NULL;
                     long n = strtol(pcsc_readers[i].device, &end, 10);
                     if (end && *end == '\0' && n >= 0 && n < s_reader_count)
@@ -346,9 +365,31 @@ static void *pcsc_thread(void *arg)
                         }
                     }
                 }
-                if (target_idx >= 0 && target_idx < TCMG_PCSC_MAX_READERS &&
-                    atomic_load(&s_ecm_active[target_idx]) != 0)
+                if (target_idx < 0 || target_idx >= s_reader_count) continue;
+                const int card_idx = pcsc_card_slot_locked(s_readers[target_idx].name);
+                if (card_idx < 0 || card_idx >= TCMG_PCSC_MAX_READERS) continue;
+                const int64_t activity_ms = atomic_load(&s_last_activity_ms[card_idx]);
+                const int idle_enabled = pcsc_readers[i].fast_reset_idle > 0;
+                const int idle = idle_enabled && now_ms - activity_ms >=
+                                 (int64_t)pcsc_readers[i].fast_reset_idle * 1000LL;
+                if (fast_reset_paused[i]) {
+                    if (activity_ms != last_activity_seen_ms[i]) {
+                        fast_reset_paused[i] = 0;
+                        last_activity_seen_ms[i] = activity_ms;
+                        last_fast_reset_ms[i] = now_ms;
+                        tcmg_log_force("fast reset resumed reader='%s'", pcsc_readers[i].device);
+                    } else {
+                        continue;
+                    }
+                } else if (idle) {
+                    fast_reset_paused[i] = 1;
+                    last_activity_seen_ms[i] = activity_ms;
+                    tcmg_log_force("fast reset paused reader='%s' idle=%ds", pcsc_readers[i].device, pcsc_readers[i].fast_reset_idle);
                     continue;
+                }
+                if (atomic_load(&s_ecm_active[card_idx]) != 0) continue;
+                int64_t due = (int64_t)pcsc_readers[i].fast_reset * 1000LL;
+                if (now_ms - last_fast_reset_ms[i] < due) continue;
                 pcsc_reset_selector_locked(pcsc_readers[i].device);
                 last_fast_reset_ms[i] = now_ms;
             }
@@ -465,6 +506,14 @@ static void pcsc_drop_stale_cards_locked(const S_PCSC_READER *readers, int count
         }
         if (!found) pcsc_drop_card_locked(i);
     }
+}
+
+static int pcsc_card_slot_locked(const char *reader)
+{
+    if (!reader || !*reader) return -1;
+    for (int i = 0; i < TCMG_PCSC_MAX_READERS; i++)
+        if (s_cards[i].valid && strcmp(s_cards[i].name, reader) == 0) return i;
+    return -1;
 }
 
 static int pcsc_card_index_locked(const char *reader)
@@ -637,7 +686,7 @@ int pcsc_do_ecm_reader(const char *selector, uint16_t caid, const uint8_t *ecm, 
 
     if (!pcsc_available()) return -3;
     if (whitelist > 0 && ecm_len != (size_t)whitelist) {
-        tcmg_log_dbg(D_READER, "ECM denied: length=%u > whitelist=%02X (%d bytes)",
+        tcmg_log_dbg(D_READER, "ECM rejected: length=%u != whitelist=%02X (%d bytes)",
                      (unsigned)ecm_len, (unsigned)(whitelist & 0xFF), whitelist);
         return -13;
     }
@@ -655,6 +704,7 @@ int pcsc_do_ecm_reader(const char *selector, uint16_t caid, const uint8_t *ecm, 
         rc = -4;
         goto done;
     }
+    atomic_store(&s_last_activity_ms[active_idx], tcmg_mono_ms());
     atomic_fetch_add(&s_ecm_active[active_idx], 1);
 
     int64_t ecm_t0 = tcmg_mono_ms();

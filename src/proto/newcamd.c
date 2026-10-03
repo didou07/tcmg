@@ -223,7 +223,7 @@ static void ncd_handle_ecm(S_CLIENT *cl, uint8_t cmd,
     if (cl->protocol.wire.newcamd.is_mgcamd && caid_hdr)
         ecm_caid = caid_hdr;
 
-    access = ecm_access(cl, ecm_caid, sid, true, true, true);
+    access = ecm_access(cl, ecm_caid, sid, pid, true, true, true);
     if (access != ECM_ACCESS_OK) {
         switch (access) {
         case ECM_ACCESS_DISABLED:

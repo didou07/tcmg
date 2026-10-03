@@ -48,6 +48,17 @@ static void format_account_caids(const S_ACCOUNT *a, char *out, size_t out_sz)
     }
 }
 
+static void format_account_idents(const S_ACCOUNT *a, char *out, size_t out_sz)
+{
+    out[0] = '\0';
+    for (int i = 0; i < a->nidents && i < MAX_IDENT_FILTERS; i++) {
+        char item[32];
+        if (i) tcmg_strlcat(out, ",", out_sz);
+        snprintf(item, sizeof(item), "%04X:%08X", a->idents[i].caid, a->idents[i].provid);
+        tcmg_strlcat(out, item, out_sz);
+    }
+}
+
 static void copy_account_stats_full(const S_ACCOUNT *a, S_WEBIF_ACCOUNT_VIEW *v)
 {
     S_ACCOUNT_STATS_SNAPSHOT s;
@@ -86,6 +97,7 @@ static void copy_account(const S_ACCOUNT *a, S_WEBIF_ACCOUNT_VIEW *v)
     tcmg_strlcpy(v->pass, a->pass, sizeof(v->pass));
     format_account_groups(a, v->groups, sizeof(v->groups));
     format_account_caids(a, v->caids, sizeof(v->caids));
+    format_account_idents(a, v->idents, sizeof(v->idents));
 
     v->enabled = a->enabled;
     v->max_connections = a->max_connections;
@@ -128,6 +140,12 @@ static void apply_account_edit(S_ACCOUNT *a, const S_WEBIF_ACCOUNT_EDIT *f, bool
         memset(a->caids, 0, sizeof(a->caids));
         for (int i = 1; i < f->ncaidv; i++)
             a->caids[a->ncaids++] = f->caidv[i];
+    }
+
+    if (f->has_ident) {
+        memset(a->idents, 0, sizeof(a->idents));
+        a->nidents = f->nidentv;
+        if (a->nidents > 0) memcpy(a->idents, f->identv, (size_t)a->nidents * sizeof(a->idents[0]));
     }
 
     if (f->has_max_connections)

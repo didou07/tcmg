@@ -10,9 +10,11 @@
 typedef struct {
 	char   user[CFGKEY_LEN];
 	char   pass[CFGKEY_LEN];
-	int    has_caid, has_max, has_en, has_exp;
+	int    has_caid, has_ident, has_max, has_en, has_exp;
 	uint16_t caidv[MAX_CAIDS_PER_ACC + 1];
 	int      ncaidv;
+	S_IDENT_FILTER identv[MAX_IDENT_FILTERS];
+	int      nidentv;
 	int    maxc, en;
 	int    has_as, as_en, as_sids, as_ecm, as_ecm_window_s, as_channel_timeout_s, as_switch_delay_s;
 	char   groups[WEBIF_GROUPS_LEN];
@@ -103,15 +105,37 @@ static int parse_caid_list(const char *s, acct_form *f)
 	return 0;
 }
 
+static int parse_ident_list(const char *s, S_IDENT_FILTER *out, int *n)
+{
+    char buf[WEBIF_IDENT_LIST_LEN]; char *save = NULL, *tok;
+    *n = 0; if (!s || !*s) return 0;
+    tcmg_strlcpy(buf, s, sizeof(buf));
+    tok = strtok_r(buf, ",;", &save);
+    while (tok) {
+        char *colon, *end; unsigned long caid, provid;
+        webif_trim(tok); if (!tok[0] || *n >= MAX_IDENT_FILTERS) return -1;
+        colon = strchr(tok, ':'); if (!colon || colon == tok || strchr(colon + 1, ':')) return -1;
+        *colon++='\0'; webif_trim(tok); webif_trim(colon);
+        if (strlen(tok)>4 || strlen(colon)>8 || !tok[0] || !colon[0]) return -1;
+        caid=strtoul(tok,&end,16); if(end==tok||*end||caid==0||caid>0xFFFFUL)return -1;
+        provid=strtoul(colon,&end,16); if(end==colon||*end||provid>0xFFFFFFFFUL)return -1;
+        for(int i=0;i<*n;i++)if(out[i].caid==(uint16_t)caid&&out[i].provid==(uint32_t)provid)return -1;
+        out[*n].caid=(uint16_t)caid; out[*n].provid=(uint32_t)provid; (*n)++;
+        tok=strtok_r(NULL,",;",&save);
+    }
+    return 0;
+}
+
 static const char *parse_account_form(const char *body, acct_form *f)
 {
-	char caid_s[WEBIF_CAID_LIST_LEN], max_s[16], en_s[8], exp_s[24];
+	char caid_s[WEBIF_CAID_LIST_LEN], ident_s[WEBIF_IDENT_LIST_LEN], max_s[16], en_s[8], exp_s[24];
 	char as_en_s[8], as_sids_s[8], as_ecm_s[16], as_ecm_window_s[8], as_channel_timeout_s[8], as_switch_delay_s[8];
 	memset(f, 0, sizeof(*f));
 	if (webif_form_copy(body, "user",    f->user, sizeof(f->user))    < 0) return "username too long (max 63 characters)";
 	if (webif_form_copy(body, "pass",    f->pass, sizeof(f->pass))    < 0) return "password too long (max 63 characters)";
 	if (webif_form_copy(body, "groups",  f->groups, sizeof(f->groups)) < 0) return "groups too long";
 	if (webif_form_copy(body, "caid",    caid_s,  sizeof(caid_s))     < 0 ||
+	    webif_form_copy(body, "ident",   ident_s, sizeof(ident_s))    < 0 ||
 	    webif_form_copy(body, "maxconn", max_s,   sizeof(max_s))      < 0 ||
 	    webif_form_copy(body, "enabled", en_s,    sizeof(en_s))       < 0 ||
 	    webif_form_copy(body, "expiry",  exp_s,   sizeof(exp_s))      < 0 ||
@@ -130,11 +154,15 @@ static const char *parse_account_form(const char *body, acct_form *f)
 	if (parse_groups(f->groups, f->groupv, &f->ngroups) < 0)
 		return "groups must be comma-separated values from 1 to 65535";
 
-	if (caid_s[0]) {
+	f->has_caid = webif_form_present(body, "caid");
+	if (f->has_caid) {
 		int rc = parse_caid_list(caid_s, f);
 		if (rc == -2) return "at most 9 CAIDs per user";
 		if (rc < 0)   return "CAIDs must be hex values of 1-4 digits separated by commas, e.g. 0B00,0B01";
-		f->has_caid = 1;
+	}
+	f->has_ident = webif_form_present(body, "ident");
+	if (f->has_ident && ident_s[0]) {
+		if (parse_ident_list(ident_s, f->identv, &f->nidentv) < 0) return "IDENT must be CAID:PROVID pairs separated by commas";
 	}
 	if (max_s[0]) {
 		if (parse_uint_range(max_s, 4, 0, 9999, &f->maxc) < 0) return "max connections must be a whole number 0-9999";
@@ -281,15 +309,16 @@ void send_api_user_get(int fd, const char *qs)
 	char uname[CFGKEY_LEN] = ""; get_param(qs, "user", uname, sizeof(uname));
 	S_WEBIF_ACCOUNT_VIEW a; if (!webif_account_get(uname, &a)) { send_json_error(fd,404,"Not Found","not found"); return; }
 	char expiry[24] = "0"; if (a.expirationdate > 0) { struct tm tm_s; localtime_r(&a.expirationdate,&tm_s); strftime(expiry,sizeof(expiry),"%Y-%m-%d",&tm_s); }
-	char eu[256],ep[256],eg[512],ec[256]; json_escape(a.user,eu,sizeof(eu));json_escape(a.pass,ep,sizeof(ep));json_escape(a.groups,eg,sizeof(eg));json_escape(a.caids,ec,sizeof(ec));
-	char out[2048]; int n=snprintf(out,sizeof(out),"{\"ok\":true,\"user\":\"%s\",\"pass\":\"%s\",\"groups\":\"%s\",\"caid\":\"%s\",\"max_connections\":%d,\"enabled\":%d,\"expiry\":\"%s\",\"anti_share\":%d,\"as_max_sids\":%d,\"as_max_ecm\":%d,\"as_ecm_window_s\":%d,\"as_channel_timeout_s\":%d,\"as_switch_delay_s\":%d}",eu,ep,eg,ec,a.max_connections,a.enabled,expiry,a.anti_share,a.as_max_sids,a.as_max_ecm,a.as_ecm_window_s,a.as_channel_timeout_s,a.as_switch_delay_s);
+	char eu[256],ep[256],eg[512],ec[256],ei[2048];
+	json_escape(a.user,eu,sizeof(eu)); json_escape(a.pass,ep,sizeof(ep)); json_escape(a.groups,eg,sizeof(eg)); json_escape(a.caids,ec,sizeof(ec)); json_escape(a.idents,ei,sizeof(ei));
+	char out[4096]; int n=snprintf(out,sizeof(out),"{\"ok\":true,\"user\":\"%s\",\"pass\":\"%s\",\"groups\":\"%s\",\"caid\":\"%s\",\"ident\":\"%s\",\"max_connections\":%d,\"enabled\":%d,\"expiry\":\"%s\",\"anti_share\":%d,\"as_max_sids\":%d,\"as_max_ecm\":%d,\"as_ecm_window_s\":%d,\"as_channel_timeout_s\":%d,\"as_switch_delay_s\":%d}",eu,ep,eg,ec,ei,a.max_connections,a.enabled,expiry,a.anti_share,a.as_max_sids,a.as_max_ecm,a.as_ecm_window_s,a.as_channel_timeout_s,a.as_switch_delay_s);
 	send_response(fd,200,"OK","application/json",out,n);
 }
 
 static void account_form_to_edit(const acct_form *f, S_WEBIF_ACCOUNT_EDIT *e)
 {
 	memset(e,0,sizeof(*e)); tcmg_strlcpy(e->user,f->user,sizeof(e->user)); tcmg_strlcpy(e->pass,f->pass,sizeof(e->pass)); tcmg_strlcpy(e->groups,f->groups,sizeof(e->groups));
-	e->has_caid=f->has_caid; e->ncaidv=f->ncaidv; memcpy(e->caidv,f->caidv,sizeof(e->caidv)); e->has_max_connections=f->has_max; e->max_connections=f->maxc; e->has_enabled=f->has_en; e->enabled=f->en; e->has_expiry=f->has_exp; e->expiry=f->exp; e->has_anti_share=f->has_as; e->anti_share=f->as_en; e->as_max_sids=f->as_sids; e->as_max_ecm=f->as_ecm; e->as_ecm_window_s=f->as_ecm_window_s; e->as_channel_timeout_s=f->as_channel_timeout_s; e->as_switch_delay_s=f->as_switch_delay_s; e->ngroups=f->ngroups; memcpy(e->groupv,f->groupv,sizeof(e->groupv));
+	e->has_caid=f->has_caid; e->ncaidv=f->ncaidv; e->has_ident=f->has_ident; memcpy(e->caidv,f->caidv,sizeof(e->caidv)); e->nidentv=f->nidentv; memcpy(e->identv,f->identv,sizeof(e->identv)); e->has_max_connections=f->has_max; e->max_connections=f->maxc; e->has_enabled=f->has_en; e->enabled=f->en; e->has_expiry=f->has_exp; e->expiry=f->exp; e->has_anti_share=f->has_as; e->anti_share=f->as_en; e->as_max_sids=f->as_sids; e->as_max_ecm=f->as_ecm; e->as_ecm_window_s=f->as_ecm_window_s; e->as_channel_timeout_s=f->as_channel_timeout_s; e->as_switch_delay_s=f->as_switch_delay_s; e->ngroups=f->ngroups; memcpy(e->groupv,f->groupv,sizeof(e->groupv));
 }
 
 void handle_user_save(int fd, const char *post_body)

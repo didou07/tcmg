@@ -33,6 +33,7 @@ void account_session_rebind(S_CLIENT *client, S_ACCOUNT *account);
 int account_collect_caids(const S_ACCOUNT *account, uint16_t *out, int32_t cap);
 uint16_t account_default_caid(const S_ACCOUNT *account);
 bool account_allows_caid(const S_ACCOUNT *account, uint16_t caid);
+bool account_allows_ident(const S_ACCOUNT *account, uint16_t caid, uint32_t provid);
 bool account_allows_sid(const S_ACCOUNT *account, uint16_t sid);
 bool account_in_schedule(const S_ACCOUNT *account);
 

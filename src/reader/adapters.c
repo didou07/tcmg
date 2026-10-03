@@ -28,7 +28,7 @@ int32_t reader_pcsc_do_ecm(const S_READER_ECM_REQUEST *req)
                                      r->ecm, (size_t)r->ecm_len, r->cw,
                                      req->reader->ecm_whitelist);
     if (req->failure) *req->failure = rc == 0 ? READER_FAILURE_NONE :
-                                      rc == -13 ? READER_FAILURE_NOT_FOUND :
+                                      rc == -13 ? READER_FAILURE_REJECTED :
                                       (rc == -3 || rc == -4 || rc == -5 || rc == -7 || rc == -8 || rc == -10) ? READER_FAILURE_TRANSPORT_ERROR :
                                       READER_FAILURE_CARD_ERROR;
     return rc;

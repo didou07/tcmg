@@ -20,10 +20,10 @@ int32_t ecm_process(S_CLIENT *client, uint16_t caid, uint16_t sid, uint32_t prov
                     S_ECM_RESULT *result)
 {
     S_ECM_REQUEST request;
-    uint8_t ecm_md5[TCMG_ECM_MD5_LEN];
     S_READER_RESULT reader_result;
     int32_t res = -1;
     bool cache_hit = false;
+    E_TCMG_ECM_SOURCE source = TCMG_ECM_SOURCE_READER;
     int64_t start;
     long elapsed;
     reader_result_init(&reader_result);
@@ -60,12 +60,14 @@ int32_t ecm_process(S_CLIENT *client, uint16_t caid, uint16_t sid, uint32_t prov
     if (D_ECM & g_dblevel)
         log_ecm_raw(caid, sid, ecm, ecm_len);
 
-    crypt_md5_hash(ecm, (size_t)ecm_len, ecm_md5);
+    crypt_md5_hash(ecm, (size_t)ecm_len, request.ecm_md5);
+    request.ecm_md5_valid = true;
     memset(cw, 0, CW_LEN);
     start = tcmg_mono_ms();
 
     res = reader_dispatch_ecm(&request, &reader_result);
-    cache_hit = reader_result.cache_hit != 0;
+    source = reader_result.source;
+    cache_hit = source == TCMG_ECM_SOURCE_CACHE;
 
     elapsed = (long)tcmg_elapsed_ms(start);
     E_ACCOUNT_ECM_RESULT stats_result =
@@ -86,13 +88,14 @@ int32_t ecm_process(S_CLIENT *client, uint16_t caid, uint16_t sid, uint32_t prov
     }
     account_stats_record_ecm_result(request.account, stats_result, elapsed);
 
-    log_cw_result(caid, sid, ecm_len, cw, log_result, cache_hit,
+    log_cw_result(caid, sid, ecm_len, cw, log_result, source,
                   (int32_t)elapsed, request.user);
-    secure_zero(ecm_md5, sizeof(ecm_md5));
+    secure_zero(request.ecm_md5, sizeof(request.ecm_md5));
     account_release(account);
     if (result) {
         result->result = res;
         result->cache_hit = cache_hit;
+        result->source = source;
         result->elapsed_ms = (int32_t)elapsed;
     }
     return res;

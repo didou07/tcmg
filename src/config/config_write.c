@@ -79,7 +79,7 @@ bool cfg_build_user_text(const S_CONFIG *c, char *buf, size_t cap)
 {
     size_t p = 0;
     bool ok = true;
-    for(const S_ACCOUNT*a=c->accounts;a&&ok;a=a->next){ok=cfg_appendf(buf,cap,&p,"[account]\nuser = %s\npassword = %s\nenabled = %d\ngroup = ",a->user,a->pass,a->enabled);for(int i=0;i<a->ngroups&&ok;i++)ok=cfg_appendf(buf,cap,&p,"%s%d",i?",":"",a->groups[i]);ok=ok&&cfg_appendf(buf,cap,&p,"\ncaid = %04X",a->caid);for(int i=0;i<a->ncaids&&ok;i++)ok=cfg_appendf(buf,cap,&p,",%04X",a->caids[i]);ok=ok&&cfg_appendf(buf,cap,&p,"\nmax_connections = %d\nmax_idle = %d\nexpiration = ",a->max_connections,a->max_idle);if(a->expirationdate){struct tm t;localtime_r(&a->expirationdate,&t);ok=cfg_appendf(buf,cap,&p,"%04d-%02d-%02d",t.tm_year+1900,t.tm_mon+1,t.tm_mday);}else ok=ok&&cfg_appendf(buf,cap,&p,"0");ok=ok&&cfg_appendf(buf,cap,&p,"\nschedule = %s\nanti_share = %d\nas_max_sids = %d\nas_max_ecm = %d\nas_ecm_window_s = %d\nas_channel_timeout_s = %d\nas_switch_delay_s = %d\n",a->schedule,a->anti_share,a->as_max_sids,a->as_max_ecm,a->as_ecm_window_s,a->as_channel_timeout_s,a->as_switch_delay_s);if(a->nwhitelist&&ok){ok=cfg_appendf(buf,cap,&p,"ip_whitelist = ");for(int i=0;i<a->nwhitelist&&ok;i++)ok=cfg_appendf(buf,cap,&p,"%s%s",i?",":"",a->ip_whitelist[i]);ok=ok&&cfg_appendf(buf,cap,&p,"\n");}if(a->nsid_whitelist&&ok){ok=cfg_appendf(buf,cap,&p,"sid_whitelist = ");for(int i=0;i<a->nsid_whitelist&&ok;i++)ok=cfg_appendf(buf,cap,&p,"%s%04X",i?",":"",a->sid_whitelist[i]);ok=ok&&cfg_appendf(buf,cap,&p,"\n");}for(int i=0;i<a->nkeys&&ok;i++){ok=cfg_appendf(buf,cap,&p,"ecmkey = %04X=",a->keys[i].caid);for(int j=0;j<16&&ok;j++)ok=cfg_appendf(buf,cap,&p,"%02X",a->keys[i].key0[j]);for(int j=0;j<16&&ok;j++)ok=cfg_appendf(buf,cap,&p,"%02X",a->keys[i].key1[j]);ok=ok&&cfg_appendf(buf,cap,&p,"\n");}ok=ok&&cfg_appendf(buf,cap,&p,"\n");}
+    for(const S_ACCOUNT*a=c->accounts;a&&ok;a=a->next){ok=cfg_appendf(buf,cap,&p,"[account]\nuser = %s\npassword = %s\nenabled = %d\ngroup = ",a->user,a->pass,a->enabled);for(int i=0;i<a->ngroups&&ok;i++)ok=cfg_appendf(buf,cap,&p,"%s%d",i?",":"",a->groups[i]);if((a->caid||a->ncaids)&&ok){ok=cfg_appendf(buf,cap,&p,"\ncaid = %04X",a->caid);for(int i=0;i<a->ncaids&&ok;i++)ok=cfg_appendf(buf,cap,&p,",%04X",a->caids[i]);}if(a->nidents&&ok){ok=cfg_appendf(buf,cap,&p,"\nident = ");for(int i=0;i<a->nidents&&ok;i++)ok=cfg_appendf(buf,cap,&p,"%s%04X:%08X",i?",":"",a->idents[i].caid,a->idents[i].provid);}ok=ok&&cfg_appendf(buf,cap,&p,"\nmax_connections = %d\nmax_idle = %d\nexpiration = ",a->max_connections,a->max_idle);if(a->expirationdate){struct tm t;localtime_r(&a->expirationdate,&t);ok=cfg_appendf(buf,cap,&p,"%04d-%02d-%02d",t.tm_year+1900,t.tm_mon+1,t.tm_mday);}else ok=ok&&cfg_appendf(buf,cap,&p,"0");ok=ok&&cfg_appendf(buf,cap,&p,"\nschedule = %s\nanti_share = %d\nas_max_sids = %d\nas_max_ecm = %d\nas_ecm_window_s = %d\nas_channel_timeout_s = %d\nas_switch_delay_s = %d\n",a->schedule,a->anti_share,a->as_max_sids,a->as_max_ecm,a->as_ecm_window_s,a->as_channel_timeout_s,a->as_switch_delay_s);if(a->nwhitelist&&ok){ok=cfg_appendf(buf,cap,&p,"ip_whitelist = ");for(int i=0;i<a->nwhitelist&&ok;i++)ok=cfg_appendf(buf,cap,&p,"%s%s",i?",":"",a->ip_whitelist[i]);ok=ok&&cfg_appendf(buf,cap,&p,"\n");}if(a->nsid_whitelist&&ok){ok=cfg_appendf(buf,cap,&p,"sid_whitelist = ");for(int i=0;i<a->nsid_whitelist&&ok;i++)ok=cfg_appendf(buf,cap,&p,"%s%04X",i?",":"",a->sid_whitelist[i]);ok=ok&&cfg_appendf(buf,cap,&p,"\n");}for(int i=0;i<a->nkeys&&ok;i++){ok=cfg_appendf(buf,cap,&p,"ecmkey = %04X=",a->keys[i].caid);for(int j=0;j<16&&ok;j++)ok=cfg_appendf(buf,cap,&p,"%02X",a->keys[i].key0[j]);for(int j=0;j<16&&ok;j++)ok=cfg_appendf(buf,cap,&p,"%02X",a->keys[i].key1[j]);ok=ok&&cfg_appendf(buf,cap,&p,"\n");}ok=ok&&cfg_appendf(buf,cap,&p,"\n");}
     return ok;
 }
 
@@ -100,9 +100,16 @@ bool cfg_build_server_text(const S_CONFIG *c, char *buf, size_t cap)
         ok = ok && cfg_appendf(buf, cap, &pos, "group = ");
         for (int j = 0; j < r->ngroups && ok; j++)
             ok = cfg_appendf(buf, cap, &pos, "%s%d", j ? "," : "", r->groups[j]);
-        ok = ok && cfg_appendf(buf, cap, &pos, "\ncaid = ");
-        for (int j = 0; j < r->ncaids && ok; j++)
-            ok = cfg_appendf(buf, cap, &pos, "%s%04X", j ? "," : "", r->caids[j]);
+        if ((r->ncaids > 0) && ok) {
+            ok = cfg_appendf(buf, cap, &pos, "\ncaid = ");
+            for (int j = 0; j < r->ncaids && ok; j++)
+                ok = cfg_appendf(buf, cap, &pos, "%s%04X", j ? "," : "", r->caids[j]);
+        }
+        if (r->nidents > 0 && ok) {
+            ok = cfg_appendf(buf, cap, &pos, "\nident = ");
+            for (int j = 0; j < r->nidents && ok; j++)
+                ok = cfg_appendf(buf, cap, &pos, "%s%04X:%08X", j ? "," : "", r->idents[j].caid, r->idents[j].provid);
+        }
 
         ok = ok && cfg_appendf(buf, cap, &pos,
                            "\necmwhitelist = %02X\ninactivitytimeout = %d\n",
@@ -123,8 +130,8 @@ bool cfg_build_server_text(const S_CONFIG *c, char *buf, size_t cap)
 
         if (reader_protocol_kind(r->protocol) == READER_PROTOCOL_CARD) {
             ok = ok && cfg_appendf(buf, cap, &pos,
-                               "device = %s\nfast_reset = %d\n",
-                               r->device, r->fast_reset);
+                               "device = %s\nfast_reset = %d\nfast_reset_idle = %d\n",
+                               r->device, r->fast_reset, r->fast_reset_idle);
             if (strcasecmp(r->protocol, "pcsc") == 0 ||
                 strcasecmp(r->protocol, "serial") == 0) {
                 ok = ok && cfg_appendf(buf, cap, &pos, "poll_ms = %d\n", r->poll_ms);

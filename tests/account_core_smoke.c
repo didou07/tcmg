@@ -64,18 +64,19 @@ int main(void)
     account.ngroups = 1;
     account.groups[0] = 1;
     account.group = 1;
-    assert(account_default_caid(&account) == 0x0B00);
     assert(account_allows_caid(&account, 0x0B00));
-    assert(!account_allows_caid(&account, 0x0500));
-    g_cfg.readers[1].groups[0] = 1;
     assert(account_allows_caid(&account, 0x0500));
-    g_cfg.readers[1].enabled = 0;
-    assert(!account_allows_caid(&account, 0x0500));
-    g_cfg.readers[1].enabled = 1;
     account.caid = 0x0B00;
-    assert(account_default_caid(&account) == 0x0B00);
     assert(account_allows_caid(&account, 0x0B00));
     assert(!account_allows_caid(&account, 0x0500));
+    account.caid = 0;
+    account.nidents = 1;
+    account.idents[0].caid = 0x0B00;
+    account.idents[0].provid = 0x000001;
+    assert(account_allows_ident(&account, 0x0B00, 0x000001));
+    assert(!account_allows_ident(&account, 0x0B00, 0x000002));
+    assert(!account_allows_ident(&account, 0x0500, 0x000001));
+    account.nidents = 0;
 
     assert(account_stats_init(&account.stats));
     int64_t global_found0 = 0, global_not0 = 0;
@@ -125,12 +126,22 @@ int main(void)
     assert(!first.auth.counted);
 
     first.auth.account = &account;
-    assert(ecm_access(&first, 0x0B00, 0x1234, false, true, true) == ECM_ACCESS_OK);
-    assert(ecm_access(&first, 0x0500, 0x1234, false, true, true) == ECM_ACCESS_CAID_DENIED);
-    assert(ecm_access(&first, 0x0B00, 0x0001, false, true, true) == ECM_ACCESS_SID_DENIED);
+    account.caid = 0x0B00;
+    assert(ecm_access(&first, 0x0B00, 0x1234, 0, false, true, true) == ECM_ACCESS_OK);
+    assert(ecm_access(&first, 0x0500, 0x1234, 0, false, true, true) == ECM_ACCESS_CAID_DENIED);
+    account.caid = 0;
+    assert(ecm_access(&first, 0x0500, 0x1234, 0, false, true, true) == ECM_ACCESS_OK);
+    account.nidents = 1;
+    account.idents[0].caid = 0x0B00;
+    account.idents[0].provid = 0x000001;
+    assert(ecm_access(&first, 0x0B00, 0x1234, 0x000001, false, true, true) == ECM_ACCESS_OK);
+    assert(ecm_access(&first, 0x0B00, 0x1234, 0x000002, false, true, true) == ECM_ACCESS_IDENT_DENIED);
+    assert(ecm_access(&first, 0x0500, 0x1234, 0x000001, false, true, true) == ECM_ACCESS_IDENT_DENIED);
+    account.nidents = 0;
+    assert(ecm_access(&first, 0x0B00, 0x0001, 0, false, true, true) == ECM_ACCESS_SID_DENIED);
 
     first.auth.account = NULL;
-    assert(ecm_access(&first, 0x0B00, 0x1234, false, true, true) == ECM_ACCESS_NO_ACCOUNT);
+    assert(ecm_access(&first, 0x0B00, 0x1234, 0, false, true, true) == ECM_ACCESS_NO_ACCOUNT);
 
     pthread_rwlock_destroy(&g_cfg.acc_lock);
     puts("account_core_smoke: PASS");

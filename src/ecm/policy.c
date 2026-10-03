@@ -4,7 +4,7 @@
 #include "security/antishare.h"
 #include <time.h>
 
-T_ECM_ACCESS_STATUS ecm_access(S_CLIENT *client, uint16_t caid, uint16_t sid,
+T_ECM_ACCESS_STATUS ecm_access(S_CLIENT *client, uint16_t caid, uint16_t sid, uint32_t provid,
                                bool check_schedule, bool check_caid, bool check_sid)
 {
     S_ACCOUNT *account;
@@ -19,6 +19,7 @@ T_ECM_ACCESS_STATUS ecm_access(S_CLIENT *client, uint16_t caid, uint16_t sid,
     else if (account->expirationdate > 0 && time(NULL) > account->expirationdate) status = ECM_ACCESS_EXPIRED;
     else if (check_schedule && !account_in_schedule(account)) status = ECM_ACCESS_SCHEDULE;
     else if (check_caid && !account_allows_caid(account, caid)) status = ECM_ACCESS_CAID_DENIED;
+    else if (!account_allows_ident(account, caid, provid)) status = ECM_ACCESS_IDENT_DENIED;
     else if (check_sid && !account_allows_sid(account, sid)) status = ECM_ACCESS_SID_DENIED;
     else if (antishare_check_request(account, client->identity.thread_id, caid, sid, &anti_delay_ms) != AS_CHECK_OK) status = ECM_ACCESS_ANTISHARE;
 

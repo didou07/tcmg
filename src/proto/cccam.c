@@ -279,7 +279,7 @@ static void cc_handle_ecm(S_CCCAM_CLIENT *cc, S_CLIENT *cl,
         return;
     }
 
-    access = ecm_access(cl, caid, sid, false, true, false);
+    access = ecm_access(cl, caid, sid, provid, false, true, false);
     if (access != ECM_ACCESS_OK) {
         switch (access) {
         case ECM_ACCESS_CAID_DENIED:

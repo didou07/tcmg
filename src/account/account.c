@@ -40,6 +40,8 @@ S_ACCOUNT *account_clone_config(const S_ACCOUNT *src)
     dst->enabled = src->enabled;
     memcpy(dst->caids, src->caids, sizeof(dst->caids));
     dst->ncaids = src->ncaids;
+    memcpy(dst->idents, src->idents, sizeof(dst->idents));
+    dst->nidents = src->nidents;
     memcpy(dst->ip_whitelist, src->ip_whitelist, sizeof(dst->ip_whitelist));
     dst->nwhitelist = src->nwhitelist;
     memcpy(dst->keys, src->keys, sizeof(dst->keys));

@@ -4,7 +4,7 @@
 #include "types.h"
 #include <stdbool.h>
 
-T_ECM_ACCESS_STATUS ecm_access(S_CLIENT *client, uint16_t caid, uint16_t sid,
+T_ECM_ACCESS_STATUS ecm_access(S_CLIENT *client, uint16_t caid, uint16_t sid, uint32_t provid,
                                bool check_schedule, bool check_caid, bool check_sid);
 
 #endif

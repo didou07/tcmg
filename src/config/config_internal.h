@@ -34,6 +34,7 @@ bool cfg_parse_u16_hex(const char *s, uint16_t *out);
 bool cfg_parse_u8_hex(const char *s, uint8_t *out);
 bool cfg_parse_group_list(const char *s, int32_t *groups, int32_t *count);
 bool cfg_parse_u16_list(const char *s, uint16_t *out, int32_t *count, int32_t maxn);
+bool cfg_parse_ident_list(const char *s, S_IDENT_FILTER *out, int32_t *count, int32_t maxn);
 bool cfg_parse_ipv4_list(const char *s, char out[][MAXIPLEN], int32_t *count);
 bool cfg_parse_ecm_key(const char *s, uint16_t def_caid, S_ECMKEY *out);
 bool cfg_parse_date(const char *s, time_t *out);

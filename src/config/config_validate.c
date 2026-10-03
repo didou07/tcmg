@@ -40,8 +40,8 @@ bool cfg_validate(S_CONFIG *c, char *err, size_t esz)
             snprintf(err, esz, "account '%s' has invalid groups", a->user);
             return false;
         }
-        if (a->caid == 0 && a->ncaids > 0) {
-            snprintf(err, esz, "account '%s': caid=0000 cannot be mixed with specific CAIDs", a->user);
+        if (a->ncaids > MAX_CAIDS_PER_ACC || a->nidents > MAX_IDENT_FILTERS) {
+            snprintf(err, esz, "account '%s' has invalid filter sizes", a->user);
             return false;
         }
         for (S_ACCOUNT *b = a->next; b; b = b->next) {
@@ -64,7 +64,7 @@ bool cfg_validate(S_CONFIG *c, char *err, size_t esz)
             snprintf(err, esz, "reader[%d] '%s' has invalid groups", i, r->label);
             return false;
         }
-        if (r->ncaids > MAX_CAIDS_PER_READER || r->nsid_whitelist > MAX_SID_WHITELIST) {
+        if (r->ncaids > MAX_CAIDS_PER_READER || r->nidents > MAX_IDENT_FILTERS || r->nsid_whitelist > MAX_SID_WHITELIST) {
             snprintf(err, esz, "reader[%d] '%s' has invalid list size", i, r->label);
             return false;
         }
@@ -87,6 +87,7 @@ bool cfg_validate(S_CONFIG *c, char *err, size_t esz)
                 return false;
             }
             if (r->fast_reset < 0 || r->fast_reset > 86400 ||
+                r->fast_reset_idle < 0 || r->fast_reset_idle > 86400 ||
                 r->poll_ms < 25 || r->poll_ms > 10000) {
                 snprintf(err, esz, "reader[%d] '%s': invalid PCSC timing", i, r->label);
                 return false;
@@ -97,7 +98,8 @@ bool cfg_validate(S_CONFIG *c, char *err, size_t esz)
                 snprintf(err, esz, "reader[%d] '%s': device is required", i, r->label);
                 return false;
             }
-            if (r->fast_reset < 0 || r->fast_reset > 86400) {
+            if (r->fast_reset < 0 || r->fast_reset > 86400 ||
+                r->fast_reset_idle < 0 || r->fast_reset_idle > 86400) {
                 snprintf(err, esz, "reader[%d] '%s': invalid internal reader settings", i, r->label);
                 return false;
             }
@@ -108,6 +110,7 @@ bool cfg_validate(S_CONFIG *c, char *err, size_t esz)
                 return false;
             }
             if (r->fast_reset < 0 || r->fast_reset > 86400 ||
+                r->fast_reset_idle < 0 || r->fast_reset_idle > 86400 ||
                 r->poll_ms < 25 || r->poll_ms > 10000) {
                 snprintf(err, esz, "reader[%d] '%s': invalid serial timing", i, r->label);
                 return false;

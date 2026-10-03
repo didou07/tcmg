@@ -17,12 +17,14 @@ typedef enum {
     ECM_ACCESS_SCHEDULE,
     ECM_ACCESS_ANTISHARE,
     ECM_ACCESS_CAID_DENIED,
+    ECM_ACCESS_IDENT_DENIED,
     ECM_ACCESS_SID_DENIED
 } T_ECM_ACCESS_STATUS;
 
 typedef struct {
     int32_t result;
     bool cache_hit;
+    E_TCMG_ECM_SOURCE source;
     int32_t elapsed_ms;
 } S_ECM_RESULT;
 
@@ -39,6 +41,8 @@ typedef struct {
     const uint8_t *ecm;
     int32_t ecm_len;
     uint8_t *cw;
+    uint8_t ecm_md5[TCMG_ECM_MD5_LEN];
+    bool ecm_md5_valid;
 } S_ECM_REQUEST;
 
 #endif

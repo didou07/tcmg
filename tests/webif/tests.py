@@ -60,7 +60,7 @@ for _ in range(10):
 ok("toggle on applied",st==200 and j.get("enabled")==1,j)
 st,_,j=req("POST","/api/user/resetstats?user=client"); ok("resetstats",st==200 and j.get("ok"),j)
 st,_,rj=req("GET","/api/readers"); ok("readers API returns JSON",st==200 and rj.get("ok") is True and isinstance(rj.get("readers"),list) and all("cw_ok" in r and "cw_nok" in r and "active" in r for r in rj.get("readers",[])),rj)
-reader_base={"index":"-1","label":"Test EMU","protocol":"emu","enabled":"1","device":"","user":"","password":"","key":"","inactivitytimeout":"30","caid":"","sid_whitelist":"","ecmwhitelist":"37","group":"1","ecmkeys":"0B00="+"A"*64,"DO_ECM":"1","FAST_RESET":"0","POLL_MS":"250"}
+reader_base={"index":"-1","label":"Test EMU","protocol":"emu","enabled":"1","device":"","user":"","password":"","key":"","inactivitytimeout":"30","caid":"","sid_whitelist":"","ecmwhitelist":"37","group":"1","ecmkeys":"0B00="+"A"*64,"DO_ECM":"1","FAST_RESET":"0","FAST_RESET_IDLE":"300","POLL_MS":"250"}
 large_keys=";".join("%04X="%(0x1000+i)+"A"*64 for i in range(8))
 large_reader=dict(reader_base)
 large_reader.update(label="Large JSON Reader",ecmkeys=large_keys)
@@ -83,13 +83,13 @@ st,_,j=req("GET",f"/api/reader/get?index={reader_test_index}"); ok("reader add r
 reader_edit=dict(reader_base); reader_edit.update(index=str(reader_test_index),label="Edited EMU",enabled="0",group="2,3",ecmkeys="0B00="+"B"*64)
 st,_,j=req("POST","/api/reader/save",reader_edit); ok("edit reader",st==200 and j.get("ok"),j)
 st,_,j=req("GET",f"/api/reader/get?index={reader_test_index}"); ok("reader edit roundtrip",st==200 and j.get("label")=="Edited EMU" and j.get("enabled")==0 and j.get("group")=="2,3",j)
-internal_reader_base={"index":"-1","label":"Test Internal","protocol":"internal","enabled":"1","device":"/dev/sci0","user":"","password":"","key":"","inactivitytimeout":"30","caid":"0B00","sid_whitelist":"","ecmwhitelist":"37","group":"1","ecmkeys":"","DO_ECM":"1","FAST_RESET":"99"}
+internal_reader_base={"index":"-1","label":"Test Internal","protocol":"internal","enabled":"1","device":"/dev/sci0","user":"","password":"","key":"","inactivitytimeout":"30","caid":"0B00","sid_whitelist":"","ecmwhitelist":"37","group":"1","ecmkeys":"","DO_ECM":"1","FAST_RESET":"99","FAST_RESET_IDLE":"300"}
 st,_,j=req("POST","/api/reader/save",internal_reader_base); ok("add internal without poll_ms",st==200 and j.get("ok"),j)
 st,_,rj=req("GET","/api/readers"); internal_idx=next((r.get("index") for r in rj.get("readers",[]) if r.get("label")=="Test Internal"),-1)
-st,_,j=req("GET",f"/api/reader/get?index={internal_idx}"); ok("internal add roundtrip",st==200 and j.get("protocol")=="internal" and j.get("FAST_RESET")==99 and "POLL_MS" not in j,j)
-internal_edit=dict(internal_reader_base); internal_edit.update(index=str(internal_idx),label="Edited Internal",enabled="0",device="/dev/sci1",FAST_RESET="123")
+st,_,j=req("GET",f"/api/reader/get?index={internal_idx}"); ok("internal add roundtrip",st==200 and j.get("protocol")=="internal" and j.get("FAST_RESET")==99 and j.get("FAST_RESET_IDLE")==300 and "POLL_MS" not in j,j)
+internal_edit=dict(internal_reader_base); internal_edit.update(index=str(internal_idx),label="Edited Internal",enabled="0",device="/dev/sci1",FAST_RESET="123",FAST_RESET_IDLE="60")
 st,_,j=req("POST","/api/reader/save",internal_edit); ok("edit internal without poll_ms",st==200 and j.get("ok"),j)
-st,_,j=req("GET",f"/api/reader/get?index={internal_idx}"); ok("internal edit roundtrip",st==200 and j.get("label")=="Edited Internal" and j.get("device")=="/dev/sci1" and j.get("FAST_RESET")==123 and "POLL_MS" not in j,j)
+st,_,j=req("GET",f"/api/reader/get?index={internal_idx}"); ok("internal edit roundtrip",st==200 and j.get("label")=="Edited Internal" and j.get("device")=="/dev/sci1" and j.get("FAST_RESET")==123 and j.get("FAST_RESET_IDLE")==60 and "POLL_MS" not in j,j)
 st,_,j=req("GET","/readers"); ok("internal status badges removed",st==200 and "LOCKED" not in j and ">OPEN<" not in j,j[:500])
 if internal_idx >= 0:
     st,_,j=req("POST",f"/api/reader/delete?index={internal_idx}"); ok("internal reader cleanup",st==200 and j.get("ok"),j)
@@ -97,7 +97,7 @@ for k,bad in [("label",dict(reader_base, label="")), ("protocol",dict(reader_bas
     st,_,j=req("POST","/api/reader/save",bad); ok("reject reader "+k,st==400 and j.get("ok") is False,(st,j))
 st,_,j=req("POST",f"/api/reader/delete?index={reader_test_index}"); ok("delete reader",st==200 and j.get("ok"),j)
 st,_,j=req("GET",f"/api/reader/get?index={reader_test_index}"); ok("deleted reader -> 404",st==404 and j.get("ok") is False,j)
-reader_protocol_base={"index":"-1","enabled":"1","device":"host:10000","user":"u","password":"p","key":"","inactivitytimeout":"30","caid":"0B00","sid_whitelist":"","ecmwhitelist":"37","group":"1","ecmkeys":"","DO_ECM":"1","FAST_RESET":"10","POLL_MS":"400"}
+reader_protocol_base={"index":"-1","enabled":"1","device":"host:10000","user":"u","password":"p","key":"","inactivitytimeout":"30","caid":"0B00","sid_whitelist":"","ecmwhitelist":"37","group":"1","ecmkeys":"","DO_ECM":"1","FAST_RESET":"10","FAST_RESET_IDLE":"300","POLL_MS":"400"}
 for _proto in ["cccam","mgcamd","newcamd","cs378x","pcsc","serial"]:
     _d=dict(reader_protocol_base)
     _d.update(label="Matrix "+_proto,protocol=_proto)

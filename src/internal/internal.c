@@ -6,6 +6,7 @@
 #include "../core/utils.h"
 #include "../log/log.h"
 #include "../platform/platform.h"
+#include "../reader/failure.h"
 
 #ifndef TCMG_OS_WINDOWS
 
@@ -86,6 +87,9 @@ typedef struct {
     int ready;
     int protocol;
     int64_t last_reset_ms;
+    int64_t last_activity_ms;
+    int64_t last_activity_seen_ms;
+    int fast_reset_paused;
     uint32_t sci_etu;
     uint32_t sci_fs;
     uint32_t t0_wwt_etu;
@@ -97,11 +101,6 @@ typedef struct {
     uint8_t t0_wi;
     uint8_t t0_n;
     uint8_t t0_i;
-    uint8_t t0_ta1;
-    int t0_ta1_present;
-    uint8_t t0_ta2;
-    int t0_ta2_present;
-    uint8_t t0_protocol_count;
     int worker_running;
     int worker_stop;
     int ecm_active;
@@ -287,6 +286,9 @@ static void slot_clear(S_INTERNAL_SLOT *s)
     s->ready = 0;
     s->protocol = 0;
     s->last_reset_ms = 0;
+    s->last_activity_ms = mono_ms();
+    s->last_activity_seen_ms = s->last_activity_ms;
+    s->fast_reset_paused = 0;
     s->sci_etu = 0;
     s->sci_fs = 0;
     s->t0_wwt_etu = 0;
@@ -296,11 +298,6 @@ static void slot_clear(S_INTERNAL_SLOT *s)
     s->t0_di = 1;
     s->t0_d = 1;
     s->t0_wi = TCMG_INTERNAL_DEFAULT_WI;
-    s->t0_ta1 = 0x11;
-    s->t0_ta1_present = 0;
-    s->t0_ta2 = 0;
-    s->t0_ta2_present = 0;
-    s->t0_protocol_count = 1;
     s->t0_n = 0;
     s->t0_i = 0;
     queue_reset_locked(s);
@@ -319,6 +316,9 @@ static void slot_reset_state(S_INTERNAL_SLOT *s)
     s->ready = 0;
     s->protocol = 0;
     s->last_reset_ms = 0;
+    s->last_activity_ms = mono_ms();
+    s->last_activity_seen_ms = s->last_activity_ms;
+    s->fast_reset_paused = 0;
     s->sci_etu = 0;
     s->sci_fs = 0;
     s->t0_wwt_etu = 0;
@@ -328,11 +328,6 @@ static void slot_reset_state(S_INTERNAL_SLOT *s)
     s->t0_di = 1;
     s->t0_d = 1;
     s->t0_wi = TCMG_INTERNAL_DEFAULT_WI;
-    s->t0_ta1 = 0x11;
-    s->t0_ta1_present = 0;
-    s->t0_ta2 = 0;
-    s->t0_ta2_present = 0;
-    s->t0_protocol_count = 1;
     s->t0_n = 0;
     s->t0_i = 0;
     s->worker_running = 0;
@@ -485,20 +480,14 @@ static int parse_atr(S_INTERNAL_SLOT *s, size_t *atr_len_out)
                 return -3;
             uint8_t ta = s->atr[n++];
             if (group == 1) {
-                s->t0_ta1 = ta;
-                s->t0_ta1_present = 1;
                 fi = (uint8_t)(ta >> 4);
                 di = (uint8_t)(ta & 0x0Fu);
-            } else if (group == 2) {
-                s->t0_ta2 = ta;
-                s->t0_ta2_present = 1;
             }
         }
         if (y & 0x20u) {
             if (n >= sizeof(s->atr) || read_byte_timeout(s->fd, &s->atr[n], TCMG_INTERNAL_ATR_BYTE_MS) < 0)
                 return -4;
             if (group == 1) current_i = (uint8_t)(s->atr[n] & 0x0Fu);
-            n++;
         }
         if (y & 0x40u) {
             if (n >= sizeof(s->atr) || read_byte_timeout(s->fd, &s->atr[n], TCMG_INTERNAL_ATR_BYTE_MS) < 0)
@@ -565,17 +554,14 @@ static int parse_atr(S_INTERNAL_SLOT *s, size_t *atr_len_out)
     s->t0_wi = wi ? wi : TCMG_INTERNAL_DEFAULT_WI;
     s->t0_n = n_extra;
     s->t0_i = current_i;
-    s->t0_protocol_count = (uint8_t)(protocol_count > 255u ? 255u : protocol_count);
     s->t0_wwt_etu = 960u * (uint32_t)s->t0_d * (uint32_t)s->t0_wi;
     s->t0_egt_etu = n_extra == 255 ? 0 : n_extra;
 
     *atr_len_out = n;
     tcmg_log_dbg(D_READER,
-                 "internal ATR TS=%02X T0=%02X proto=T0 FI=%u DI=%u D=%u WI=%u N=%u I=%u TA1=%s%02X TA2=%s%02X protocols=%u WWT=%uETU",
+                 "internal ATR TS=%02X T0=%02X proto=T0 FI=%u DI=%u D=%u WI=%u N=%u I=%u WWT=%uETU",
                  ts, t0, fi, di, s->t0_d, s->t0_wi, s->t0_n, s->t0_i,
-                 s->t0_ta1_present ? "" : "-", s->t0_ta1,
-                 s->t0_ta2_present ? "" : "-", s->t0_ta2,
-                 s->t0_protocol_count, s->t0_wwt_etu);
+                 s->t0_wwt_etu);
     tcmg_dump_dbg(D_READER, s->atr, (int32_t)s->atr_len, "INTERNAL ATR");
 
     (void)protocol_count;
@@ -662,75 +648,11 @@ static int sci_write_parameters(S_INTERNAL_SLOT *s, const SCI_PARAMETERS *p)
 #endif
 }
 
-static int sci_raw_write_all(S_INTERNAL_SLOT *s, const uint8_t *buf, size_t len, uint32_t timeout_ms)
-{
-    if (!s || s->fd < 0 || !buf) return -1;
-    size_t off = 0;
-    while (off < len) {
-        fd_set wfds;
-        FD_ZERO(&wfds);
-        FD_SET(s->fd, &wfds);
-        struct timeval tv = {
-            .tv_sec = (time_t)(timeout_ms / 1000u),
-            .tv_usec = (suseconds_t)((timeout_ms % 1000u) * 1000u)
-        };
-        int rc;
-        do {
-            rc = select(s->fd + 1, NULL, &wfds, NULL, &tv);
-        } while (rc < 0 && errno == EINTR);
-        if (rc <= 0) return -1;
-        ssize_t n = write(s->fd, buf + off, len - off);
-        if (n > 0) { off += (size_t)n; continue; }
-        if (n < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)) continue;
-        return -1;
-    }
-    return 0;
-}
-
-static int sci_pts_exchange(S_INTERNAL_SLOT *s, uint8_t ta1)
-{
-    uint8_t req[4] = { 0xFF, 0x10, ta1, 0x00 };
-    uint8_t confirm[4] = { 0 };
-    req[3] = (uint8_t)(req[0] ^ req[1] ^ req[2]);
-    if (sci_raw_write_all(s, req, sizeof(req), 1000) < 0) return -1;
-    if (tcdrain(s->fd) < 0 && errno != ENOTTY && errno != EINVAL && errno != ENOSYS) return -1;
-    for (size_t i = 0; i < sizeof(confirm); i++)
-        if (read_byte_timeout(s->fd, &confirm[i], 1000) < 0) return -1;
-    return memcmp(req, confirm, sizeof(req)) == 0 ? 0 : -1;
-}
-
-static void normalize_atr_speed_after_pts(S_INTERNAL_SLOT *s)
-{
-    if (!s) return;
-    int specific = s->t0_ta2_present != 0;
-    int needs_pts = !specific && s->t0_ta1_present &&
-                    (s->t0_ta1 != 0x11 || s->t0_protocol_count > 1u || s->t0_n == 255u);
-    if (!needs_pts) {
-        if (specific && s->t0_ta1_present && (s->t0_ta2 & 0x10u)) {
-            s->t0_fi = 1;
-            s->t0_d = 1;
-        }
-        return;
-    }
-
-    if (sci_pts_exchange(s, s->t0_ta1) == 0) {
-        tcmg_log_dbg(D_READER, "internal PTS accepted device=%s TA1=%02X FI=%u DI=%u D=%u",
-                     s->device, s->t0_ta1, s->t0_fi, s->t0_di, s->t0_d);
-        return;
-    }
-
-    s->t0_fi = 1;
-    s->t0_di = 1;
-    s->t0_d = 1;
-    tcmg_log_dbg(D_READER, "internal PTS rejected device=%s TA1=%02X; keeping default FI=1 DI=1 D=1",
-                 s->device, s->t0_ta1);
-}
-
 static int sci_reset_card(S_INTERNAL_SLOT *s, const char *reason)
 {
 #ifdef __linux__
     if (!s || s->fd < 0) return -1;
-    int64_t reset_t0 = mono_ms();
+    const int64_t reset_t0 = mono_ms();
 
     if (reader_present(s) <= 0) {
         s->ready = 0;
@@ -782,8 +704,6 @@ static int sci_reset_card(S_INTERNAL_SLOT *s, const char *reason)
             break;
         }
 
-        normalize_atr_speed_after_pts(s);
-
         SCI_PARAMETERS post = p;
         finalize_t0_timing(s, &post);
         if (sci_write_parameters(s, &post) < 0) {
@@ -811,10 +731,6 @@ static int sci_reset_card(S_INTERNAL_SLOT *s, const char *reason)
                        s->sci_fs, actual_clock / 100u, (actual_clock % 100u) * 10u,
                        s->sci_etu, s->t0_wwt_ms, s->t0_d, s->t0_wi, s->t0_fi,
                        (long long)(mono_ms() - reset_t0));
-    } else {
-        tcmg_log("card reset failed reason=%s device=%s elapsed=%lldms",
-                 reason && *reason ? reason : "unknown", s->device,
-                 (long long)(mono_ms() - reset_t0));
     }
     return success;
 #else
@@ -1019,14 +935,34 @@ static void *internal_reader_worker(void *arg)
         if (!present) {
             s->ready = 0;
             s->params_applied = 0;
+            s->fast_reset_paused = 0;
         } else {
             const int64_t now_ms = mono_ms();
-            const int interval_due = cfg.fast_reset > 0 &&
-                                     s->ready && s->present &&
-                                     s->queue_count == 0 &&
-                                     s->ecm_active == 0 &&
-                                     s->last_reset_ms > 0 &&
-                                     now_ms - s->last_reset_ms >= (int64_t)cfg.fast_reset * 1000LL;
+            int interval_due = 0;
+            if (cfg.fast_reset > 0 && s->ready && s->present) {
+                const int idle_enabled = cfg.fast_reset_idle > 0;
+                const int idle = idle_enabled &&
+                                 now_ms - s->last_activity_ms >=
+                                 (int64_t)cfg.fast_reset_idle * 1000LL;
+                if (s->fast_reset_paused) {
+                    if (s->last_activity_ms != s->last_activity_seen_ms) {
+                        s->fast_reset_paused = 0;
+                        s->last_activity_seen_ms = s->last_activity_ms;
+                        s->last_reset_ms = now_ms;
+                        tcmg_log_force("fast reset resumed device=%s", s->device);
+                    }
+                } else if (idle) {
+                    s->fast_reset_paused = 1;
+                    s->last_activity_seen_ms = s->last_activity_ms;
+                    tcmg_log_force("fast reset paused device=%s idle=%ds", s->device, cfg.fast_reset_idle);
+                }
+                interval_due = !s->fast_reset_paused &&
+                               s->queue_count == 0 && s->ecm_active == 0 &&
+                               s->last_reset_ms > 0 &&
+                               now_ms - s->last_reset_ms >= (int64_t)cfg.fast_reset * 1000LL;
+            } else if (cfg.fast_reset <= 0 || !s->ready || !s->present) {
+                s->fast_reset_paused = 0;
+            }
             int need_reset = !s->ready;
             const char *reason = "startup";
             if (interval_due) {
@@ -1056,47 +992,19 @@ static void *internal_reader_worker(void *arg)
             memcpy(ecm, job->ecm, ecm_len);
             pthread_mutex_unlock(&s->mtx);
 
-            int64_t ecm_t0 = mono_ms();
             uint8_t cw[16] = {0};
             int recoverable = 0;
             int rc = internal_conax_ecm(s, ecm, ecm_len, cw, &recoverable);
-            if (rc < 0 && recoverable) {
-                int reinitialized = -1;
-                int retry_recoverable = 0;
-                pthread_mutex_lock(&s->mtx);
-                s->ready = 0;
-                if (!s->worker_stop && reader_present(s) > 0)
-                    reinitialized = sci_reset_card(s, "transport");
-                pthread_mutex_unlock(&s->mtx);
-                tcmg_log_dbg(D_READER,
-                             "internal transport recovery device=%s status=%s",
-                             s->device, reinitialized == 0 ? "ready" : "failed");
-                if (reinitialized == 0) {
-                    int retry_rc = internal_conax_ecm(s, ecm, ecm_len, cw, &retry_recoverable);
-                    tcmg_log_dbg(D_READER,
-                                 "internal transport retry device=%s result=%s",
-                                 s->device, retry_rc == 0 ? "found" :
-                                 (retry_rc == -13 ? "not-found" : "failed"));
-                    rc = retry_rc;
-                    recoverable = retry_recoverable;
-                }
-            } else if (rc < 0) {
-                recoverable = 0;
-            }
-            int64_t ecm_ms = mono_ms() - ecm_t0;
 
-            if (rc < 0) {
-                if (recoverable) {
-                    pthread_mutex_lock(&s->mtx);
-                    s->ready = 0;
-                    pthread_mutex_unlock(&s->mtx);
+            if (rc < 0 && recoverable) {
+                pthread_mutex_lock(&s->mtx);
+                int reset_rc = sci_reset_card(s, "ecm-recovery");
+                pthread_mutex_unlock(&s->mtx);
+                if (reset_rc == 0) {
+                    memset(cw, 0, sizeof(cw));
+                    recoverable = 0;
+                    rc = internal_conax_ecm(s, ecm, ecm_len, cw, &recoverable);
                 }
-                tcmg_log_dbg(D_READER,
-                             "internal ECM failed device=%s rc=%d recoverable=%d elapsed=%lldms%s",
-                             s->device, rc, recoverable, (long long)ecm_ms,
-                             recoverable ? "; reader marked unavailable" : "; keeping reader ready");
-            } else {
-                tcmg_log_dbg(D_READER, "internal ECM ok device=%s elapsed=%lldms", s->device, (long long)ecm_ms);
             }
 
             pthread_mutex_lock(&s->mtx);
@@ -1126,11 +1034,13 @@ static void *internal_reader_worker(void *arg)
     for (int i = 0; i < TCMG_INTERNAL_ECM_QUEUE_CAP; i++) {
         if (s->jobs[i].state != INTERNAL_JOB_FREE && s->jobs[i].state != INTERNAL_JOB_DONE) {
             s->jobs[i].rc = -9;
+            s->jobs[i].recoverable = 0;
             s->jobs[i].state = INTERNAL_JOB_DONE;
         }
     }
     s->worker_running = 0;
     s->worker_stop = 0;
+    s->ecm_active = 0;
     s->target_device[0] = '\0';
     pthread_cond_broadcast(&s->cv);
     while (queue_waiter_count_locked(s) > 0)
@@ -1301,6 +1211,7 @@ int internal_do_ecm_reader(int index, uint16_t caid,
         pthread_mutex_unlock(&s->mtx);
         return -6;
     }
+    s->last_activity_ms = mono_ms();
 
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);

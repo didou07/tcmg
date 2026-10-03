@@ -51,7 +51,7 @@ int reader_collect_account_caids(const S_ACCOUNT *acc, uint16_t *out, int32_t ca
 }
 
 E_READER_RULE_RESULT reader_rule_check(const S_READER *reader, const S_ACCOUNT *acc,
-                                        uint16_t caid, uint16_t sid, int32_t ecm_len)
+                                        uint16_t caid, uint16_t sid, uint32_t provid, int32_t ecm_len)
 {
     if (!reader || !acc || !reader->in_use || !reader->enabled)
         return READER_RULE_DISABLED;
@@ -67,6 +67,9 @@ E_READER_RULE_RESULT reader_rule_check(const S_READER *reader, const S_ACCOUNT *
     } else {
         group_ok = reader_account_has_group(acc, 1);
     }
+    if (reader->ecm_whitelist > 0 && ecm_len != reader->ecm_whitelist)
+        return READER_RULE_ECM_WHITELIST;
+
     if (!group_ok) return READER_RULE_GROUP;
 
     if (reader->ncaids > 0) {
@@ -80,6 +83,17 @@ E_READER_RULE_RESULT reader_rule_check(const S_READER *reader, const S_ACCOUNT *
         if (!caid_ok) return READER_RULE_CAID;
     }
 
+    if (reader->nidents > 0) {
+        bool ident_ok = false;
+        for (int i = 0; i < reader->nidents; i++) {
+            if (reader->idents[i].caid == caid && reader->idents[i].provid == provid) {
+                ident_ok = true;
+                break;
+            }
+        }
+        if (!ident_ok) return READER_RULE_IDENT;
+    }
+
     if (reader->nsid_whitelist > 0) {
         bool sid_ok = false;
         for (int i = 0; i < reader->nsid_whitelist; i++) {
@@ -91,14 +105,11 @@ E_READER_RULE_RESULT reader_rule_check(const S_READER *reader, const S_ACCOUNT *
         if (!sid_ok) return READER_RULE_SID;
     }
 
-    if (reader->ecm_whitelist > 0 && ecm_len != reader->ecm_whitelist)
-        return READER_RULE_ECM_WHITELIST;
-
     return READER_RULE_ALLOW;
 }
 
 bool reader_allows(const S_READER *reader, const S_ACCOUNT *acc,
-                   uint16_t caid, uint16_t sid, int32_t ecm_len)
+                   uint16_t caid, uint16_t sid, uint32_t provid, int32_t ecm_len)
 {
-    return reader_rule_check(reader, acc, caid, sid, ecm_len) == READER_RULE_ALLOW;
+    return reader_rule_check(reader, acc, caid, sid, provid, ecm_len) == READER_RULE_ALLOW;
 }

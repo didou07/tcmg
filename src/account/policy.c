@@ -36,14 +36,20 @@ uint16_t account_default_caid(const S_ACCOUNT *account)
 
 bool account_allows_caid(const S_ACCOUNT *account, uint16_t caid)
 {
-    uint16_t caids[MAX_CAIDS_PER_ACC + (MAX_READERS * MAX_CAIDS_PER_READER)];
-    int32_t n;
-
     if (!account || !caid) return false;
-    n = account_collect_caids(account, caids,
-                              (int32_t)(sizeof(caids) / sizeof(caids[0])));
-    for (int32_t i = 0; i < n; i++)
-        if (caids[i] == caid) return true;
+    if (account->caid == 0 && account->ncaids == 0) return true;
+    if (account->caid == caid) return true;
+    for (int32_t i = 0; i < account->ncaids; i++)
+        if (account->caids[i] == caid) return true;
+    return false;
+}
+
+bool account_allows_ident(const S_ACCOUNT *account, uint16_t caid, uint32_t provid)
+{
+    if (!account || !caid) return false;
+    if (account->nidents == 0) return true;
+    for (int32_t i = 0; i < account->nidents; i++)
+        if (account->idents[i].caid == caid && account->idents[i].provid == provid) return true;
     return false;
 }
 

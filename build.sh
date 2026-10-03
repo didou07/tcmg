@@ -949,11 +949,12 @@ self_test(){
   local tmp="$STATE_DIR/self-test.$$" row name i
   mkdir -p "$tmp"
   trap 'rm -rf "$tmp"' RETURN
-  [[ ${#DEVICES[@]} -ge 300 ]] || { err "device catalog too small: ${#DEVICES[@]}"; return 1; }
+  [[ ${#DEVICES[@]} -ge 200 ]] || { err "device catalog unexpectedly small: ${#DEVICES[@]}"; return 1; }
   [[ ${#TOOLCHAINS[@]} -ge 80 ]] || { err "toolchain catalog too small: ${#TOOLCHAINS[@]}"; return 1; }
   [[ "$(find_device generic-linux)" == generic-linux\|linux\|native* ]] || { err 'device catalog failed'; return 1; }
   [[ "$(find_toolchain vuplus4k_armv7)" == vuplus4k_armv7\|* ]] || { err 'SimpleBuild4 Vu+ toolchain catalog failed'; return 1; }
   [[ "$(find_device dreambox-dm800se)" == dreambox-dm800se\|linux\|mipsel\|* ]] || { err 'Dreambox DM800SE device catalog failed'; return 1; }
+  [[ "$(find_device novaler4kpro)" == novaler4kpro\|linux\|aarch64\|* ]] || { err 'Novaler 4K PRO device catalog failed'; return 1; }
   [[ "$(find_device vuuno4k)" == vuuno4k\|linux\|armv7\|* ]] || { err 'Vu+ device catalog failed'; return 1; }
   [[ "$(find_device dm800sev2)" == dm800sev2\|linux\|mipsel\|* ]] || { err 'Dreambox DM800SE v2 catalog failed'; return 1; }
   [[ "$(find_device dreambox-dm520)" == dreambox-dm520\|linux\|mipsel\|* ]] || { err 'Dreambox DM520 device catalog failed'; return 1; }

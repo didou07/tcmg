@@ -134,7 +134,7 @@ ifneq ($(strip $(TCMG_CONF_DIR)),)
 endif
 
 ifeq ($(RELEASE),1)
-  CFLAGS += $(BASE_FLAGS) -Os \
+  CFLAGS += $(BASE_FLAGS) -O2 \
             -ffunction-sections -fdata-sections \
             -fmerge-all-constants -fno-ident \
             -fstack-protector-strong \

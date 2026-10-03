@@ -69,6 +69,9 @@ typedef struct {
     int64_t last_reset_ms;
     int64_t last_attempt_ms;
     int64_t last_poll_ms;
+    int64_t last_activity_ms;
+    int64_t last_activity_seen_ms;
+    int fast_reset_paused;
     int ecm_active;
     uint8_t atr[TCMG_SERIAL_MAX_ATR];
     size_t atr_len;
@@ -144,6 +147,9 @@ static void slot_clear(S_SERIAL_SLOT *s)
     s->last_reset_ms = 0;
     s->last_attempt_ms = 0;
     s->last_poll_ms = 0;
+    s->last_activity_ms = mono_ms();
+    s->last_activity_seen_ms = s->last_activity_ms;
+    s->fast_reset_paused = 0;
     s->ecm_active = 0;
     s->atr_len = 0;
     memset(s->atr, 0, sizeof(s->atr));
@@ -951,10 +957,29 @@ static void *serial_thread(void *arg)
                     if (serial_quick_probe(&s_slots[i]) < 0)
                         tcmg_log_dbg(D_READER, "reader[%d]: quick probe failed device=%s", i + 1, device);
                 }
-                if (s_slots[i].ready && cfg->fast_reset > 0 &&
-                    now - s_slots[i].last_reset_ms >= (int64_t)cfg->fast_reset * 1000LL) {
-                    if (serial_fast_reset(&s_slots[i]) < 0)
-                        tcmg_log("reader[%d]: fast reset failed device=%s", i + 1, device);
+                if (s_slots[i].ready && cfg->fast_reset > 0) {
+                    const int idle_enabled = cfg->fast_reset_idle > 0;
+                    const int idle = idle_enabled && now - s_slots[i].last_activity_ms >=
+                                     (int64_t)cfg->fast_reset_idle * 1000LL;
+                    if (s_slots[i].fast_reset_paused) {
+                        if (s_slots[i].last_activity_ms != s_slots[i].last_activity_seen_ms) {
+                            s_slots[i].fast_reset_paused = 0;
+                            s_slots[i].last_activity_seen_ms = s_slots[i].last_activity_ms;
+                            s_slots[i].last_reset_ms = now;
+                            tcmg_log_force("fast reset resumed device=%s", device);
+                        }
+                    } else if (idle) {
+                        s_slots[i].fast_reset_paused = 1;
+                        s_slots[i].last_activity_seen_ms = s_slots[i].last_activity_ms;
+                        tcmg_log_force("fast reset paused device=%s idle=%ds", device, cfg->fast_reset_idle);
+                    }
+                    if (!s_slots[i].fast_reset_paused &&
+                        now - s_slots[i].last_reset_ms >= (int64_t)cfg->fast_reset * 1000LL) {
+                        if (serial_fast_reset(&s_slots[i]) < 0)
+                            tcmg_log("reader[%d]: fast reset failed device=%s", i + 1, device);
+                    }
+                } else {
+                    s_slots[i].fast_reset_paused = 0;
                 }
                 s_slots[i].last_poll_ms = now;
             }
@@ -1027,7 +1052,10 @@ int serial_do_ecm_reader(int index, uint16_t caid,
     if (failure) *failure = READER_FAILURE_READER_ERROR;
     if (index < 0 || index >= MAX_READERS || !ecm || !cw || ecm_len == 0 || ecm_len > 249) return -1;
     if ((caid & 0xFF00u) != 0x0B00u) return -2;
-    if (whitelist > 0 && ecm_len != (size_t)whitelist) return -3;
+    if (whitelist > 0 && ecm_len != (size_t)whitelist) {
+        if (failure) *failure = READER_FAILURE_REJECTED;
+        return -3;
+    }
 
     slots_init();
     S_READER cfg;
@@ -1043,6 +1071,7 @@ int serial_do_ecm_reader(int index, uint16_t caid,
     }
 
     int64_t ecm_t0 = mono_ms();
+    s->last_activity_ms = ecm_t0;
     s->ecm_active++;
     int rc = conax_ecm(s, ecm, ecm_len, cw);
     if (rc < 0 && rc != SERIAL_ECM_NOT_FOUND && (rc == -2 || rc == -7)) {

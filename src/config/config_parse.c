@@ -143,6 +143,41 @@ bool cfg_parse_u16_hex(const char*s,uint16_t*out)
     *out=(uint16_t)v;
     return true;
 }
+bool cfg_parse_ident_list(const char*s,S_IDENT_FILTER*out,int32_t*count,int32_t maxn)
+{
+    char buf[CFGVAL_LEN],*save=NULL,*tok;
+    int32_t n=0;
+    if(!out||!count||maxn<=0||maxn>MAX_IDENT_FILTERS)return false;
+    tcmg_strlcpy(buf,s?s:"",sizeof(buf));
+    if(!buf[0]){*count=0;return true;}
+    tok=strtok_r(buf,",;",&save);
+    while(tok){
+        char *colon,*end;
+        unsigned long caid,provid;
+        cfg_str_trim(tok);
+        if(!*tok||n>=maxn)return false;
+        colon=strchr(tok,':');
+        if(!colon||colon==tok||strchr(colon+1,':'))return false;
+        *colon='\0';
+        cfg_str_trim(tok);
+        cfg_str_trim(colon+1);
+        if(strlen(tok)>4||strlen(colon+1)>8||!*tok||!* (colon+1))return false;
+        errno=0;
+        caid=strtoul(tok,&end,16);
+        if(errno||end==tok||*end||caid>0xFFFFUL||caid==0)return false;
+        errno=0;
+        provid=strtoul(colon+1,&end,16);
+        if(errno||end==colon+1||*end||provid>0xFFFFFFFFUL)return false;
+        for(int32_t i=0;i<n;i++)
+            if(out[i].caid==(uint16_t)caid&&out[i].provid==(uint32_t)provid)return false;
+        out[n].caid=(uint16_t)caid;
+        out[n].provid=(uint32_t)provid;
+        n++;
+        tok=strtok_r(NULL,",;",&save);
+    }
+    *count=n;
+    return true;
+}
 bool cfg_parse_group_list(const char*s,int32_t*groups,int32_t*count)
 {
     char buf[CFGVAL_LEN],*save=NULL,*tok;

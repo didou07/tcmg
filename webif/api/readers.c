@@ -20,11 +20,13 @@ typedef struct {
     char key[32];
     char inactivity[16];
     char caid[WEBIF_CAID_LIST_LEN];
+    char ident[WEBIF_IDENT_LIST_LEN];
     char sid[WEBIF_SID_LIST_LEN];
     char ecmwl[8];
     char groups[WEBIF_GROUPS_LEN];
     char ecmkeys[WEBIF_ECMKEYS_LEN];
     char fast_reset[16];
+    char fast_reset_idle[16];
     char poll_ms[16];
 } reader_form;
 
@@ -117,11 +119,13 @@ static const char *parse_reader_form(const char *body, reader_form *f, int index
         webif_form_copy(body, "key", f->key, sizeof(f->key)) < 0 ||
         webif_form_copy(body, "inactivitytimeout", f->inactivity, sizeof(f->inactivity)) < 0 ||
         webif_form_copy(body, "caid", f->caid, sizeof(f->caid)) < 0 ||
+        webif_form_copy(body, "ident", f->ident, sizeof(f->ident)) < 0 ||
         webif_form_copy(body, "sid_whitelist", f->sid, sizeof(f->sid)) < 0 ||
         webif_form_copy(body, "ecmwhitelist", f->ecmwl, sizeof(f->ecmwl)) < 0 ||
         webif_form_copy(body, "group", f->groups, sizeof(f->groups)) < 0 ||
         webif_form_copy(body, "ecmkeys", f->ecmkeys, sizeof(f->ecmkeys)) < 0 ||
         webif_form_copy(body, "FAST_RESET", f->fast_reset, sizeof(f->fast_reset)) < 0 ||
+        webif_form_copy(body, "FAST_RESET_IDLE", f->fast_reset_idle, sizeof(f->fast_reset_idle)) < 0 ||
         webif_form_copy(body, "POLL_MS", f->poll_ms, sizeof(f->poll_ms)) < 0)
         return "field too long";
 
@@ -139,6 +143,7 @@ static const char *parse_reader_form(const char *body, reader_form *f, int index
         if (e == f->ecmwl || *e || x > 0xFF) return "ecmwhitelist must be 00-FF";
     }
     if (validate_u16_list(f->caid, MAX_CAIDS_PER_READER, WEBIF_CAID_LIST_LEN) < 0) return "invalid CAID list";
+    if (strlen(f->ident) >= WEBIF_IDENT_LIST_LEN) return "invalid IDENT list";
     if (validate_u16_list(f->sid, MAX_SID_WHITELIST, WEBIF_SID_LIST_LEN) < 0) return "invalid SID whitelist";
     if (validate_groups(f->groups) < 0) return "group is required";
 
@@ -147,8 +152,10 @@ static const char *parse_reader_form(const char *body, reader_form *f, int index
     } else if (protocol->kind == READER_PROTOCOL_CARD) {
         if (!strcmp(protocol->name, "internal")) {
             if (rnum(f->fast_reset, 0, 86400, &v) < 0) return "FAST_RESET must be 0-86400 seconds for internal readers";
+            if (rnum(f->fast_reset_idle, 0, 86400, &v) < 0) return "FAST_RESET_IDLE must be 0-86400 seconds";
         } else {
             if (rnum(f->fast_reset, 0, 86400, &v) < 0) return "FAST_RESET must be 0-86400";
+            if (rnum(f->fast_reset_idle, 0, 86400, &v) < 0) return "FAST_RESET_IDLE must be 0-86400 seconds";
             if (rnum(f->poll_ms, 50, 10000, &v) < 0) return "POLL_MS must be 50-10000";
         }
         if (!f->device[0]) return "device is required";
@@ -199,12 +206,12 @@ static int view_json(char **dst, int *bsz, int pos, const S_WEBIF_READER_VIEW *r
     }
     if (!strcasecmp(r->protocol, "internal")) {
         pos = buf_printf(dst, bsz, pos,
-            "\",\"FAST_RESET\":%d,\"cw_ok\":%lld,\"cw_nok\":%lld,\"active\":%d,\"owned\":%d,\"present\":%d,\"ready\":%d",
-            r->fast_reset, (long long)r->cw_ok, (long long)r->cw_nok, r->active, owned, present, ready);
+            "\",\"FAST_RESET\":%d,\"FAST_RESET_IDLE\":%d,\"cw_ok\":%lld,\"cw_nok\":%lld,\"active\":%d,\"owned\":%d,\"present\":%d,\"ready\":%d",
+            r->fast_reset, r->fast_reset_idle, (long long)r->cw_ok, (long long)r->cw_nok, r->active, owned, present, ready);
     } else {
         pos = buf_printf(dst, bsz, pos,
-            "\",\"FAST_RESET\":%d,\"POLL_MS\":%d,\"cw_ok\":%lld,\"cw_nok\":%lld,\"active\":%d,\"owned\":%d,\"present\":%d,\"ready\":%d",
-            r->fast_reset, r->poll_ms, (long long)r->cw_ok, (long long)r->cw_nok, r->active, owned, present, ready);
+            "\",\"FAST_RESET\":%d,\"FAST_RESET_IDLE\":%d,\"POLL_MS\":%d,\"cw_ok\":%lld,\"cw_nok\":%lld,\"active\":%d,\"owned\":%d,\"present\":%d,\"ready\":%d",
+            r->fast_reset, r->fast_reset_idle, r->poll_ms, (long long)r->cw_ok, (long long)r->cw_nok, r->active, owned, present, ready);
     }
     if (!detail) return pos;
 
@@ -219,6 +226,9 @@ static int view_json(char **dst, int *bsz, int pos, const S_WEBIF_READER_VIEW *r
     if (pos < 0) return -1;
     pos = buf_printf(dst, bsz, pos, "\",\"inactivitytimeout\":%d,\"sid_whitelist\":\"", r->inactivitytimeout);
     pos = buf_json_string(dst, bsz, pos, r->sid_whitelist);
+    if (pos < 0) return -1;
+    pos = buf_printf(dst, bsz, pos, "\",\"ident\":\"");
+    pos = buf_json_string(dst, bsz, pos, r->idents);
     if (pos < 0) return -1;
     pos = buf_printf(dst, bsz, pos, "\",\"ecmwhitelist\":\"%02X\",\"group\":\"",
                      (unsigned)(r->ecm_whitelist & 255));
@@ -301,10 +311,11 @@ static void form_to_edit(const reader_form *f, int index, S_WEBIF_READER_EDIT *e
     tcmg_strlcpy(e->enabled,f->enabled,sizeof(e->enabled)); tcmg_strlcpy(e->device,f->device,sizeof(e->device));
     tcmg_strlcpy(e->user,f->user,sizeof(e->user)); tcmg_strlcpy(e->password,f->password,sizeof(e->password));
     tcmg_strlcpy(e->key,f->key,sizeof(e->key)); tcmg_strlcpy(e->inactivitytimeout,f->inactivity,sizeof(e->inactivitytimeout));
-    tcmg_strlcpy(e->caid,f->caid,sizeof(e->caid)); tcmg_strlcpy(e->sid_whitelist,f->sid,sizeof(e->sid_whitelist));
+    tcmg_strlcpy(e->caid,f->caid,sizeof(e->caid)); tcmg_strlcpy(e->ident,f->ident,sizeof(e->ident)); tcmg_strlcpy(e->sid_whitelist,f->sid,sizeof(e->sid_whitelist));
     tcmg_strlcpy(e->ecmwhitelist,f->ecmwl,sizeof(e->ecmwhitelist)); tcmg_strlcpy(e->group,f->groups,sizeof(e->group));
     tcmg_strlcpy(e->ecmkeys,f->ecmkeys,sizeof(e->ecmkeys));
     tcmg_strlcpy(e->fast_reset,f->fast_reset,sizeof(e->fast_reset));
+    tcmg_strlcpy(e->fast_reset_idle,f->fast_reset_idle,sizeof(e->fast_reset_idle));
     tcmg_strlcpy(e->poll_ms,f->poll_ms,sizeof(e->poll_ms));
 }
 

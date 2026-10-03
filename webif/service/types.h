@@ -2,6 +2,7 @@
 #define TCMG_WEBIF_SERVICE_TYPES_H_
 
 #include "../../src/core/constants.h"
+#include "../../src/core/ident_types.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <time.h>
@@ -13,6 +14,7 @@
 #define WEBIF_TEXT_1024 1024
 #define WEBIF_GROUPS_LEN 128
 #define WEBIF_CAID_LIST_LEN 64
+#define WEBIF_IDENT_LIST_LEN 384
 #define WEBIF_SID_LIST_LEN 384
 #define WEBIF_ECMKEYS_LEN 1024
 
@@ -34,6 +36,7 @@ typedef struct {
     char pass[CFGKEY_LEN];
     char groups[WEBIF_GROUPS_LEN];
     char caids[WEBIF_CAID_LIST_LEN];
+    char idents[WEBIF_IDENT_LIST_LEN];
     int enabled;
     int max_connections;
     int active;
@@ -65,6 +68,7 @@ typedef struct {
     char key[32];
     char groups[WEBIF_GROUPS_LEN];
     char caids[WEBIF_CAID_LIST_LEN];
+    char idents[WEBIF_IDENT_LIST_LEN];
     char sid_whitelist[WEBIF_SID_LIST_LEN];
     char ecmkeys[WEBIF_ECMKEYS_LEN];
     int index;
@@ -72,6 +76,7 @@ typedef struct {
     int inactivitytimeout;
     int ecm_whitelist;
     int fast_reset;
+    int fast_reset_idle;
     int poll_ms;
     int64_t cw_ok;
     int64_t cw_nok;
@@ -200,6 +205,7 @@ typedef struct {
     char pass[CFGKEY_LEN];
     char groups[WEBIF_GROUPS_LEN];
     char caid[WEBIF_CAID_LIST_LEN];
+    char ident[WEBIF_IDENT_LIST_LEN];
     int has_caid;
     int has_max_connections;
     int max_connections;
@@ -218,6 +224,9 @@ typedef struct {
     int32_t ngroups;
     uint16_t caidv[MAX_CAIDS_PER_ACC + 1];
     int ncaidv;
+    S_IDENT_FILTER identv[MAX_IDENT_FILTERS];
+    int nidentv;
+    int has_ident;
 } S_WEBIF_ACCOUNT_EDIT;
 
 typedef struct {
@@ -229,12 +238,14 @@ typedef struct {
     char key[32];
     char inactivitytimeout[16];
     char caid[WEBIF_CAID_LIST_LEN];
+    char ident[WEBIF_IDENT_LIST_LEN];
     char sid_whitelist[WEBIF_SID_LIST_LEN];
     char ecmwhitelist[16];
     char group[WEBIF_GROUPS_LEN];
     char ecmkeys[WEBIF_ECMKEYS_LEN];
     char enabled[8];
     char fast_reset[16];
+    char fast_reset_idle[16];
     char poll_ms[16];
     int index;
 } S_WEBIF_READER_EDIT;

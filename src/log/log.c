@@ -147,6 +147,8 @@ static void ts_now(char *buf, size_t sz)
 typedef enum {
 	LC_NORMAL = 0,
 	LC_CW_HIT,
+	LC_CW_CACHE,
+	LC_CW_SHARED,
 	LC_CW_MISS,
 	LC_ECM_REJECTED,
 	LC_ERROR,
@@ -166,6 +168,8 @@ static E_LOG_COLOR classify_line(const char *body)
 
 	if (strstr(body, "ECM rejected") || strstr(body, "ecm rejected")) return LC_ECM_REJECTED;
 	if (strstr(body, "not found") || strstr(body, ": miss"))   return LC_CW_MISS;
+	if (strstr(body, ": cache (")) return LC_CW_CACHE;
+	if (strstr(body, ": shared (")) return LC_CW_SHARED;
 	if (strstr(body, "found (")   || strstr(body, ": found"))  return LC_CW_HIT;
 	if (strstr(body, "FATAL")     || strstr(body, "FORCED")    ||
 	    strstr(body, "failed:")   || strstr(body, "error")     ||
@@ -192,6 +196,8 @@ static const char *color_prefix(E_LOG_COLOR c)
 {
 	switch (c) {
 	case LC_CW_HIT:   return ANSI_BOLD ANSI_BGREEN;
+	case LC_CW_CACHE: return ANSI_BOLD ANSI_CYAN;
+	case LC_CW_SHARED:return ANSI_BOLD ANSI_MAGENTA;
 	case LC_CW_MISS:  return ANSI_RED;
 	case LC_ECM_REJECTED: return ANSI_ORANGE;
 	case LC_ERROR:    return ANSI_BOLD ANSI_RED;
@@ -726,7 +732,7 @@ void log_ecm_raw(uint16_t caid, uint16_t sid, const uint8_t *data, int32_t len)
 }
 
 void log_cw_result(uint16_t caid, uint16_t sid, int32_t len,
-                   const uint8_t *cw, E_LOG_ECM_RESULT result, bool from_cache,
+                   const uint8_t *cw, E_LOG_ECM_RESULT result, E_TCMG_ECM_SOURCE source,
                    int32_t ms, const char *user)
 {
 	char body[512];
@@ -751,7 +757,9 @@ void log_cw_result(uint16_t caid, uint16_t sid, int32_t len,
 			cw_str[32] = '\0';
 		}
 
-		const char *result_text = result == LOG_ECM_FOUND ? (from_cache ? "cache" : "found") :
+		const char *result_text = result == LOG_ECM_FOUND ?
+		                          (source == TCMG_ECM_SOURCE_CACHE ? "cache" :
+		                           source == TCMG_ECM_SOURCE_SHARED ? "shared" : "found") :
 		                          (result == LOG_ECM_REJECTED ? "ECM rejected" :
 		                           result == LOG_ECM_TRANSPORT_ERROR ? "transport error" :
 		                           result == LOG_ECM_CARD_ERROR ? "card error" :
@@ -791,7 +799,9 @@ void log_cw_result(uint16_t caid, uint16_t sid, int32_t len,
 
 		usr_line[0] = '\0';
 		if (user && *user) {
-			const char *usr_result = hit ? "hit" :
+			const char *usr_result = hit ?
+			    (source == TCMG_ECM_SOURCE_CACHE ? "cache" :
+			     source == TCMG_ECM_SOURCE_SHARED ? "shared" : "found") :
 			                         (result == LOG_ECM_REJECTED ? "rejected" :
 			                          result == LOG_ECM_TRANSPORT_ERROR ? "transport" :
 			                          result == LOG_ECM_CARD_ERROR ? "card_error" :

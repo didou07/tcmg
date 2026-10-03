@@ -339,7 +339,12 @@ void send_page_users(int fd)
 		"<input class='fi mono' id='em_pass' type='text' autocomplete='off' spellcheck='false'></div>"
 		"<div class='fg'><label class='fld' for='em_caid'>CAIDs (hex, comma-separated)</label>"
 		"<input class='fi mono' id='em_caid' maxlength='64' placeholder='0B00,0B01,0604' autocomplete='off' spellcheck='false' style='text-transform:uppercase'>"
-		"<div class='fhint'>One or more CAIDs, up to 9. Empty = none.</div></div>"
+		"<div class='fhint'>One or more CAIDs, up to 9. Empty = none.</div></div>");
+
+	pos = buf_printf(&buf, &bsz, pos,
+		"<div class='fg'><label class='fld' for='em_ident'>IDENT (CAID:PROVID)</label>"
+		"<input class='fi mono' id='em_ident' maxlength='256' placeholder='0B00:000001,0B00:000002' autocomplete='off' spellcheck='false' style='text-transform:uppercase'>"
+		"<div class='fhint'>Optional CAID:PROVID filters. Empty = none.</div></div>"
 		"<div class='user-g3'>"
 		"<div class='fg'><label class='fld' for='em_groups'>Reader groups</label>"
 		"<input class='fi mono' id='em_groups' placeholder='1,5' autocomplete='off' spellcheck='false'></div>"

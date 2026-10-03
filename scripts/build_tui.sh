@@ -19,6 +19,8 @@ _tui_family_for_row(){
 
   case "$s" in
     *windows*|*macos*) printf '%s\n' 'Windows / macOS'; return ;;
+    *novaler*) printf '%s\n' 'Novaler'; return ;;
+    *multibox*|*maxytec*) printf '%s\n' 'MaXytec / MultiBox'; return ;;
     *dreambox*|*dreamone*|*dreamtwo*) printf '%s\n' 'Dreambox'; return ;;
     *vuplus*|*'vu+'*|vuuno*|vuzero*|vuduo*|vusolo*|vuultimo*|vusolo4k*) printf '%s\n' 'Vu+'; return ;;
     *formuler*) printf '%s\n' 'Formuler'; return ;;

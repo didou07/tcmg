@@ -4,6 +4,7 @@
 #include "compat.h"
 #include "constants.h"
 #include "account_stats_types.h"
+#include "ident_types.h"
 
 #ifndef TCMG_ECMKEY_DEFINED
 #define TCMG_ECMKEY_DEFINED
@@ -25,6 +26,8 @@ typedef struct s_account {
 
     uint16_t caids[MAX_CAIDS_PER_ACC];
     int32_t  ncaids;
+    S_IDENT_FILTER idents[MAX_IDENT_FILTERS];
+    int32_t  nidents;
 
     char     ip_whitelist[MAX_IP_WHITELIST][MAXIPLEN];
     int32_t  nwhitelist;

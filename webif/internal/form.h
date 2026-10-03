@@ -18,6 +18,14 @@ static inline int webif_form_copy(const char *body, const char *key, char *out, 
     return too_long ? -1 : 0;
 }
 
+static inline int webif_form_present(const char *body, const char *key)
+{
+    char *value = form_get_alloc(body, key);
+    if (!value) return 0;
+    free(value);
+    return 1;
+}
+
 static inline void webif_trim(char *s)
 {
     size_t n = strlen(s);

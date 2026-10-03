@@ -41,6 +41,7 @@
 #define MAX_GROUPS_PER_READER  16
 #define MAX_GROUPS_PER_ACC     16
 #define MAX_CAIDS_PER_READER   8
+#define MAX_IDENT_FILTERS      16
 #define READER_LABEL_LEN       64
 #define READER_PROTOCOL_LEN    16
 #define MAX_IP_WHITELIST     16
@@ -69,6 +70,12 @@
 #define MSG_GET_VERSION      0xD6
 #define MSG_ECM_0            0x80
 #define MSG_ECM_1            0x81
+
+typedef enum {
+    TCMG_ECM_SOURCE_READER = 0,
+    TCMG_ECM_SOURCE_CACHE = 1,
+    TCMG_ECM_SOURCE_SHARED = 2
+} E_TCMG_ECM_SOURCE;
 
 typedef enum {
     EMU_OK             = 0,

@@ -12,6 +12,7 @@ S_READER*cfg_reader_new(S_CONFIG*cfg,int index)
         r->enabled=1;
         r->inactivitytimeout=30;
         r->ecm_whitelist=0;
+        r->fast_reset_idle=300;
         r->ngroups=1;
         r->groups[0]=1;
         tcmg_strlcpy(r->protocol,"emu",sizeof(r->protocol));
@@ -82,11 +83,13 @@ bool cfg_parse_readers(const char*path,S_CONFIG*c,char*err,size_t esz)
         else if(!strcasecmp(key,"password")){if(strlen(value)>=sizeof(reader->password)){fprintf(stderr,"WARNING: %s line %d invalid value for 'password' ignored\n",path,line_no);continue;}tcmg_strlcpy(reader->password,value,sizeof(reader->password));}
         else if(!strcasecmp(key,"group")){if(!cfg_parse_group_list(value,reader->groups,&reader->ngroups)){fprintf(stderr,"WARNING: %s line %d invalid value for 'group' ignored\n",path,line_no);continue;}}
         else if(!strcasecmp(key,"caid")){if(!cfg_parse_u16_list(value,reader->caids,&reader->ncaids,MAX_CAIDS_PER_READER)){fprintf(stderr,"WARNING: %s line %d invalid value for 'caid' ignored\n",path,line_no);continue;}}
+        else if(!strcasecmp(key,"ident")){if(!cfg_parse_ident_list(value,reader->idents,&reader->nidents,MAX_IDENT_FILTERS)){fprintf(stderr,"WARNING: %s line %d invalid value for 'ident' ignored\n",path,line_no);continue;}}
         else if(!strcasecmp(key,"sid_whitelist")){if(!cfg_parse_u16_list(value,reader->sid_whitelist,&reader->nsid_whitelist,MAX_SID_WHITELIST)){fprintf(stderr,"WARNING: %s line %d invalid value for 'sid_whitelist' ignored\n",path,line_no);continue;}}
         else if(!strcasecmp(key,"ecmwhitelist")){uint8_t wl;if(!cfg_parse_u8_hex(value,&wl)){fprintf(stderr,"WARNING: %s line %d invalid value for 'ecmwhitelist' ignored\n",path,line_no);continue;}reader->ecm_whitelist=(int32_t)wl;}
         else if(!strcasecmp(key,"inactivitytimeout")){if(!cfg_parse_i32_range(value,1,600,&v)){fprintf(stderr,"WARNING: %s line %d invalid value for 'inactivitytimeout' ignored\n",path,line_no);continue;}reader->inactivitytimeout=v;}
         else if(!strcasecmp(key,"do_ecm")){if(!cfg_parse_bool(value,&b)){fprintf(stderr,"WARNING: %s line %d invalid value for 'do_ecm' ignored\n",path,line_no);continue;}}
         else if(!strcasecmp(key,"fast_reset")){if(!cfg_parse_i32_range(value,0,86400,&v)){fprintf(stderr,"WARNING: %s line %d invalid value for 'fast_reset' ignored\n",path,line_no);continue;}reader->fast_reset=v;}
+        else if(!strcasecmp(key,"fast_reset_idle")){if(!cfg_parse_i32_range(value,0,86400,&v)){fprintf(stderr,"WARNING: %s line %d invalid value for 'fast_reset_idle' ignored\n",path,line_no);continue;}reader->fast_reset_idle=v;}
         else if(!strcasecmp(key,"poll_ms")){if(!cfg_parse_i32_range(value,25,10000,&v)){fprintf(stderr,"WARNING: %s line %d invalid value for 'poll_ms' ignored\n",path,line_no);continue;}reader->poll_ms=v;}
         else if(!strcasecmp(key,"key")){if(!cfg_parse_hex_bytes(value,reader->newcamd_key,14)){fprintf(stderr,"WARNING: %s line %d invalid value for 'key' ignored\n",path,line_no);continue;}}
         else if(!strcasecmp(key,"ecmkey")){

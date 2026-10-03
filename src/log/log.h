@@ -3,6 +3,7 @@
 
 #include "../core/compat.h"
 #include "../core/log_types.h"
+#include "../core/constants.h"
 
 #define D_WIRE      0x0001
 #define D_ECM       0x0002
@@ -63,7 +64,7 @@ typedef enum {
 } E_LOG_ECM_RESULT;
 
 void    log_cw_result(uint16_t caid, uint16_t sid, int32_t len,
-                      const uint8_t *cw, E_LOG_ECM_RESULT result, bool from_cache,
+                      const uint8_t *cw, E_LOG_ECM_RESULT result, E_TCMG_ECM_SOURCE source,
                       int32_t ms, const char *user);
 
 int32_t log_ring_total(void);
