@@ -61,10 +61,14 @@ static int request_is_authed(const char *raw, const char *client_ip, char *sess_
 	char auth_hdr[512] = "";
 	if (web_header_get(raw, "Authorization", auth_hdr, sizeof(auth_hdr))) {
 
-		if (ban_is_banned(client_ip)) return 0;
+		if (ban_is_banned(client_ip)) {
+			tcmg_log("%s AUTH blocked: failban", client_ip);
+			return 0;
+		}
 		if (check_auth(auth_hdr)) return 1;
-		ban_record_fail(client_ip);
-		tcmg_log("BASIC auth failed: from=%s", client_ip);
+		int banned_now = ban_record_fail(client_ip);
+		tcmg_log("%s AUTH failed: method=basic invalid_credentials%s",
+		         client_ip, banned_now ? " failban=triggered" : "");
 	}
 
 	return 0;
@@ -188,6 +192,7 @@ void handle_request(int fd, const char *client_ip)
 		form_get(req.body, "u",  u,  sizeof(u));
 		form_get(req.body, "p", pw, sizeof(pw));
 		if (ban_is_banned(client_ip)) {
+			tcmg_log("%s AUTH blocked: method=form failban", client_ip);
 			send_login_page(fd, 2);
 			req_free(&req);
 			if (raw_heap) free(raw);
@@ -200,8 +205,9 @@ void handle_request(int fd, const char *client_ip)
 			tcmg_log_dbg(D_HTTP, "LOGIN ok user='%s' from=%s", u, client_ip);
 			send_redirect_with_cookie(fd, "/status", token);
 		} else {
-			ban_record_fail(client_ip);
-			tcmg_log("LOGIN failed: user='%s' from=%s", u, client_ip);
+			int banned_now = ban_record_fail(client_ip);
+			tcmg_log("%s AUTH failed: method=form invalid_credentials user='%s'%s",
+			         client_ip, u, banned_now ? " failban=triggered" : "");
 			send_login_page(fd, 1);
 		}
 		req_free(&req);
@@ -433,7 +439,7 @@ int32_t webif_start(void)
 	sa.sin_port   = htons((uint16_t)cfg.webif_port);
 	if (cfg.webif_bindaddr[0]) {
 		if (inet_pton(AF_INET, cfg.webif_bindaddr, &sa.sin_addr) != 1) {
-			tcmg_log("invalid webif BINDADDR '%s' -- refusing to listen on all interfaces",
+			tcmg_log("invalid BINDADDR '%s' -- refusing to listen on all interfaces",
 			         cfg.webif_bindaddr);
 			close(s_webif_sock); s_webif_sock = -1; return -1;
 		}

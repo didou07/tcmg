@@ -377,7 +377,7 @@ void *handle_cccam_client(void *arg)
     net_tune_socket(cc.fd);
 
     if(ban_is_banned(cl.identity.ip)){
-        tcmg_log("%s LOGIN failed: IP is banned", cl.identity.ip);
+        tcmg_log("%s AUTH blocked: failban", cl.identity.ip);
         goto cleanup;
     }
 
@@ -408,7 +408,7 @@ void *handle_cccam_client(void *arg)
     tcmg_log_dbg(D_CCCAM, "%s LOGIN attempt user='%s'", cl.identity.ip, user);
 
     if(net_recv_all(cc.fd,ccstr_recv,6)!=6) {
-        tcmg_log_dbg(D_CCCAM, "%s failed to receive CCcam password proof user='%s'",
+        tcmg_log_dbg(D_CCCAM, "%s failed to receive password proof user='%s'",
                      cl.identity.ip, user);
         goto cleanup;
     }
@@ -418,20 +418,22 @@ void *handle_cccam_client(void *arg)
     secure_zero(username,sizeof(username));
 
     if(!acc){
-        tcmg_log("%s LOGIN failed: unknown user or invalid password user='%s'", cl.identity.ip, user);
-        ban_record_fail(cl.identity.ip); goto cleanup;
+        int banned_now = ban_record_fail(cl.identity.ip);
+        tcmg_log("%s AUTH failed: invalid_credentials user='%s'%s",
+                 cl.identity.ip, user, banned_now ? " failban=triggered" : "");
+        goto cleanup;
     }
 
     {
         T_ACCOUNT_STATUS status = account_validate(acc, cl.identity.ip);
         if (status != ACCOUNT_OK) {
             if (status == ACCOUNT_DISABLED)
-                tcmg_log("%s LOGIN failed: account disabled user='%s'", cl.identity.ip, acc->user);
+                tcmg_log("%s AUTH rejected: account_disabled user='%s'", cl.identity.ip, acc->user);
             else if (status == ACCOUNT_EXPIRED)
-                tcmg_log("%s LOGIN failed: account expired user='%s' expired=%ld",
+                tcmg_log("%s AUTH rejected: account_expired user='%s' expired=%ld",
                          cl.identity.ip, acc->user, (long)acc->expirationdate);
             else if (status == ACCOUNT_IP_DENIED)
-                tcmg_log("%s LOGIN failed: IP not whitelisted user='%s'", cl.identity.ip, acc->user);
+                tcmg_log("%s AUTH rejected: ip_not_whitelisted user='%s'", cl.identity.ip, acc->user);
             account_release(acc);
             goto cleanup;
         }
@@ -444,8 +446,8 @@ void *handle_cccam_client(void *arg)
     secure_zero(ack,sizeof(ack));
 
     if (account_session_open(&cl, acc) < 0) {
-        tcmg_log("%s LOGIN failed: max_connections=%d reached for user='%s' active=%d",
-                 cl.identity.ip, acc->max_connections, acc->user, (int)acc->active);
+        tcmg_log("%s AUTH rejected: max_connections user='%s' active=%d max=%d",
+                 cl.identity.ip, acc->user, (int)acc->active, acc->max_connections);
         account_release(acc);
         goto cleanup;
     }
@@ -463,7 +465,7 @@ void *handle_cccam_client(void *arg)
         uint16_t login_caids[MAX_CAIDS_PER_ACC + (MAX_READERS * MAX_CAIDS_PER_READER)];
         int32_t card_count = account_collect_caids(acc, login_caids,
                                                     (int32_t)(sizeof(login_caids) / sizeof(login_caids[0])));
-        tcmg_log("%s LOGIN ok user='%s' cards=%d max_conn=%d",
+        tcmg_log("%s AUTH success user='%s' cards=%d max_conn=%d",
                  cl.identity.ip, acc->user, card_count, acc->max_connections);
     }
 

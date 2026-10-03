@@ -77,8 +77,7 @@ static void ban_prune_locked(bool force)
                                  (e->fails <= 0 || now - e->last_fail >= BAN_STALE_S);
             if (expired || stale)
             {
-                if (expired) tcmg_log("pruned expired entry: ip=%s", e->ip);
-                *pp = e->next;
+                    *pp = e->next;
                 free(e);
             }
             else
@@ -127,29 +126,27 @@ bool ban_is_banned(const char *ip)
     ban_prune_locked(false);
     S_BAN_ENTRY *e = ban_find_locked(ip);
     if (e && e->until > 0 && now < e->until)
-    {
         banned = true;
-        tcmg_log("check: ip=%s BANNED fails=%d expires_in=%lds",
-                     ip, e->fails, (long)(e->until - now));
-    }
     pthread_mutex_unlock(&g_cfg.ban_lock);
 
     return banned;
 }
 
-void ban_record_fail(const char *ip)
+int ban_record_fail(const char *ip)
 {
     S_CONFIG_FAILBAN_VIEW cfg;
+    int triggered = 0;
+    if (!ip || !ip[0]) return 0;
     cfg_runtime_failban_snapshot(&cfg);
-    if (!cfg.enabled || ban_ip_allowed(ip)) return;
+    if (!cfg.enabled || ban_ip_allowed(ip)) return 0;
     pthread_mutex_lock(&g_cfg.ban_lock);
 
     S_BAN_ENTRY *e = ban_find_locked(ip);
     if (!e)
     {
-        if (!ban_make_room_locked()) { pthread_mutex_unlock(&g_cfg.ban_lock); return; }
+        if (!ban_make_room_locked()) { pthread_mutex_unlock(&g_cfg.ban_lock); return 0; }
         e = (S_BAN_ENTRY *)calloc(1, sizeof(S_BAN_ENTRY));
-        if (!e) { pthread_mutex_unlock(&g_cfg.ban_lock); return; }
+        if (!e) { pthread_mutex_unlock(&g_cfg.ban_lock); return 0; }
         tcmg_strlcpy(e->ip, ip, MAXIPLEN);
         uint32_t bucket = ban_hash_pub(ip);
         e->next                 = g_cfg.ban_table[bucket];
@@ -160,18 +157,14 @@ void ban_record_fail(const char *ip)
     e->last_fail = time(NULL);
     int max_fails = cfg.max_fails > 0 ? cfg.max_fails : BAN_MAX_FAILS;
     int ban_secs  = cfg.ban_secs  > 0 ? cfg.ban_secs  : BAN_SECS;
-    int remaining = max_fails - e->fails;
-    if (remaining > 0)
-        tcmg_log("fail: ip=%s fail_count=%d/%d remaining_attempts=%d",
-                     ip, e->fails, max_fails, remaining);
-    else
+    if (e->fails >= max_fails)
     {
+        if (e->until <= time(NULL)) triggered = 1;
         e->until = time(NULL) + ban_secs;
-        tcmg_log("TRIGGERED: ip=%s banned_for=%ds fail_count=%d/%d",
-                 ip, ban_secs, e->fails, max_fails);
     }
 
     pthread_mutex_unlock(&g_cfg.ban_lock);
+    return triggered;
 }
 
 void ban_record_ok(const char *ip)
@@ -186,7 +179,6 @@ void ban_record_ok(const char *ip)
         if (strncmp((*pp)->ip, ip, MAXIPLEN) == 0)
         {
             S_BAN_ENTRY *e = *pp;
-            tcmg_log("cleared: ip=%s (successful login -- entry removed)", ip);
             *pp = e->next;
             free(e);
             break;

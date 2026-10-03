@@ -77,7 +77,7 @@ static bool ncd_handle_login(S_CLIENT *cl,
 	if (ban_is_banned(ip))
 	{
 		ncd_nak(cl, sid, mid, pid);
-		tcmg_log("%s LOGIN failed: IP is banned", ip);
+		tcmg_log("%s%s AUTH blocked: failban", ip, cl->protocol.wire.newcamd.is_mgcamd ? " mgcamd" : "");
 		return false;
 	}
 
@@ -86,8 +86,8 @@ static bool ncd_handle_login(S_CLIENT *cl,
 	if (!acc)
 	{
 		ncd_nak(cl, sid, mid, pid);
-		tcmg_log("%s LOGIN failed: unknown user '%s'", ip, user);
-		ban_record_fail(ip);
+		int banned_now = ban_record_fail(ip);
+		tcmg_log("%s%s AUTH failed: unknown_user user='%s'%s", ip, cl->protocol.wire.newcamd.is_mgcamd ? " mgcamd" : "", user, banned_now ? " failban=triggered" : "");
 		return false;
 	}
 	T_ACCOUNT_STATUS account_status = account_validate(acc, ip);
@@ -96,15 +96,15 @@ static bool ncd_handle_login(S_CLIENT *cl,
 		ncd_nak(cl, sid, mid, pid);
 		switch (account_status) {
 		case ACCOUNT_DISABLED:
-			tcmg_log("%s LOGIN failed: account disabled user='%s'", ip, user);
+			tcmg_log("%s%s AUTH rejected: account_disabled user='%s'", ip, cl->protocol.wire.newcamd.is_mgcamd ? " mgcamd" : "", user);
 			break;
 		case ACCOUNT_EXPIRED:
-			tcmg_log("%s LOGIN failed: account expired user='%s' expired=%ld",
-			         ip, acc->user, (long)acc->expirationdate);
+			tcmg_log("%s%s AUTH rejected: account_expired user='%s' expired=%ld",
+		         ip, cl->protocol.wire.newcamd.is_mgcamd ? " mgcamd" : "", acc->user, (long)acc->expirationdate);
 			break;
 		case ACCOUNT_IP_DENIED:
-			tcmg_log("%s LOGIN failed: IP not in whitelist for user='%s' (whitelist has %d entries)",
-			         ip, user, acc->nwhitelist);
+			tcmg_log("%s%s AUTH rejected: ip_not_whitelisted user='%s' whitelist=%d",
+		         ip, cl->protocol.wire.newcamd.is_mgcamd ? " mgcamd" : "", user, acc->nwhitelist);
 			break;
 		default:
 			break;
@@ -117,8 +117,8 @@ static bool ncd_handle_login(S_CLIENT *cl,
 	    !ct_streq(expected, hash))
 	{
 		ncd_nak(cl, sid, mid, pid);
-		tcmg_log("%s LOGIN failed: wrong password for user='%s'", ip, user);
-		ban_record_fail(ip);
+		int banned_now = ban_record_fail(ip);
+		tcmg_log("%s%s AUTH failed: invalid_password user='%s'%s", ip, cl->protocol.wire.newcamd.is_mgcamd ? " mgcamd" : "", user, banned_now ? " failban=triggered" : "");
 		account_release(acc);
 		return false;
 	}
@@ -126,8 +126,8 @@ static bool ncd_handle_login(S_CLIENT *cl,
 	if (account_session_open(cl, acc) < 0)
 	{
 		ncd_nak(cl, sid, mid, pid);
-		tcmg_log("%s LOGIN failed: max_connections=%d reached for user='%s' active=%d",
-		         ip, acc->max_connections, acc->user, (int)acc->active);
+		tcmg_log("%s%s AUTH rejected: max_connections user='%s' active=%d max=%d",
+		         ip, cl->protocol.wire.newcamd.is_mgcamd ? " mgcamd" : "", acc->user, (int)acc->active, acc->max_connections);
 		account_release(acc);
 		return false;
 	}
@@ -164,13 +164,17 @@ static bool ncd_handle_login(S_CLIENT *cl,
 		for (int32_t j = 0; j < login_ncaids && pos < (int)sizeof(caids); j++)
 			pos += snprintf(caids + pos, sizeof(caids) - (size_t)pos,
 			                "%s%04X", j ? "," : "", login_caids[j]);
-		tcmg_log("%s [mgcamd] LOGIN ok user='%s' caids=[%s] max_conn=%d",
+		tcmg_log("%s mgcamd LOGIN ok user='%s' caids=[%s] max_conn=%d",
 		         ip, user, login_ncaids ? caids : "none", acc->max_connections);
 	}
 	else
 	{
-		tcmg_log("%s [newcamd] LOGIN ok user='%s' caid=%04X max_conn=%d",
-		         ip, user, cl->ecm.caid, acc->max_connections);
+		if (cl->ecm.caid)
+			tcmg_log("%s LOGIN ok user='%s' caid=%04X max_conn=%d",
+			         ip, user, cl->ecm.caid, acc->max_connections);
+		else
+			tcmg_log("%s LOGIN ok user='%s' caid=auto max_conn=%d",
+			         ip, user, acc->max_connections);
 	}
 	return true;
 }
@@ -220,8 +224,21 @@ static void ncd_handle_ecm(S_CLIENT *cl, uint8_t cmd,
         return;
     }
 
-    if (cl->protocol.wire.newcamd.is_mgcamd && caid_hdr)
+    if (caid_hdr)
+    {
         ecm_caid = caid_hdr;
+        pthread_mutex_lock(&cl->state_mtx);
+        cl->ecm.caid = ecm_caid;
+        pthread_mutex_unlock(&cl->state_mtx);
+    }
+
+    if (!ecm_caid)
+    {
+        ncd_ecm_nak(cl, cmd, sid, mid, pid);
+        tcmg_log("%s ECM denied: caid unavailable for protocol user='%s'",
+                 cl->identity.ip, cl->identity.user);
+        return;
+    }
 
     access = ecm_access(cl, ecm_caid, sid, pid, true, true, true);
     if (access != ECM_ACCESS_OK) {
@@ -299,7 +316,7 @@ void *handle_newcamd_client(void *arg)
 		session_cleanup(&cl);
 		return NULL;
 	}
-	tcmg_log_dbg(D_CONN, "%s new newcamd/mgcamd connection fd=%d tid=%u",
+	tcmg_log_dbg(D_CONN, "%s new connection fd=%d tid=%u",
 	             cl.identity.ip, cl.session.fd, cl.identity.thread_id);
 
 	{

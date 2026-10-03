@@ -265,6 +265,7 @@ check: $(ASSET_HDRS)
 	d=/tmp/tcmg-src-duplicates.$$; printf '%s\n' $(SRCS) | sort | uniq -d > "$$d"; \
 	test ! -s "$$d"; rm -f "$$d"; \
 	if grep -RInE '\b(g_cfg|g_clients|S_ACCOUNT|S_CLIENT|S_READER|g_ban_|g_active_conns)\b' webif/api webif/pages webif/core.c webif/server.c; then echo 'WEBIF direct state access detected' >&2; exit 1; fi; \
+	if grep -RInE 'AUTH (blocked|failed|rejected):[^\n]*reason=' src/proto webif/server.c --include='*.c'; then echo 'AUTH reason= label still present' >&2; exit 1; fi; \
 	if grep -nE '^#include "../core/config_state.h"|\bg_cfg\.(pcsc_)' src/pcsc/pcsc.c; then echo 'PCSC runtime config boundary violation detected' >&2; exit 1; fi; \
 	if grep -nE '\bg_cfg\.(failban_)' src/security/failban.c; then echo 'Fail-Ban runtime config boundary violation detected' >&2; exit 1; fi; \
 	if grep -RInE 'g_cfg\.(acc_lock|accounts|naccounts)' src/account src/client src/proto/cccam.c src/proto/camd35_server.c --exclude='account_state.c'; then echo 'ACCOUNT STATE boundary violation detected' >&2; exit 1; fi; \

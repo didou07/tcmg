@@ -686,7 +686,7 @@ int pcsc_do_ecm_reader(const char *selector, uint16_t caid, const uint8_t *ecm, 
 
     if (!pcsc_available()) return -3;
     if (whitelist > 0 && ecm_len != (size_t)whitelist) {
-        tcmg_log_dbg(D_READER, "ECM rejected: length=%u != whitelist=%02X (%d bytes)",
+        tcmg_log_dbg(D_READER, "ecm rejected: length=%u != whitelist=%02X (%d bytes)",
                      (unsigned)ecm_len, (unsigned)(whitelist & 0xFF), whitelist);
         return -13;
     }
@@ -783,10 +783,10 @@ done:
     if (active_idx >= 0 && active_idx < TCMG_PCSC_MAX_READERS) {
         int64_t elapsed_ms = tcmg_mono_ms() - ecm_t0;
         if (rc == 0)
-            tcmg_log_dbg(D_READER, "pcsc ECM ok reader='%s' elapsed=%lldms",
+            tcmg_log_dbg(D_READER, "ECM ok reader='%s' elapsed=%lldms",
                          reader, (long long)elapsed_ms);
         else
-            tcmg_log_dbg(D_READER, "pcsc ECM failed reader='%s' rc=%d elapsed=%lldms",
+            tcmg_log_dbg(D_READER, "ECM failed reader='%s' rc=%d elapsed=%lldms",
                          reader, rc, (long long)elapsed_ms);
         atomic_fetch_sub(&s_ecm_active[active_idx], 1);
     }

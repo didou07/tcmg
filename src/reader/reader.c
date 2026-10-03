@@ -11,6 +11,7 @@
 #include "stats.h"
 #include "../cache/cw_cache.h"
 #include "../crypto/crypto.h"
+#include "../security/antishare.h"
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdlib.h>
@@ -333,7 +334,7 @@ static void reader_fill_jobs(S_READER_DISPATCH_CTX *ctx)
         if (rule != READER_RULE_ALLOW) {
             if (rule == READER_RULE_ECM_WHITELIST) {
                 ctx->whitelist_rejected = true;
-                tcmg_log("ECM rejected reader='%s' caid=%04X sid=%04X len=%d whitelist=%d",
+                tcmg_log("ecm rejected label='%s' caid=%04X sid=%04X len=%d whitelist=%d",
                          reader->label, ctx->request.caid, ctx->request.sid,
                          ctx->request.ecm_len, reader->ecm_whitelist);
             }
@@ -451,6 +452,24 @@ int32_t reader_dispatch_ecm(const S_ECM_REQUEST *request, S_READER_RESULT *resul
         return final_result;
     }
 
+    if (antishare_begin_ecm(ctx->account) != AS_CHECK_OK) {
+        tcmg_log("ecm rejected: anti-share rate limit user='%s' caid=%04X sid=%04X",
+                 ctx->request.user ? ctx->request.user : "?",
+                 ctx->request.caid, ctx->request.sid);
+        antishare_clear_pending(request->account, request->thread_id, request->caid, request->sid);
+        cw_inflight_complete(ecm_md5, false);
+        pthread_mutex_lock(&ctx->mtx);
+        if (result) {
+            result->status = READER_RESULT_REJECTED;
+            result->reader_index = -1;
+            result->failure = READER_FAILURE_REJECTED;
+        }
+        pthread_mutex_unlock(&ctx->mtx);
+        reader_ctx_release(ctx);
+        secure_zero(local_md5, sizeof(local_md5));
+        return READER_RESULT_REJECTED;
+    }
+
     if (ctx->jobs_count == 1) {
         ctx->active_jobs = 1;
         reader_job_run(&ctx->jobs[0]);
@@ -487,6 +506,7 @@ int32_t reader_dispatch_ecm(const S_ECM_REQUEST *request, S_READER_RESULT *resul
         if (result) *result = ctx->result;
         memcpy(request->cw, ctx->cw, CW_LEN);
         pthread_mutex_unlock(&ctx->mtx);
+        antishare_end_ecm(ctx->account, true);
         cw_inflight_complete(ecm_md5, success);
         reader_ctx_release(ctx);
         secure_zero(local_md5, sizeof(local_md5));
@@ -503,6 +523,7 @@ int32_t reader_dispatch_ecm(const S_ECM_REQUEST *request, S_READER_RESULT *resul
                                  ? READER_FAILURE_NOT_FOUND : ctx->failure_summary);
     }
     pthread_mutex_unlock(&ctx->mtx);
+    antishare_end_ecm(ctx->account, false);
     cw_inflight_complete(ecm_md5, false);
     reader_ctx_release(ctx);
     secure_zero(local_md5, sizeof(local_md5));

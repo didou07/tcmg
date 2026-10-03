@@ -541,7 +541,7 @@ static int parse_atr(S_INTERNAL_SLOT *s, size_t *atr_len_out)
     d = d_table[di];
 
     if (first_protocol != 0) {
-        tcmg_log("internal reader unsupported ATR protocol T=%u device=%s",
+        tcmg_log("reader unsupported ATR protocol T=%u device=%s",
                  first_protocol, s->device);
         return -10;
     }
@@ -559,7 +559,7 @@ static int parse_atr(S_INTERNAL_SLOT *s, size_t *atr_len_out)
 
     *atr_len_out = n;
     tcmg_log_dbg(D_READER,
-                 "internal ATR TS=%02X T0=%02X proto=T0 FI=%u DI=%u D=%u WI=%u N=%u I=%u WWT=%uETU",
+                 "ATR TS=%02X T0=%02X proto=T0 FI=%u DI=%u D=%u WI=%u N=%u I=%u WWT=%uETU",
                  ts, t0, fi, di, s->t0_d, s->t0_wi, s->t0_n, s->t0_i,
                  s->t0_wwt_etu);
     tcmg_dump_dbg(D_READER, s->atr, (int32_t)s->atr_len, "INTERNAL ATR");
@@ -621,7 +621,7 @@ static void finalize_t0_timing(S_INTERNAL_SLOT *s, SCI_PARAMETERS *post)
     calculate_t0_timing(s);
 
     tcmg_log_dbg(D_READER,
-                 "internal SCI ATR settings FI=%u D=%u target=%u.%02uMHz divider=%u actual=%u.%02uMHz ETU=%u WWT=%ums EGT=%u",
+                 "SCI ATR settings FI=%u D=%u target=%u.%02uMHz divider=%u actual=%u.%02uMHz ETU=%u WWT=%ums EGT=%u",
                  s->t0_fi, s->t0_d,
                  target_clock / 100u, target_clock % 100u * 10u,
                  divider,
@@ -680,7 +680,7 @@ static int sci_reset_card(S_INTERNAL_SLOT *s, const char *reason)
         uint32_t reset = 1;
         if (ioctl(s->fd, SCI_SET_RESET, &reset) < 0) {
             tcmg_log_dbg(D_READER,
-                         "internal reset ioctl failed device=%s attempt=%u fs=%u errno=%d",
+                         "reset ioctl failed device=%s attempt=%u fs=%u errno=%d",
                          s->device, attempt + 1u, initial_fs, errno);
             s->ready = 0;
             if (attempt == TCMG_INTERNAL_PLL_RETRIES) break;
@@ -691,7 +691,7 @@ static int sci_reset_card(S_INTERNAL_SLOT *s, const char *reason)
         s->atr_len = 0;
         if (parse_atr(s, &s->atr_len) < 0) {
             tcmg_log_dbg(D_READER,
-                         "internal ATR read failed device=%s attempt=%u fs=%u",
+                         "ATR read failed device=%s attempt=%u fs=%u",
                          s->device, attempt + 1u, initial_fs);
             if (attempt == TCMG_INTERNAL_PLL_RETRIES) break;
             continue;
@@ -699,7 +699,7 @@ static int sci_reset_card(S_INTERNAL_SLOT *s, const char *reason)
 
         uint32_t atr_ready = 1;
         if (ioctl(s->fd, SCI_SET_ATR_READY, &atr_ready) < 0) {
-            tcmg_log("internal ATR_READY failed device=%s errno=%d", s->device, errno);
+            tcmg_log("ATR_READY failed device=%s errno=%d", s->device, errno);
             s->ready = 0;
             break;
         }
@@ -707,7 +707,7 @@ static int sci_reset_card(S_INTERNAL_SLOT *s, const char *reason)
         SCI_PARAMETERS post = p;
         finalize_t0_timing(s, &post);
         if (sci_write_parameters(s, &post) < 0) {
-            tcmg_log("internal post-ATR SCI parameters failed device=%s errno=%d",
+            tcmg_log("post-ATR SCI parameters failed device=%s errno=%d",
                      s->device, errno);
             s->ready = 0;
             break;
@@ -813,7 +813,7 @@ static int internal_conax_ecm(S_INTERNAL_SLOT *s, const uint8_t *ecm, size_t ecm
 
     int t0_rc = internal_t0_exchange(&ch, apdu, apdu_len, rsp, &rsp_len);
     if (t0_rc < 0) {
-        tcmg_log_dbg(D_ECM, "internal Conax DD A2 transport failed rc=%d", t0_rc);
+        tcmg_log_dbg(D_ECM, "Conax DD A2 transport failed rc=%d", t0_rc);
         if (recoverable) *recoverable = 1;
         return -2;
     }
@@ -1117,7 +1117,7 @@ static int internal_sync_once(void)
         if (!matches) {
             if (running) stop_reader_worker(i);
             if (start_reader_worker(i, cfg->device) < 0)
-                tcmg_log("reader[%d]: failed to start internal worker device=%s",
+                tcmg_log("reader[%d]: failed to start worker device=%s",
                          i + 1, cfg->device);
         }
     }
@@ -1243,7 +1243,7 @@ int internal_do_ecm_reader(int index, uint16_t caid,
     S_INTERNAL_JOB *job = &s->jobs[job_index];
     if (joined) {
         tcmg_log_dbg(D_READER,
-                     "internal reader coalesced ECM index=%d device=%s waiters=%u",
+                     "coalesced ECM index=%d device=%s waiters=%u",
                      index, s->device, job->waiters);
     }
     pthread_cond_signal(&s->cv);

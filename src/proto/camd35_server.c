@@ -123,30 +123,30 @@ void *handle_cs378x_client(void *arg)
     }
 
     if (ban_is_banned(cl.identity.ip)) {
-        tcmg_log("%s connection rejected: IP is banned", cl.identity.ip);
+        tcmg_log("%s AUTH blocked: failban", cl.identity.ip);
         goto cleanup;
     }
     int urc = cs378x_recv_ucrc(cl.session.fd, ucrc);
     if (urc != 0) goto cleanup;
     acc = find_account_by_ucrc(ucrc);
     if (!acc) {
-        tcmg_log("%s authentication failed: unknown account", cl.identity.ip);
-        ban_record_fail(cl.identity.ip);
+        int banned_now = ban_record_fail(cl.identity.ip);
+        tcmg_log("%s AUTH failed: unknown_account%s",
+                 cl.identity.ip, banned_now ? " failban=triggered" : "");
         goto cleanup;
     }
     {
         T_ACCOUNT_STATUS status = account_validate(acc, cl.identity.ip);
         if (status != ACCOUNT_OK) {
-            tcmg_log("%s authentication failed: account access rejected user='%s' status=%d",
+            tcmg_log("%s AUTH rejected: account_access user='%s' status=%d",
                      cl.identity.ip, acc->user, status);
-            if (status != ACCOUNT_IP_DENIED) ban_record_fail(cl.identity.ip);
             account_release(acc);
             goto cleanup;
         }
     }
     if (account_session_open(&cl, acc) < 0) {
-        tcmg_log("%s login denied: max_connections=%d user='%s' active=%d",
-                 cl.identity.ip, acc->max_connections, acc->user, (int)acc->active);
+        tcmg_log("%s AUTH rejected: max_connections user='%s' active=%d max=%d",
+                 cl.identity.ip, acc->user, (int)acc->active, acc->max_connections);
         account_release(acc);
         goto cleanup;
     }
@@ -160,7 +160,7 @@ void *handle_cs378x_client(void *arg)
     pthread_mutex_unlock(&cl.state_mtx);
     account_mark_login(acc, cl.identity.ip);
     ban_record_ok(cl.identity.ip);
-    tcmg_log("%s LOGIN ok user='%s'", cl.identity.ip, cl.identity.user);
+    tcmg_log("%s AUTH success user='%s'", cl.identity.ip, cl.identity.user);
 
     int ka_misses = 0;
     bool first_frame = true;

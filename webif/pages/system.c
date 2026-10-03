@@ -122,7 +122,7 @@ void send_page_failban(int fd, const char *qs)
 		pos = buf_printf(&buf, &bsz, pos,
 			"<tr class='fbrow' data-ip='%s'>"
 			"<td class='fbc-value fbc-ip'><span class='fbc-label'>IP</span><span class='mono bold'>%s</span></td>"
-			"<td class='fbc-value fbc-country'><span class='fbc-label'>Country</span><span class='flg fbflag' data-ip='%s' title=''></span><span class='fbcountry-name'></span></td>"
+			"<td class='fbc-value fbc-country'><span class='fbc-label'>Country</span><span class='flg fbflag' data-ip='%s' title=''></span><span class='fbcountry-name' aria-live='polite'>&mdash;</span></td>"
 			"<td class='fbc-value fbc-left'><span class='fbc-label'>Left</span><span class='mono to fbcd' data-left='%ld'>%s</span></td>"
 			"<td class='fbc-action'><button type='button' class='tool sm' data-a='unban'>"
 			ICON("i-unban") "Unban</button></td>"
@@ -177,6 +177,7 @@ void send_page_failban(int fd, const char *qs)
 		"    return s+'s';"
 		"  }"
 		"  function applyFlags(){var els=body.querySelectorAll('.fbflag');for(var i=0;i<els.length;i++){var el=els[i],ip=el.getAttribute('data-ip'),name=el.parentNode?el.parentNode.querySelector('.fbcountry-name'):null;if(typeof _load_country==='function')_load_country(ip,el,name);}}"
+		"  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',applyFlags,{once:true});else applyFlags();"
 		"  function tickCountdown(){"
 		"    var rows=body.querySelectorAll('.fbcd');"
 		"    for(var i=0;i<rows.length;i++){"

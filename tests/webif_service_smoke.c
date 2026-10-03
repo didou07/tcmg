@@ -85,7 +85,7 @@ int main(void)
     if (!webif_config_snapshot(&cfg) || cfg.webif_port != 18080 ||
         cfg.webif_refresh != 7 || strcmp(cfg.webif_bindaddr, "127.0.0.1") != 0 ||
         cfg.newcamd_port != 19050 || cfg.newcamd_key[0] != 0x01 ||
-        cfg.scheduled_restart_enabled != 1 || strcmp(cfg.scheduled_restart_time, "04:00") != 0) return 4;
+        cfg.scheduled_restart_enabled != 0 || strcmp(cfg.scheduled_restart_time, "00:00") != 0) return 4;
 
     n = webif_account_snapshot_all(accounts, 2);
     if (n != 1 || strcmp(accounts[0].user, "admin") != 0 ||

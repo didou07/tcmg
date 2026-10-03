@@ -131,16 +131,16 @@ int internal_t0_exchange(const S_INTERNAL_T0_CHANNEL *ch,
     for (unsigned guard = 0; guard < 2048; guard++) {
         uint8_t procedure = 0;
         if (read_exact(ch->fd, &procedure, 1, wait_ms) < 0) {
-            tcmg_log_dbg(D_ECM, "internal T0 procedure timeout ins=%02X wait=%ums",
+            tcmg_log_dbg(D_ECM, "T0 procedure timeout ins=%02X wait=%ums",
                          ins, wait_ms);
             return -12;
         }
 
-        tcmg_log_dbg(D_ECM, "internal T0 procedure ins=%02X byte=%02X", ins, procedure);
+        tcmg_log_dbg(D_ECM, "T0 procedure ins=%02X byte=%02X", ins, procedure);
 
         if (procedure == 0x60) {
             if (++nulls >= max_nulls) {
-                tcmg_log_dbg(D_ECM, "internal T0 too many NULL bytes ins=%02X count=%u",
+                tcmg_log_dbg(D_ECM, "T0 too many NULL bytes ins=%02X count=%u",
                              ins, nulls);
                 return -13;
             }
@@ -203,7 +203,7 @@ int internal_t0_exchange(const S_INTERNAL_T0_CHANNEL *ch,
             continue;
         }
 
-        tcmg_log_dbg(D_ECM, "internal T0 unexpected procedure ins=%02X byte=%02X",
+        tcmg_log_dbg(D_ECM, "T0 unexpected procedure ins=%02X byte=%02X",
                      ins, procedure);
         return -27;
     }

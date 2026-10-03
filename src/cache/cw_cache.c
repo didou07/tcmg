@@ -310,7 +310,7 @@ void cw_cache_store_groups(const uint8_t *ecm_md5, const uint8_t *cw,
         int32_t updated_groups = e->ngroups;
         pthread_mutex_unlock(&g_cw_cache_mtx[shard]);
         tcmg_log_dbg(D_CCCAM|D_NEWCAMD,
-                     "cw cache updated bucket=%u count=%u groups=%d",
+                     "CW updated bucket=%u count=%u groups=%d",
                      bucket, updated_count, updated_groups);
         return;
     }
@@ -350,6 +350,6 @@ void cw_cache_store_groups(const uint8_t *ecm_md5, const uint8_t *cw,
     uint32_t stored_count = e->count;
     pthread_mutex_unlock(&g_cw_cache_mtx[shard]);
     tcmg_log_dbg(D_CCCAM|D_NEWCAMD,
-                 "cw cache stored bucket=%u count=%u groups=%d",
+                 "CW stored bucket=%u count=%u groups=%d",
                  bucket, stored_count, stored_groups);
 }

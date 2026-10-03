@@ -339,12 +339,12 @@ void send_page_users(int fd)
 		"<input class='fi mono' id='em_pass' type='text' autocomplete='off' spellcheck='false'></div>"
 		"<div class='fg'><label class='fld' for='em_caid'>CAIDs (hex, comma-separated)</label>"
 		"<input class='fi mono' id='em_caid' maxlength='64' placeholder='0B00,0B01,0604' autocomplete='off' spellcheck='false' style='text-transform:uppercase'>"
-		"<div class='fhint'>One or more CAIDs, up to 9. Empty = none.</div></div>");
+		"</div>");
 
 	pos = buf_printf(&buf, &bsz, pos,
 		"<div class='fg'><label class='fld' for='em_ident'>IDENT (CAID:PROVID)</label>"
 		"<input class='fi mono' id='em_ident' maxlength='256' placeholder='0B00:000001,0B00:000002' autocomplete='off' spellcheck='false' style='text-transform:uppercase'>"
-		"<div class='fhint'>Optional CAID:PROVID filters. Empty = none.</div></div>"
+		"</div>"
 		"<div class='user-g3'>"
 		"<div class='fg'><label class='fld' for='em_groups'>Reader groups</label>"
 		"<input class='fi mono' id='em_groups' placeholder='1,5' autocomplete='off' spellcheck='false'></div>"
@@ -359,16 +359,15 @@ void send_page_users(int fd)
 		"</div>"
 		"<div class='user-g3' id='em_as_fields' hidden>"
 		"<div class='fg'><label class='fld' for='em_as_sids'>Max active channels</label>"
-		"<input class='fi mono' id='em_as_sids' type='number' min='1' max='32' value='1'><div class='fhint'>Active client/channel entries kept by the protection timeout.</div></div>"
-		"<div class='fg'><label class='fld' for='em_as_ecm'>Max ECM requests</label>"
-		"<input class='fi mono' id='em_as_ecm' type='number' min='0' max='100000' value='0' placeholder='0 = no limit'><div class='fhint'>Incoming ECM requests allowed during the window.</div></div>"
+		"<input class='fi mono' id='em_as_sids' type='number' min='1' max='32' value='1'></div>"
+		"<div class='fg'><label class='fld' for='em_as_ecm'>ECM rate limit</label>"
+		"<input class='fi mono' id='em_as_ecm' type='number' min='0' max='100000' value='0' placeholder='0 = no limit'></div>"
 		"<div class='fg'><label class='fld' for='em_as_window'>ECM rate window (seconds)</label>"
 		"<input class='fi mono' id='em_as_window' type='number' min='1' max='3600' value='60'></div>"
 		"<div class='fg'><label class='fld' for='em_as_timeout'>Active channel timeout (seconds)</label>"
 		"<input class='fi mono' id='em_as_timeout' type='number' min='1' max='3600' value='15'></div>"
-		"<div class='fg'><label class='fld' for='em_as_delay'>Channel switch delay (seconds)</label>"
+		"<div class='fg'><label class='fld' for='em_as_delay'>Suspicious activity delay (seconds)</label>"
 		"<input class='fi mono' id='em_as_delay' type='number' min='0' max='30' value='1'></div>"
-		"<div class='fhint'>Optional delay applied to the CW returned after a channel switch. This is separate from the rate and channel limits.</div>"
 		"</div>"
 
 		"<div class='user-bottom-grid'>"

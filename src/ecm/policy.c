@@ -21,7 +21,7 @@ T_ECM_ACCESS_STATUS ecm_access(S_CLIENT *client, uint16_t caid, uint16_t sid, ui
     else if (check_caid && !account_allows_caid(account, caid)) status = ECM_ACCESS_CAID_DENIED;
     else if (!account_allows_ident(account, caid, provid)) status = ECM_ACCESS_IDENT_DENIED;
     else if (check_sid && !account_allows_sid(account, sid)) status = ECM_ACCESS_SID_DENIED;
-    else if (antishare_check_request(account, client->identity.thread_id, caid, sid, &anti_delay_ms) != AS_CHECK_OK) status = ECM_ACCESS_ANTISHARE;
+    else if (antishare_check_channel(account, client->identity.thread_id, caid, sid, &anti_delay_ms) != AS_CHECK_OK) status = ECM_ACCESS_ANTISHARE;
 
     if (status == ECM_ACCESS_OK) {
         pthread_mutex_lock(&client->state_mtx);

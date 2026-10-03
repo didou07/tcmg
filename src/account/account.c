@@ -6,6 +6,7 @@
 #include "crypto/crypto.h"
 #include "log/log.h"
 #include "stats/account_stats.h"
+#include "security/antishare.h"
 
 static S_ACCOUNT *s_retired_accounts;
 static pthread_mutex_t s_retired_mtx = PTHREAD_MUTEX_INITIALIZER;
@@ -74,6 +75,7 @@ S_ACCOUNT *account_clone_config(const S_ACCOUNT *src)
     }
     atomic_init(&dst->active, 0);
     atomic_init(&dst->refs, 0);
+    antishare_copy_runtime(dst, src);
     return dst;
 }
 

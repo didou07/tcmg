@@ -230,71 +230,20 @@ bool cfg_write_default(const char *path)
 
     static const char global_text[] =
         "# TCMG global configuration\n"
-        "# Accounts: " TCMG_USER_FILE " | Readers: " TCMG_SERVER_FILE "\n\n"
-        "[global]\n"
-        "socket_timeout = 30\n"
-        "server_keepalive = 20\n"
-        "server_keepalive_misses = 3\n"
-        "ecm_log = 1\n"
-        "logfile =\n"
-        "usrfile =\n\n"
+        "# First run intentionally starts with no accounts or readers.\n"
+        "# Configure the services you need before enabling them.\n\n"
         "[webif]\n"
         "enabled = 1\n"
-        "port = 8080\n"
-        "refresh = 1\n"
-        "user =\n"
-        "password =\n"
-        "bindaddr =\n\n"
-        "[newcamd]\n"
-        "port = 15050\n"
-        "bindaddr =\n"
-        "key = 0102030405060708091011121314\n"
-        "keepalive = 0\n"
-        "mode = auto\n\n"
-        "[cccam]\n"
-        "port = 12050\n"
-        "bindaddr =\n\n"
-        "[cs378x]\n"
-        "port = 0\n"
-        "bindaddr =\n\n"
-        "[failban]\n"
-        "enabled = 1\n"
-        "allowlist =\n"
-        "max_fails = 5\n"
-        "ban_secs = 300\n";
+        "port = 8585\n"
+        "bindaddr = 0.0.0.0\n";
 
     static const char user_text[] =
-        "# TCMG accounts -- one [account] block per user\n"
-        "# Change the password before enabling remote access.\n\n"
-        "[account]\n"
-        "user = admin\n"
-        "password = change-me\n"
-        "enabled = 1\n"
-        "group = 1\n"
-        "caid = 0B00\n"
-        "max_connections = 2\n"
-        "max_idle = 0\n"
-        "expiration = 0\n"
-        "schedule =\n"
-        "anti_share = 0\n"
-        "as_max_sids = 1\n"
-        "as_max_ecm = 0\n"
-        "as_ecm_window_s = 60\n"
-        "as_channel_timeout_s = 15\n"
-        "as_switch_delay_s = 1\n";
+        "# TCMG accounts\n"
+        "# Add one [account] block per user.\n";
 
     static const char reader_text[] =
-        "# TCMG readers -- one [reader] block per reader\n"
-        "# The example reader is disabled until a real key is supplied.\n\n"
-        "[reader]\n"
-        "label = example-emu\n"
-        "protocol = emu\n"
-        "enabled = 0\n"
-        "group = 1\n"
-        "caid = 0B00\n"
-        "ecmwhitelist = 00\n"
-        "inactivitytimeout = 30\n"
-        "ecmkey = 0B00=0000000000000000000000000000000000000000000000000000000000000000\n";
+        "# TCMG readers\n"
+        "# Add one [reader] block per reader.\n";
 
     if (!path || !*path) return false;
 
@@ -305,6 +254,6 @@ bool cfg_write_default(const char *path)
     if (!cfg_write_default_if_missing(user_file, user_text)) return false;
     if (!cfg_write_default_if_missing(reader_file, reader_text)) return false;
 
-    tcmg_log("defaults ready: %s, %s, %s", path, user_file, reader_file);
+    tcmg_log("initial configuration created: webif=0.0.0.0:8585, accounts=0, readers=0");
     return true;
 }

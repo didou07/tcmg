@@ -176,5 +176,5 @@ void proto_server_stop(S_PROTO_SERVER *server)
         server->fd = -1;
     }
     pthread_join(server->thread, NULL);
-    tcmg_log("[%s] stopped", server->name ? server->name : "proto");
+    tcmg_log("[%s] stopped", server->name ? server->name : "server");
 }

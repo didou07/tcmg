@@ -522,7 +522,7 @@ static int read_atr(S_SERIAL_SLOT *s, int first_timeout_ms)
         uint8_t tck = 0;
         for (size_t i = 1; i < n; i++) tck ^= a[i];
         if (tck != 0) {
-            tcmg_log_dbg(D_READER, "serial ATR TCK mismatch device=%s len=%zu -- discarding", s->device, n);
+            tcmg_log_dbg(D_READER, "ATR TCK mismatch device=%s len=%zu -- discarding", s->device, n);
             return -1;
         }
     }
@@ -553,7 +553,7 @@ static int read_atr(S_SERIAL_SLOT *s, int first_timeout_ms)
     s->atr_len = n;
     s->protocol = first_proto;
     tcmg_log_dbg(D_READER,
-                 "serial ATR proto=T%d FI=%u DI=%u D=%u WI=%u TA1=%s%02X TA2=%s%02X baud-base=%u",
+                 "ATR proto=T%d FI=%u DI=%u D=%u WI=%u TA1=%s%02X TA2=%s%02X baud-base=%u",
                  s->protocol, s->t0_fi, s->t0_di, s->t0_d, s->t0_wi,
                  s->t0_ta1_present ? "" : "-", s->t0_ta1,
                  s->t0_ta2_present ? "" : "-", s->t0_ta2,
@@ -601,13 +601,13 @@ static int serial_select_speed_after_atr(S_SERIAL_SLOT *s)
     if (!specific && s->t0_ta1_present && s->t0_ta1 != 0x11) {
         if (serial_pts_exchange(s, s->t0_ta1) == 0) {
             pts_ok = 1;
-            tcmg_log_dbg(D_READER, "serial PTS accepted device=%s TA1=%02X D=%u",
+            tcmg_log_dbg(D_READER, "PTS accepted device=%s TA1=%02X D=%u",
                          s->device, s->t0_ta1, s->t0_d);
         } else {
             s->t0_fi = 1;
             s->t0_di = 1;
             s->t0_d = 1;
-            tcmg_log_dbg(D_READER, "serial PTS rejected device=%s TA1=%02X; keeping 9600/default timing",
+            tcmg_log_dbg(D_READER, "PTS rejected device=%s TA1=%02X; keeping 9600/default timing",
                          s->device, s->t0_ta1);
         }
     } else if (specific && (s->t0_ta2 & 0x10u) == 0 && s->t0_ta1_present) {
@@ -623,7 +623,7 @@ static int serial_select_speed_after_atr(S_SERIAL_SLOT *s)
         s->requested_baud = target;
     }
     s->current_baud = actual;
-    tcmg_log_dbg(D_READER, "serial speed device=%s requested=%u actual=%u D=%u WWT=%ums",
+    tcmg_log_dbg(D_READER, "speed device=%s requested=%u actual=%u D=%u WWT=%ums",
                  s->device, target, actual, s->t0_d, s->t0_wwt_ms);
     return 0;
 }
@@ -1078,12 +1078,12 @@ int serial_do_ecm_reader(int index, uint16_t caid,
         serial_mark_unavailable(s);
         int reinitialized = serial_reinitialize(s);
         tcmg_log_dbg(D_READER,
-                     "serial transport recovery device=%s status=%s",
+                     "transport recovery device=%s status=%s",
                      s->device, reinitialized == 0 ? "ready" : "failed");
         if (reinitialized == 0) {
             int retry_rc = conax_ecm(s, ecm, ecm_len, cw);
             tcmg_log_dbg(D_READER,
-                         "serial transport retry device=%s result=%s",
+                         "transport retry device=%s result=%s",
                          s->device, retry_rc == 0 ? "found" :
                          (retry_rc == SERIAL_ECM_NOT_FOUND ? "not-found" : "failed"));
             rc = retry_rc;
@@ -1101,11 +1101,11 @@ int serial_do_ecm_reader(int index, uint16_t caid,
     int64_t ecm_ms = mono_ms() - ecm_t0;
     if (rc < 0) {
         tcmg_log_dbg(D_READER,
-                     "serial ECM failed device=%s rc=%d elapsed=%lldms%s",
+                     "ECM failed device=%s rc=%d elapsed=%lldms%s",
                      s->device, rc, (long long)ecm_ms,
                      rc == SERIAL_ECM_NOT_FOUND ? "; card returned no CW, keeping reader ready" : "; reader marked unavailable");
     } else {
-        tcmg_log_dbg(D_READER, "serial ECM ok device=%s elapsed=%lldms", s->device, (long long)ecm_ms);
+        tcmg_log_dbg(D_READER, "ECM ok device=%s elapsed=%lldms", s->device, (long long)ecm_ms);
     }
     pthread_mutex_unlock(&s->mtx);
     return rc;

@@ -114,6 +114,6 @@ void handle_api_client_kill(int fd, const char *qs)
     uint32_t tid = (uint32_t)tid_u;
     webif_client_kill_by_tid(tid);
     tcmg_log("disconnect user='%s' tid=%u (requested via api)",
-              user[0] ? user : "?", tid);
+              user[0] ? user : "—", tid);
     send_json_ok(fd, "ok");
 }

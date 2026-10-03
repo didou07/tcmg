@@ -29,7 +29,9 @@ with sync_playwright() as p:
         pg.click("#dbALL")
         pg.wait_for_timeout(120)
     pg.wait_for_timeout(2500)
-    ui = pg.evaluate("[...document.querySelectorAll('#lp span')].map(s => s.getAttribute('data-r') || '')")
+    ui = pg.evaluate("[...document.querySelectorAll('#lp > .ll-line')].map(s => s.getAttribute('data-r') || '')")
+    inline = pg.evaluate("[...document.querySelectorAll('#lp > .ll-line')].filter(s => getComputedStyle(s).display !== 'block').length")
+    ok("Live Log renders each entry as a separate block line", inline == 0, inline)
     srv = [l["line"] for l in json.loads(urllib.request.urlopen(base + "/logpoll?since=0").read())["lines"]]
     ok("log view is line-for-line identical to the server ring buffer (%d = %d)" % (len(ui), len(srv)),
        ui == srv, (len(ui), len(srv)))

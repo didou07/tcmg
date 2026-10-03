@@ -331,7 +331,8 @@ int32_t nc_send(S_CLIENT *cl, const uint8_t *data, int32_t dlen,
 {
     if (!cl || !data || dlen < 3) return -1;
     S_ACCOUNT *account = account_session_acquire(cl);
-    uint16_t caid = account ? account->caid : cl->ecm.caid;
+    uint16_t caid = account ? account_default_caid(account) : cl->ecm.caid;
+    if (!caid) caid = cl->ecm.caid;
     bool is_ecm = data[0] == MSG_ECM_0 || data[0] == MSG_ECM_1;
     bool custom = cl->protocol.wire.newcamd.client_mode && is_ecm;
     bool mg_ack = cl->protocol.wire.newcamd.is_mgcamd && data[0] == MSG_CLIENT_LOGIN_ACK;

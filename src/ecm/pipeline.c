@@ -42,7 +42,7 @@ int32_t ecm_process(S_CLIENT *client, uint16_t caid, uint16_t sid, uint32_t prov
     client->ecm.antishare_prepared = 0;
     pthread_mutex_unlock(&client->state_mtx);
     if (account->anti_share && !was_prepared) {
-        if (antishare_check_request(account, client->identity.thread_id, caid, sid, &anti_delay_ms) != AS_CHECK_OK) {
+        if (antishare_check_channel(account, client->identity.thread_id, caid, sid, &anti_delay_ms) != AS_CHECK_OK) {
             account_release(account);
             return -2;
         }
@@ -81,10 +81,10 @@ int32_t ecm_process(S_CLIENT *client, uint16_t caid, uint16_t sid, uint32_t prov
     else if (reader_result.failure == READER_FAILURE_READER_ERROR) log_result = LOG_ECM_READER_ERROR;
 
     if (res == EMU_OK) {
-        antishare_record_success(request.account, client->identity.thread_id, caid, sid, cw);
+        antishare_record_channel_success(request.account, client->identity.thread_id, caid, sid, cw);
         if (anti_delay_ms > 0) tcmg_sleep_ms(anti_delay_ms);
     } else if (stats_result == ACCOUNT_ECM_NOT_FOUND) {
-        antishare_record_failure(request.account, client->identity.thread_id, caid, sid);
+        antishare_clear_pending(request.account, client->identity.thread_id, caid, sid);
     }
     account_stats_record_ecm_result(request.account, stats_result, elapsed);
 

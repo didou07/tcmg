@@ -61,8 +61,17 @@ static int load_case(const char *dir, const char *global, const char *users, con
         return 0;
     }
     if (ok) {
-        if (cfg.scheduled_restart_enabled != 1 || cfg.scheduled_restart_minutes != 240) {
-            fprintf(stderr, "scheduled restart defaults/parse mismatch enabled=%d minutes=%d\n", cfg.scheduled_restart_enabled, cfg.scheduled_restart_minutes);
+        int expected_sched = strstr(global, "scheduled_restart = 1") != NULL ? 1 : 0;
+        int expected_minutes = 0;
+        const char *st = strstr(global, "scheduled_restart_time = ");
+        if (st) {
+            int hh = -1, mm = -1;
+            if (sscanf(st, "scheduled_restart_time = %d:%d", &hh, &mm) == 2 && hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59)
+                expected_minutes = hh * 60 + mm;
+        }
+        if (cfg.scheduled_restart_enabled != expected_sched || cfg.scheduled_restart_minutes != expected_minutes) {
+            fprintf(stderr, "scheduled restart defaults/parse mismatch enabled=%d minutes=%d expected=%d/%d\n",
+                    cfg.scheduled_restart_enabled, cfg.scheduled_restart_minutes, expected_sched, expected_minutes);
             free_cfg(&cfg);
             return 0;
         }
@@ -201,6 +210,30 @@ fail:
     pthread_mutex_destroy(&g_cfg.ban_lock);
     return 0;
 }
+
+static int run_first_start_defaults(const char *dir)
+{
+    char cfgpath[1024], userspath[1024], readerspath[1024];
+    S_CONFIG cfg;
+    uint8_t zero_key[14] = {0};
+    snprintf(cfgpath, sizeof(cfgpath), "%s/first/tcmg.conf", dir);
+    snprintf(userspath, sizeof(userspath), "%s/first/tcmg.users", dir);
+    snprintf(readerspath, sizeof(readerspath), "%s/first/tcmg.readers", dir);
+    char first_dir[1024];
+    snprintf(first_dir, sizeof(first_dir), "%s/first", dir);
+    if (mkdir(first_dir, 0700) != 0) return 0;
+    if (!cfg_write_default(cfgpath)) return 0;
+    if (!init_cfg(&cfg)) return 0;
+    if (!cfg_load(cfgpath, &cfg)) { free_cfg(&cfg); return 0; }
+    if (cfg.naccounts != 0 || cfg.nreaders != 0) { free_cfg(&cfg); return 0; }
+    if (cfg.webif_enabled != 1 || cfg.webif_port != 8585 || strcmp(cfg.webif_bindaddr, "0.0.0.0") != 0) { free_cfg(&cfg); return 0; }
+    if (cfg.cccam_port != 0 || cfg.newcamd_port != 0 || cfg.cs378x_port != 0) { free_cfg(&cfg); return 0; }
+    if (cfg.scheduled_restart_enabled != 0 || cfg.scheduled_restart_minutes != 0) { free_cfg(&cfg); return 0; }
+    if (memcmp(cfg.newcamd_key, zero_key, sizeof(zero_key)) != 0) { free_cfg(&cfg); return 0; }
+    free_cfg(&cfg);
+    return access(userspath, F_OK) == 0 && access(readerspath, F_OK) == 0;
+}
+
 int main(void)
 {
     char dir[] = "/tmp/tcmg-config-smoke-XXXXXX";
@@ -225,6 +258,7 @@ int main(void)
         "[reader]\nlabel = cs378x\nprotocol = cs378x\nenabled = 0\ngroup = 1\ndevice = 127.0.0.1,15052\n"
         "[reader]\nlabel = internal-sci\nprotocol = internal\nenabled = 0\ngroup = 1\ndevice = /dev/sci0\ndo_ecm = 1\nfast_reset = 1\npoll_ms = 100\n";
     if (!mkdtemp(dir)) { perror("mkdtemp"); return 2; }
+    if (!run_first_start_defaults(dir)) { fprintf(stderr, "first-start defaults test failed\n"); return 9; }
     if (!load_case(dir, global, users, readers, NULL)) return 3;
     const char *tolerant_global =
         "[global]\n"

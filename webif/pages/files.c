@@ -14,7 +14,7 @@ static int emit_livelog_line(int32_t id, const char *line, const char *usr, void
 {
 	(void)id; (void)usr;
 	s_log_emit_ctx *c = (s_log_emit_ctx *)ctx;
-	int p = buf_printf(c->buf, c->bsz, c->pos, "<span data-r=\"");
+	int p = buf_printf(c->buf, c->bsz, c->pos, "<span class='ll-line' data-r=\"");
 	p = buf_html_string(c->buf, c->bsz, p, line);
 	if (p < 0) { c->failed = 1; return -1; }
 	p = buf_printf(c->buf, c->bsz, p, "\">");

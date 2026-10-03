@@ -2,7 +2,6 @@
 #include "config_internal.h"
 void cfg_default_runtime(S_CONFIG*c)
 {
-    static const uint8_t ncd_key[14]={1,2,3,4,5,6,7,8,9,16,17,18,19,20};
     memset(c->readers,0,sizeof(c->readers));
     c->nreaders=0;
     c->accounts=NULL;
@@ -11,20 +10,21 @@ void cfg_default_runtime(S_CONFIG*c)
     c->server_keepalive=20;
     c->server_keepalive_misses=3;
     c->ecm_log=1;
-    c->scheduled_restart_enabled=1;
-    c->scheduled_restart_minutes=240;
-    c->cccam_port=12050;
+    c->scheduled_restart_enabled=0;
+    c->scheduled_restart_minutes=0;
+    c->cccam_port=0;
     c->cccam_bindaddr[0]='\0';
     c->cs378x_port=0;
     c->cs378x_bindaddr[0]='\0';
-    c->newcamd_port=15050;
+    c->newcamd_port=0;
     c->newcamd_bindaddr[0]='\0';
-    memcpy(c->newcamd_key,ncd_key,sizeof(c->newcamd_key));
+    memset(c->newcamd_key,0,sizeof(c->newcamd_key));
     c->newcamd_keepalive=0;
     c->newcamd_mgclient=0;
     c->webif_enabled=1;
-    c->webif_port=8080;
+    c->webif_port=8585;
     c->webif_refresh=1;
+    tcmg_strlcpy(c->webif_bindaddr,"0.0.0.0",sizeof(c->webif_bindaddr));
     c->failban_enabled=1;
     c->failban_max_fails=BAN_MAX_FAILS;
     c->failban_ban_secs=BAN_SECS;

@@ -49,6 +49,7 @@ typedef struct s_account {
     int32_t  nsid_whitelist;
 
 #define AS_MAX_CHANNELS 32
+#define AS_MAX_RECENT_CHANNELS 16
     bool     anti_share;
     int32_t  as_max_sids;
     int32_t  as_max_ecm;
@@ -63,12 +64,24 @@ typedef struct s_account {
         int64_t  pending_since_ms;
         uint8_t  pending;
     } as_channels[AS_MAX_CHANNELS];
-    int32_t  as_ecm_count;
+    int32_t  as_ecm_points;
+    int32_t  as_ecm_active;
     int64_t  as_ecm_window_start_ms;
     uint8_t  as_last_cw[CW_LEN];
     uint16_t as_last_cw_caid;
     uint16_t as_last_cw_sid;
     int64_t  as_last_cw_ms;
+    int32_t  as_channel_count;
+    struct {
+        uint16_t caid;
+        uint16_t sid;
+        uint16_t hits;
+        int64_t  first_seen_ms;
+        int64_t  last_seen_ms;
+    } as_recent_channels[AS_MAX_RECENT_CHANNELS];
+    int32_t  as_recent_count;
+    int32_t  as_suspicion_score;
+    int64_t  as_suspicion_last_ms;
     pthread_mutex_t as_mtx;
 
     _Atomic int32_t active;

@@ -1,5 +1,6 @@
 #define MODULE_LOG_PREFIX "conf"
 #include "config.h"
+#include "../security/antishare.h"
 #include "../core/config_state.h"
 #include "../core/client_state.h"
 #include "../core/utils.h"
@@ -95,6 +96,7 @@ bool cfg_reload(const char *file, char *err, size_t esz)
             if (strcmp(new_acc->user, old_acc->user) != 0) continue;
 
             account_stats_copy_runtime(new_acc, old_acc);
+            antishare_copy_runtime(new_acc, old_acc);
             break;
         }
     }

@@ -163,33 +163,67 @@ typedef enum {
 	LC_RELOAD,
 } E_LOG_COLOR;
 
-static E_LOG_COLOR classify_line(const char *body)
-{
+typedef struct {
+	E_LOG_COLOR color;
+	const char *needle;
+} S_LOG_MARK;
 
-	if (strstr(body, "ECM rejected") || strstr(body, "ecm rejected")) return LC_ECM_REJECTED;
-	if (strstr(body, "not found") || strstr(body, ": miss"))   return LC_CW_MISS;
-	if (strstr(body, ": cache (")) return LC_CW_CACHE;
-	if (strstr(body, ": shared (")) return LC_CW_SHARED;
-	if (strstr(body, "found (")   || strstr(body, ": found"))  return LC_CW_HIT;
-	if (strstr(body, "FATAL")     || strstr(body, "FORCED")    ||
-	    strstr(body, "failed:")   || strstr(body, "error")     ||
-	    strstr(body, "ERROR"))                                  return LC_ERROR;
-	if (strstr(body, "warn")      || strstr(body, "WARN")      ||
-	    strstr(body, "rejected")  || strstr(body, "repeated")) return LC_WARN;
-	if (strstr(body, "shutting down") || strstr(body, "shutdown")) return LC_SHUTDOWN;
-	if (strstr(body, "reload")    || strstr(body, "RELOAD")    ||
-	    strstr(body, "reloaded")  || strstr(body, "re-opened")) return LC_RELOAD;
-	if (strstr(body, "started")   || strstr(body, "listening") ||
-	    strstr(body, ">> tcmg <<"))                             return LC_STARTUP;
-	if (strstr(body, "ban")       || strstr(body, "BAN")       ||
-	    strstr(body, "LOGIN failed"))                           return LC_BAN;
-	if (strstr(body, "webif")     || strstr(body, "HTTP")      ||
-	    strstr(body, "login"))                                  return LC_WEBIF;
-	if (strstr(body, "(net)")     || strstr(body, "connect")   ||
-	    strstr(body, "disconnect"))                             return LC_NET;
-	if (strstr(body, "(emu)")     || strstr(body, "emu:"))      return LC_EMU;
-	if (strstr(body, "0x")        || strstr(body, "debug"))     return LC_DEBUG;
-	return LC_NORMAL;
+static const char *find_log_mark(const char *body, E_LOG_COLOR *color, size_t *mark_len)
+{
+	static const S_LOG_MARK marks[] = {
+		{ LC_ECM_REJECTED, "ecm rejected" },
+		{ LC_CW_MISS,      "not found" },
+		{ LC_CW_CACHE,     "cache" },
+		{ LC_CW_SHARED,    "shared" },
+		{ LC_CW_HIT,       "found" },
+		{ LC_ERROR,        "reader error" },
+		{ LC_ERROR,        "card error" },
+		{ LC_ERROR,        "transport error" },
+		{ LC_ERROR,        "failed" },
+		{ LC_ERROR,        "FATAL" },
+		{ LC_ERROR,        "FORCED" },
+		{ LC_ERROR,        "ERROR" },
+		{ LC_WARN,         "warn" },
+		{ LC_WARN,         "rejected" },
+		{ LC_WARN,         "repeated" },
+		{ LC_SHUTDOWN,     "shutting down" },
+		{ LC_SHUTDOWN,     "shutdown" },
+		{ LC_RELOAD,       "reloaded" },
+		{ LC_RELOAD,       "reload" },
+		{ LC_RELOAD,       "re-opened" },
+		{ LC_STARTUP,      "started" },
+		{ LC_STARTUP,      "listening" },
+		{ LC_STARTUP,      ">> tcmg <<" },
+		{ LC_BAN,          "AUTH blocked" },
+		{ LC_BAN,          "LOGIN failed" },
+		{ LC_BAN,          "failban=triggered" },
+		{ LC_BAN,          "banned" },
+		{ LC_WEBIF,        "AUTH failed" },
+		{ LC_WEBIF,        "AUTH success" },
+		{ LC_WEBIF,        "webif" },
+		{ LC_NET,          "disconnect" },
+		{ LC_NET,          "connect" },
+		{ LC_EMU,          "emu:" },
+		{ LC_DEBUG,        "debug" },
+	};
+	if (!body || !color || !mark_len) return NULL;
+	for (size_t i = 0; i < sizeof(marks) / sizeof(marks[0]); i++) {
+		const char *p = strstr(body, marks[i].needle);
+		if (p) {
+			*color = marks[i].color;
+			*mark_len = strlen(marks[i].needle);
+			return p;
+		}
+	}
+	{
+		const char *p = strstr(body, "error");
+		if (p) {
+			*color = LC_ERROR;
+			*mark_len = 5;
+			return p;
+		}
+	}
+	return NULL;
 }
 
 static const char *color_prefix(E_LOG_COLOR c)
@@ -198,8 +232,8 @@ static const char *color_prefix(E_LOG_COLOR c)
 	case LC_CW_HIT:   return ANSI_BOLD ANSI_BGREEN;
 	case LC_CW_CACHE: return ANSI_BOLD ANSI_CYAN;
 	case LC_CW_SHARED:return ANSI_BOLD ANSI_MAGENTA;
-	case LC_CW_MISS:  return ANSI_RED;
-	case LC_ECM_REJECTED: return ANSI_ORANGE;
+	case LC_CW_MISS:  return ANSI_BOLD ANSI_RED;
+	case LC_ECM_REJECTED: return ANSI_BOLD ANSI_ORANGE;
 	case LC_ERROR:    return ANSI_BOLD ANSI_RED;
 	case LC_WARN:     return ANSI_YELLOW;
 	case LC_SHUTDOWN: return ANSI_BOLD ANSI_MAGENTA;
@@ -222,25 +256,29 @@ static void print_colored(FILE *fp, const char *line)
 		return;
 	}
 
-	const char *ts_end = strchr(line, ' ');
-	if (!ts_end) { fputs(line, fp); fputc('\n', fp); return; }
-	ts_end = strchr(ts_end + 1, ' ');
-	if (!ts_end) { fputs(line, fp); fputc('\n', fp); return; }
-	ts_end = strchr(ts_end + 1, ' ');
-	if (!ts_end) { fputs(line, fp); fputc('\n', fp); return; }
-
-	int hdr_len = (int)(ts_end - line);
-
-	E_LOG_COLOR c = classify_line(ts_end);
-	const char *col = color_prefix(c);
-
-	fprintf(fp, ANSI_GRAY "%.*s" ANSI_RESET, hdr_len, line);
-	if (col) {
-		fprintf(fp, "%s%s" ANSI_RESET "\n", col, ts_end);
-	} else {
-		fputs(ts_end, fp);
-		fputc('\n', fp);
+	const char *body = line;
+	for (int i = 0; i < 3; i++) {
+		const char *sp = strchr(body, ' ');
+		if (!sp) break;
+		body = sp + 1;
 	}
+
+	E_LOG_COLOR c = LC_NORMAL;
+	size_t mark_len = 0;
+	const char *mark = find_log_mark(body, &c, &mark_len);
+	const char *col = color_prefix(c);
+	if (!mark || !col) {
+		fputs(line, fp);
+		fputc('\n', fp);
+		return;
+	}
+
+	fwrite(line, 1, (size_t)(mark - line), fp);
+	fputs(col, fp);
+	fwrite(mark, 1, mark_len, fp);
+	fputs(ANSI_RESET, fp);
+	fputs(mark + mark_len, fp);
+	fputc('\n', fp);
 }
 
 static void rotate_if_needed(FILE **fp, const char *path, unsigned long max_bytes)
@@ -760,7 +798,7 @@ void log_cw_result(uint16_t caid, uint16_t sid, int32_t len,
 		const char *result_text = result == LOG_ECM_FOUND ?
 		                          (source == TCMG_ECM_SOURCE_CACHE ? "cache" :
 		                           source == TCMG_ECM_SOURCE_SHARED ? "shared" : "found") :
-		                          (result == LOG_ECM_REJECTED ? "ECM rejected" :
+		                          (result == LOG_ECM_REJECTED ? "ecm rejected" :
 		                           result == LOG_ECM_TRANSPORT_ERROR ? "transport error" :
 		                           result == LOG_ECM_CARD_ERROR ? "card error" :
 		                           result == LOG_ECM_READER_ERROR ? "reader error" : "not found");
@@ -780,11 +818,11 @@ void log_cw_result(uint16_t caid, uint16_t sid, int32_t len,
 		} else if (result == LOG_ECM_REJECTED) {
 			if (ch)
 				snprintf(body, sizeof(body),
-				         "(%04X:%04X:%02X): ECM rejected (%d ms) by %s  [%s]",
+				         "(%04X:%04X:%02X): ecm rejected (%d ms) by %s  [%s]",
 				         caid, sid, (int)len, ms, display_user, ch);
 			else
 				snprintf(body, sizeof(body),
-				         "(%04X:%04X:%02X): ECM rejected (%d ms) by %s",
+				         "(%04X:%04X:%02X): ecm rejected (%d ms) by %s",
 				         caid, sid, (int)len, ms, display_user);
 		} else {
 			if (ch)
