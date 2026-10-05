@@ -28,6 +28,12 @@ typedef struct {
     char fast_reset[16];
     char fast_reset_idle[16];
     char poll_ms[16];
+    char maintenance_mode[24];
+    char old_ecm_source[16];
+    char old_ecm_trigger[16];
+    char old_ecm_interval[16];
+    char old_ecm_successes[16];
+    char old_ecm[TCMG_OLD_ECM_HEX_LEN + 1];
 } reader_form;
 
 static int rnum(const char *s, long lo, long hi, long *out)
@@ -110,6 +116,11 @@ static const char *parse_reader_form(const char *body, reader_form *f, int index
 {
     (void)index;
     memset(f, 0, sizeof(*f));
+    tcmg_strlcpy(f->maintenance_mode, "fast_reset", sizeof(f->maintenance_mode));
+    tcmg_strlcpy(f->old_ecm_source, "auto", sizeof(f->old_ecm_source));
+    tcmg_strlcpy(f->old_ecm_trigger, "interval", sizeof(f->old_ecm_trigger));
+    tcmg_strlcpy(f->old_ecm_interval, "60", sizeof(f->old_ecm_interval));
+    tcmg_strlcpy(f->old_ecm_successes, "10", sizeof(f->old_ecm_successes));
     if (webif_form_copy(body, "label", f->label, sizeof(f->label)) < 0 ||
         webif_form_copy(body, "protocol", f->protocol, sizeof(f->protocol)) < 0 ||
         webif_form_copy(body, "enabled", f->enabled, sizeof(f->enabled)) < 0 ||
@@ -128,6 +139,12 @@ static const char *parse_reader_form(const char *body, reader_form *f, int index
         webif_form_copy(body, "FAST_RESET_IDLE", f->fast_reset_idle, sizeof(f->fast_reset_idle)) < 0 ||
         webif_form_copy(body, "POLL_MS", f->poll_ms, sizeof(f->poll_ms)) < 0)
         return "field too long";
+    if (webif_form_present(body, "MAINTENANCE_MODE") && webif_form_copy(body, "MAINTENANCE_MODE", f->maintenance_mode, sizeof(f->maintenance_mode)) < 0) return "field too long";
+    if (webif_form_present(body, "OLD_ECM_SOURCE") && webif_form_copy(body, "OLD_ECM_SOURCE", f->old_ecm_source, sizeof(f->old_ecm_source)) < 0) return "field too long";
+    if (webif_form_present(body, "OLD_ECM_TRIGGER") && webif_form_copy(body, "OLD_ECM_TRIGGER", f->old_ecm_trigger, sizeof(f->old_ecm_trigger)) < 0) return "field too long";
+    if (webif_form_present(body, "OLD_ECM_INTERVAL") && webif_form_copy(body, "OLD_ECM_INTERVAL", f->old_ecm_interval, sizeof(f->old_ecm_interval)) < 0) return "field too long";
+    if (webif_form_present(body, "OLD_ECM_SUCCESSES") && webif_form_copy(body, "OLD_ECM_SUCCESSES", f->old_ecm_successes, sizeof(f->old_ecm_successes)) < 0) return "field too long";
+    if (webif_form_present(body, "OLD_ECM") && webif_form_copy(body, "OLD_ECM", f->old_ecm, sizeof(f->old_ecm)) < 0) return "field too long";
 
     if (!f->label[0]) return "label is required";
     if (!web_valid_text(f->label) || (f->device[0] && !web_valid_text(f->device)) ||
@@ -147,6 +164,24 @@ static const char *parse_reader_form(const char *body, reader_form *f, int index
     if (validate_u16_list(f->sid, MAX_SID_WHITELIST, WEBIF_SID_LIST_LEN) < 0) return "invalid SID whitelist";
     if (validate_groups(f->groups) < 0) return "group is required";
 
+    if (protocol->kind == READER_PROTOCOL_CARD) {
+        if (strcmp(f->maintenance_mode, "fast_reset") && strcmp(f->maintenance_mode, "old_ecm")) return "MAINTENANCE_MODE must be fast_reset or old_ecm";
+        if (strcmp(f->old_ecm_source, "auto") && strcmp(f->old_ecm_source, "manual")) return "OLD_ECM_SOURCE must be auto or manual";
+        if (strcmp(f->old_ecm_trigger, "interval") && strcmp(f->old_ecm_trigger, "successes")) return "OLD_ECM_TRIGGER must be interval or successes";
+        if (rnum(f->old_ecm_interval, 1, 86400, &v) < 0) return "OLD_ECM_INTERVAL must be 1-86400 seconds";
+        if (rnum(f->old_ecm_successes, 1, 1000000, &v) < 0) return "OLD_ECM_SUCCESSES must be 1-1000000";
+        size_t old_len = strlen(f->old_ecm);
+        if (old_len > TCMG_OLD_ECM_HEX_LEN || (old_len && (old_len < 2 || old_len & 1u))) return "OLD_ECM must contain 2-498 hex characters";
+        for (size_t z = 0; z < old_len; z++) if (!isxdigit((unsigned char)f->old_ecm[z])) return "OLD_ECM must be hexadecimal";
+        if (!strcmp(f->maintenance_mode, "old_ecm") && !strcmp(f->old_ecm_source, "manual")) {
+            if (old_len < 2) return "manual old ECM is required";
+            if (f->ecmwl[0]) {
+                char *end = NULL; unsigned long wl = strtoul(f->ecmwl, &end, 16);
+                if (end == f->ecmwl || *end || wl > 0xFF || (int)(old_len / 2u) != (int)wl) return "OLD_ECM length must match ECM whitelist";
+            }
+        }
+    }
+
     if (protocol->kind == READER_PROTOCOL_EMU) {
         if (validate_ecmkeys(f->ecmkeys) < 0) return "invalid ECM key list";
     } else if (protocol->kind == READER_PROTOCOL_CARD) {
@@ -158,7 +193,7 @@ static const char *parse_reader_form(const char *body, reader_form *f, int index
             if (rnum(f->fast_reset_idle, 0, 86400, &v) < 0) return "FAST_RESET_IDLE must be 0-86400 seconds";
             if (rnum(f->poll_ms, 50, 10000, &v) < 0) return "POLL_MS must be 50-10000";
         }
-        if (!f->device[0]) return "device is required";
+        if (strcmp(protocol->name, "internal") && !f->device[0]) return "device is required";
     } else {
         if (!f->device[0]) return "server is required";
         if (rnum(f->inactivity, 1, 600, &v) < 0) return "inactivitytimeout must be 1-600";
@@ -196,18 +231,20 @@ static int view_json(char **dst, int *bsz, int pos, const S_WEBIF_READER_VIEW *r
     int owned = 0;
     int present = 0;
     int ready = 0;
+    char backend[32] = "";
     if (!strcasecmp(r->protocol, "internal")) {
         S_INTERNAL_READER ir;
         if (internal_reader_get(r->index, &ir) == 0) {
             owned = ir.owned;
             present = ir.present;
             ready = ir.ready;
+            tcmg_strlcpy(backend, ir.backend, sizeof(backend));
         }
     }
     if (!strcasecmp(r->protocol, "internal")) {
         pos = buf_printf(dst, bsz, pos,
-            "\",\"FAST_RESET\":%d,\"FAST_RESET_IDLE\":%d,\"cw_ok\":%lld,\"cw_nok\":%lld,\"active\":%d,\"owned\":%d,\"present\":%d,\"ready\":%d",
-            r->fast_reset, r->fast_reset_idle, (long long)r->cw_ok, (long long)r->cw_nok, r->active, owned, present, ready);
+            "\",\"FAST_RESET\":%d,\"FAST_RESET_IDLE\":%d,\"cw_ok\":%lld,\"cw_nok\":%lld,\"active\":%d,\"owned\":%d,\"present\":%d,\"ready\":%d,\"backend\":\"%s\"",
+            r->fast_reset, r->fast_reset_idle, (long long)r->cw_ok, (long long)r->cw_nok, r->active, owned, present, ready, backend);
     } else {
         pos = buf_printf(dst, bsz, pos,
             "\",\"FAST_RESET\":%d,\"FAST_RESET_IDLE\":%d,\"POLL_MS\":%d,\"cw_ok\":%lld,\"cw_nok\":%lld,\"active\":%d,\"owned\":%d,\"present\":%d,\"ready\":%d",
@@ -236,6 +273,13 @@ static int view_json(char **dst, int *bsz, int pos, const S_WEBIF_READER_VIEW *r
     if (pos < 0) return -1;
     pos = buf_printf(dst, bsz, pos, "\",\"ecmkeys\":\"");
     pos = buf_json_string(dst, bsz, pos, r->ecmkeys);
+    if (pos < 0) return -1;
+    pos = buf_printf(dst, bsz, pos, "\",\"MAINTENANCE_MODE\":\"%s\",\"OLD_ECM_SOURCE\":\"%s\",\"OLD_ECM_TRIGGER\":\"%s\",\"OLD_ECM_INTERVAL\":%d,\"OLD_ECM_SUCCESSES\":%d,\"OLD_ECM\":\"",
+                     r->maintenance_mode == TCMG_READER_MAINT_OLD_ECM ? "old_ecm" : "fast_reset",
+                     r->old_ecm_source == TCMG_OLD_ECM_SOURCE_MANUAL ? "manual" : "auto",
+                     r->old_ecm_trigger == TCMG_OLD_ECM_TRIGGER_SUCCESSES ? "successes" : "interval",
+                     r->old_ecm_interval, r->old_ecm_successes);
+    pos = buf_json_string(dst, bsz, pos, r->old_ecm);
     if (pos < 0) return -1;
     return buf_printf(dst, bsz, pos, "\"");
 }
@@ -317,6 +361,12 @@ static void form_to_edit(const reader_form *f, int index, S_WEBIF_READER_EDIT *e
     tcmg_strlcpy(e->fast_reset,f->fast_reset,sizeof(e->fast_reset));
     tcmg_strlcpy(e->fast_reset_idle,f->fast_reset_idle,sizeof(e->fast_reset_idle));
     tcmg_strlcpy(e->poll_ms,f->poll_ms,sizeof(e->poll_ms));
+    tcmg_strlcpy(e->maintenance_mode,f->maintenance_mode,sizeof(e->maintenance_mode));
+    tcmg_strlcpy(e->old_ecm_source,f->old_ecm_source,sizeof(e->old_ecm_source));
+    tcmg_strlcpy(e->old_ecm_trigger,f->old_ecm_trigger,sizeof(e->old_ecm_trigger));
+    tcmg_strlcpy(e->old_ecm_interval,f->old_ecm_interval,sizeof(e->old_ecm_interval));
+    tcmg_strlcpy(e->old_ecm_successes,f->old_ecm_successes,sizeof(e->old_ecm_successes));
+    tcmg_strlcpy(e->old_ecm,f->old_ecm,sizeof(e->old_ecm));
 }
 
 void handle_api_reader_save(int fd, const char *body)

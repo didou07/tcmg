@@ -200,25 +200,83 @@ static const char *parse_account_form(const char *body, acct_form *f)
 	return NULL;
 }
 
-static void api_userstats_find_session(const S_WEBIF_CLIENT_VIEW *clients, int nclients, const char *user,
-                                        int *active, const S_WEBIF_CLIENT_VIEW **best, long *idle_s)
+#define USERSTATS_HT_SIZE 512u
+
+typedef struct {
+    uint32_t hash;
+    int client_index;
+    int active;
+    bool used;
+} S_USERSTATS_SLOT;
+
+static uint32_t api_user_hash(const char *s)
 {
-    time_t now = time(NULL);
-    int n = 0;
-    const S_WEBIF_CLIENT_VIEW *pick = NULL;
-    time_t last = 0;
+    uint32_t h = 2166136261u;
+    for (; s && *s; s++) h = (h ^ (uint8_t)*s) * 16777619u;
+    return h;
+}
+
+static S_USERSTATS_SLOT *api_userstats_slot(S_USERSTATS_SLOT slots[USERSTATS_HT_SIZE],
+                                             const S_WEBIF_CLIENT_VIEW *clients,
+                                             const char *user, uint32_t hash, bool create)
+{
+    uint32_t pos = hash & (USERSTATS_HT_SIZE - 1u);
+    for (uint32_t probe = 0; probe < USERSTATS_HT_SIZE; probe++, pos = (pos + 1u) & (USERSTATS_HT_SIZE - 1u)) {
+        S_USERSTATS_SLOT *slot = &slots[pos];
+        if (!slot->used) {
+            if (!create) return NULL;
+            slot->used = true;
+            slot->hash = hash;
+            slot->client_index = -1;
+            slot->active = 0;
+            return slot;
+        }
+        if (slot->hash == hash && slot->client_index >= 0 &&
+            strcmp(clients[slot->client_index].user, user) == 0)
+            return slot;
+    }
+    return NULL;
+}
+
+static void api_userstats_build_index(const S_WEBIF_CLIENT_VIEW *clients, int nclients,
+                                      S_USERSTATS_SLOT slots[USERSTATS_HT_SIZE])
+{
+    memset(slots, 0, sizeof(S_USERSTATS_SLOT) * USERSTATS_HT_SIZE);
     for (int i = 0; i < nclients; i++) {
-        if (strcmp(clients[i].user, user) != 0) continue;
-        n++;
-        if (clients[i].last_activity >= last) {
-            last = clients[i].last_activity;
-            pick = &clients[i];
+        if (!clients[i].user[0]) continue;
+        uint32_t hash = api_user_hash(clients[i].user);
+        S_USERSTATS_SLOT *slot = api_userstats_slot(slots, clients, clients[i].user, hash, true);
+        if (!slot) continue;
+        slot->active++;
+        if (slot->client_index < 0 ||
+            clients[i].last_activity >= clients[slot->client_index].last_activity)
+            slot->client_index = i;
+    }
+}
+
+static void api_userstats_lookup(const S_USERSTATS_SLOT slots[USERSTATS_HT_SIZE],
+                                 const S_WEBIF_CLIENT_VIEW *clients, const char *user,
+                                 int *active, const S_WEBIF_CLIENT_VIEW **best, long *idle_s, time_t now)
+{
+    uint32_t hash = api_user_hash(user);
+    uint32_t pos = hash & (USERSTATS_HT_SIZE - 1u);
+    const S_USERSTATS_SLOT *slot = NULL;
+    for (uint32_t probe = 0; probe < USERSTATS_HT_SIZE; probe++, pos = (pos + 1u) & (USERSTATS_HT_SIZE - 1u)) {
+        const S_USERSTATS_SLOT *candidate = &slots[pos];
+        if (!candidate->used) break;
+        if (candidate->hash == hash && candidate->client_index >= 0 &&
+            strcmp(clients[candidate->client_index].user, user) == 0) {
+            slot = candidate;
+            break;
         }
     }
-    if (active) *active = n;
+    const S_WEBIF_CLIENT_VIEW *pick = slot ? &clients[slot->client_index] : NULL;
+    if (active) *active = slot ? slot->active : 0;
     if (best) *best = pick;
-    if (idle_s) *idle_s = (pick && pick->last_activity > 0) ? (long)(now - pick->last_activity) : -1;
-    if (idle_s && *idle_s < 0 && pick) *idle_s = 0;
+    if (idle_s) {
+        *idle_s = (pick && pick->last_activity > 0) ? (long)(now - pick->last_activity) : -1;
+        if (*idle_s < 0 && pick) *idle_s = 0;
+    }
 }
 
 void send_api_userstats(int fd)
@@ -231,18 +289,17 @@ void send_api_userstats(int fd)
         return;
     }
 
-    S_WEBIF_CLIENT_VIEW *clients = NULL;
+    S_WEBIF_CLIENT_VIEW clients[MAX_ACTIVE_CLIENTS];
     int naccounts = accounts ? webif_account_userstats_snapshot_all(accounts, (size_t)cap) : 0;
-    int nclients = webif_client_snapshot_alloc(&clients);
-    if (nclients < 0) {
-        free(accounts);
-        send_json_error(fd, 503, "Service Unavailable", "out of memory");
-        return;
-    }
+    int nclients = webif_client_snapshot_all(clients, MAX_ACTIVE_CLIENTS);
+
+    S_USERSTATS_SLOT user_index[USERSTATS_HT_SIZE];
+    api_userstats_build_index(clients, nclients, user_index);
+    const time_t now = time(NULL);
 
     int bsz = 16384, pos = 0;
     char *buf = malloc((size_t)bsz);
-    if (!buf) { free(accounts); free(clients); send_json_error(fd, 503, "Service Unavailable", "out of memory"); return; }
+    if (!buf) { free(accounts); send_json_error(fd, 503, "Service Unavailable", "out of memory"); return; }
 
     pos = buf_printf(&buf, &bsz, pos,
         "{\"ok\":true,\"active_connections\":%d,\"count\":%d,\"users\":[",
@@ -253,7 +310,7 @@ void send_api_userstats(int fd)
         int active = 0;
         const S_WEBIF_CLIENT_VIEW *best = NULL;
         long idle_s = -1;
-        api_userstats_find_session(clients, nclients, a->user, &active, &best, &idle_s);
+        api_userstats_lookup(user_index, clients, a->user, &active, &best, &idle_s, now);
 
         char eu[256], eip[128], eproto[64], echan[256], ecaids[256];
         json_escape(a->user, eu, sizeof(eu));
@@ -285,7 +342,6 @@ void send_api_userstats(int fd)
     send_response(fd, 200, "OK", "application/json", buf, pos);
     free(buf);
     free(accounts);
-    free(clients);
 }
 
 void handle_user_toggle(int fd, const char *qs)

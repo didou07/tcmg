@@ -1,6 +1,7 @@
 #define MODULE_LOG_PREFIX "conf"
 #include "config_internal.h"
 #include "../reader/protocol.h"
+#include <ctype.h>
 
 void cfg_path_sibling(char *out,size_t outsz,const char *global,const char *name)
 {
@@ -95,8 +96,7 @@ bool cfg_validate(S_CONFIG *c, char *err, size_t esz)
         }
         else if (!strcasecmp(protocol->name, "internal")) {
             if (r->enabled && !r->device[0]) {
-                snprintf(err, esz, "reader[%d] '%s': device is required", i, r->label);
-                return false;
+                /* Empty internal device means automatic backend detection. */
             }
             if (r->fast_reset < 0 || r->fast_reset > 86400 ||
                 r->fast_reset_idle < 0 || r->fast_reset_idle > 86400) {
@@ -116,6 +116,48 @@ bool cfg_validate(S_CONFIG *c, char *err, size_t esz)
                 return false;
             }
         }
+        if (reader_protocol_kind(r->protocol) == READER_PROTOCOL_CARD) {
+            if (r->maintenance_mode != TCMG_READER_MAINT_FAST_RESET && r->maintenance_mode != TCMG_READER_MAINT_OLD_ECM) {
+                snprintf(err, esz, "reader[%d] '%s': invalid maintenance mode", i, r->label);
+                return false;
+            }
+            if (r->maintenance_mode == TCMG_READER_MAINT_OLD_ECM) {
+                if (r->old_ecm_source != TCMG_OLD_ECM_SOURCE_AUTO && r->old_ecm_source != TCMG_OLD_ECM_SOURCE_MANUAL) {
+                    snprintf(err, esz, "reader[%d] '%s': invalid old ECM source", i, r->label);
+                    return false;
+                }
+                if (r->old_ecm_trigger != TCMG_OLD_ECM_TRIGGER_INTERVAL && r->old_ecm_trigger != TCMG_OLD_ECM_TRIGGER_SUCCESSES) {
+                    snprintf(err, esz, "reader[%d] '%s': invalid old ECM trigger", i, r->label);
+                    return false;
+                }
+                if (r->old_ecm_interval < 1 || r->old_ecm_interval > 86400 || r->old_ecm_successes < 1 || r->old_ecm_successes > 1000000) {
+                    snprintf(err, esz, "reader[%d] '%s': invalid old ECM timing", i, r->label);
+                    return false;
+                }
+                size_t old_len = strlen(r->old_ecm);
+                if (old_len > TCMG_OLD_ECM_HEX_LEN || (old_len & 1u)) {
+                    snprintf(err, esz, "reader[%d] '%s': invalid old ECM", i, r->label);
+                    return false;
+                }
+                for (size_t z = 0; z < old_len; z++) {
+                    if (!isxdigit((unsigned char)r->old_ecm[z])) {
+                        snprintf(err, esz, "reader[%d] '%s': invalid old ECM", i, r->label);
+                        return false;
+                    }
+                }
+                if (r->old_ecm_source == TCMG_OLD_ECM_SOURCE_MANUAL) {
+                    if (old_len < 2 || old_len / 2u > 249u) {
+                        snprintf(err, esz, "reader[%d] '%s': manual old ECM is missing or too long", i, r->label);
+                        return false;
+                    }
+                    if (r->ecm_whitelist > 0 && (int32_t)(old_len / 2u) != r->ecm_whitelist) {
+                        snprintf(err, esz, "reader[%d] '%s': manual old ECM length does not match ecmwhitelist", i, r->label);
+                        return false;
+                    }
+                }
+            }
+        }
+
         else if (reader_protocol_kind(r->protocol) == READER_PROTOCOL_NETWORK) {
             const char *comma;
             int32_t port;

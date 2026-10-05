@@ -100,6 +100,7 @@ generic-armv7-buildroot|linux|armv7|Generic ARMv7 Linux|/etc/tuxbox/config|on|ar
 generic-mips32el-buildroot|linux|mips32el|Generic MIPSel Linux|/etc/tuxbox/config|on|mips32el_universal
 generic-powerpc-buildroot|linux|powerpc|Generic PowerPC Linux|/etc/tuxbox/config|on|powerpc_universal
 generic-sh4-buildroot|linux|sh4|Generic SH4 Linux|/etc/tuxbox/config|on|sh4_universal
+forever-7878|linux|sh4|Forever 7878 PVR (STx7111 SH4)|/etc/tuxbox/config|on|sh4
 h10|linux|armv7|H10|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
 h11|linux|armv7|H11|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0
 h17|linux|armv7|H17|/etc/tuxbox/config|on|cortexa15hf_oealliance_6.0

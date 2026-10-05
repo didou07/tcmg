@@ -64,20 +64,26 @@ int session_check(const char *token)
 
 const char *cookie_get_session(const char *cookie_hdr, char *buf, int bufsz)
 {
-	if (!cookie_hdr) return NULL;
-	const char *key = "tcmg_session=";
-	const char *p   = strstr(cookie_hdr, key);
-	if (!p) return NULL;
-	p += strlen(key);
-	int i = 0;
-	while (i < bufsz - 1 && p[i] && p[i] != ';' && p[i] != '\r' && p[i] != '\n') {
-		buf[i] = p[i];
-		i++;
+	static const char key[] = "tcmg_session=";
+	if (!cookie_hdr || !buf || bufsz <= 0) return NULL;
+	const char *p = cookie_hdr;
+	while (*p) {
+		while (*p == ' ' || *p == '\t' || *p == ';') p++;
+		if (!strncmp(p, key, sizeof(key) - 1)) {
+			p += sizeof(key) - 1;
+			int i = 0;
+			while (i < bufsz - 1 && p[i] && p[i] != ';' && p[i] != '\r' && p[i] != '\n' && p[i] != ' ' && p[i] != '\t') {
+				buf[i] = p[i];
+				i++;
+			}
+			buf[i] = '\0';
+			if (i == WEB_SESSION_LEN) return buf;
+			return NULL;
+		}
+		while (*p && *p != ';' && *p != '\r' && *p != '\n') p++;
 	}
-	buf[i] = '\0';
-	return i == WEB_SESSION_LEN ? buf : NULL;
+	return NULL;
 }
-
 void session_invalidate(const char *token)
 {
 	if (!token || !*token) return;
@@ -98,6 +104,8 @@ static const char B64[] =
 
 void b64_encode(const char *in, int ilen, char *out, int outsz)
 {
+	if (!out || outsz <= 0) return;
+	if (!in || ilen <= 0) { out[0] = '\0'; return; }
 	const uint8_t *s = (const uint8_t *)in;
 	int i = 0, o = 0;
 	while (i < ilen && o + 4 < outsz) {
@@ -134,6 +142,7 @@ static int hexval(int c)
 
 void url_decode(char *s)
 {
+	if (!s) return;
 	char *r = s, *w = s;
 	while (*r) {
 		if (*r == '%' && hexval(r[1]) >= 0 && hexval(r[2]) >= 0) {
@@ -160,6 +169,7 @@ static int web_ncaseeq(const char *a, const char *b, size_t n)
 
 const char *web_header_get(const char *raw, const char *name, char *buf, int bufsz)
 {
+	if (!raw || !name || !buf || bufsz <= 0) return NULL;
 	buf[0] = '\0';
 	size_t      nl  = strlen(name);
 	const char *end = strstr(raw, "\r\n\r\n");
@@ -222,6 +232,7 @@ static int send_all2(int fd, const char *a, int an, const char *b, int bn)
 
 int req_parse(s_http_req *req, int fd, char *raw, int rawlen)
 {
+	if (!req || !raw || rawlen <= 0) return 0;
 	memset(req, 0, sizeof(*req));
 	char uri[512] = {0};
 	if (sscanf(raw, "%7s %511s", req->method, uri) < 2)
@@ -254,15 +265,6 @@ int req_parse(s_http_req *req, int fd, char *raw, int rawlen)
 			return 1;
 		}
 		if (clen > WEB_POST_MAX || have > WEB_POST_MAX) {
-
-			long discard = clen - have;
-			char sink[4096];
-			while (discard > 0) {
-				int want = discard > (long)sizeof(sink) ? (int)sizeof(sink) : (int)discard;
-				int n = (int)recv(fd, RECV_CAST(sink), (size_t)want, 0);
-				if (n <= 0) break;
-				discard -= n;
-			}
 			req->status = 413;
 			return 1;
 		}
@@ -285,6 +287,7 @@ int req_parse(s_http_req *req, int fd, char *raw, int rawlen)
 
 void req_free(s_http_req *req)
 {
+	if (!req) return;
 	free(req->body);
 	req->body     = NULL;
 	req->body_len = 0;
@@ -292,7 +295,7 @@ void req_free(s_http_req *req)
 
 int buf_printf(char **dst, int *dstsz, int pos, const char *fmt, ...)
 {
-	if (!dst || !*dst || !dstsz || *dstsz <= 0 || pos < 0 || pos >= *dstsz) return pos;
+	if (!dst || !*dst || !dstsz || !fmt || *dstsz <= 0 || pos < 0 || pos >= *dstsz) return pos;
 
 	int avail = *dstsz - pos;
 	if (!strchr(fmt, '%')) {
@@ -332,13 +335,15 @@ int buf_printf(char **dst, int *dstsz, int pos, const char *fmt, ...)
 
 int buf_json_string(char **dst, int *dstsz, int pos, const char *src)
 {
+    if (!dst || !dstsz || pos < 0) return -1;
+    if (pos > 0 && (!*dst || *dstsz <= pos)) return -1;
     if (!src) src = "";
     size_t n = strlen(src);
     if (n > (SIZE_MAX - 8) / 6) return -1;
     size_t need = n * 6 + 1;
-    if (need > (size_t)INT_MAX || pos < 0 || (size_t)pos > (size_t)INT_MAX - need) return -1;
+    if (need > (size_t)INT_MAX || (size_t)pos > (size_t)INT_MAX - need) return -1;
     int required = pos + (int)need + 1;
-    if (required >= *dstsz) {
+    if (!*dst || *dstsz <= 0 || required >= *dstsz) {
         int newsz = *dstsz > 0 ? *dstsz * 2 : 8192;
         if (newsz < required) newsz = required;
         char *nb = (char *)realloc(*dst, (size_t)newsz);
@@ -350,71 +355,87 @@ int buf_json_string(char **dst, int *dstsz, int pos, const char *src)
     return pos + wrote;
 }
 
+static const char *web_param_value(const char *query, const char *key, size_t *value_len)
+{
+    if (value_len) *value_len = 0;
+    if (!query || !key || !*key) return NULL;
+    const size_t key_len = strlen(key);
+    const char *p = query;
+    while (*p) {
+        if (strncmp(p, key, key_len) == 0 && p[key_len] == '=') {
+            const char *value = p + key_len + 1;
+            size_t len = 0;
+            while (value[len] && value[len] != '&') len++;
+            if (value_len) *value_len = len;
+            return value;
+        }
+        while (*p && *p != '&') p++;
+        if (*p == '&') p++;
+    }
+    return NULL;
+}
+
 void get_param(const char *qs, const char *key, char *out, int outsz)
 {
-	if (!out || outsz <= 0) return;
-	out[0] = '\0';
-	if (!qs || !*qs || !key || !*key) return;
-	size_t      klen = strlen(key);
-	const char *p    = qs;
-	while (*p) {
-		if (strncmp(p, key, klen) == 0 && p[klen] == '=') {
-			p += klen + 1;
-			int i = 0;
-			while (*p && *p != '&' && i < outsz - 1)
-				out[i++] = *p++;
-			out[i] = '\0';
-			url_decode(out);
-			return;
-		}
-		while (*p && *p != '&') p++;
-		if (*p == '&') p++;
-	}
+    if (!out || outsz <= 0) return;
+    out[0] = '\0';
+    size_t len = 0;
+    const char *value = web_param_value(qs, key, &len);
+    if (!value) return;
+    if (len >= (size_t)outsz) len = (size_t)outsz - 1;
+    memcpy(out, value, len);
+    out[len] = '\0';
+    url_decode(out);
+}
+
+int form_get_copy(const char *body, const char *key, char *out, size_t outsz)
+{
+    if (!out || outsz == 0) return -1;
+    out[0] = '\0';
+    if (!body || !key || !*key) return 0;
+    size_t len = 0;
+    const char *value = web_param_value(body, key, &len);
+    if (!value) return 0;
+    size_t w = 0;
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)value[i];
+        if (c == '%' && i + 2 < len) {
+            int hi = hexval(value[i + 1]), lo = hexval(value[i + 2]);
+            if (hi >= 0 && lo >= 0) {
+                c = (unsigned char)((hi << 4) | lo);
+                i += 2;
+                if (c == 0) continue;
+            }
+        } else if (c == '+') c = ' ';
+        if (w + 1 >= outsz) { out[0] = '\0'; return -1; }
+        out[w++] = (char)c;
+    }
+    out[w] = '\0';
+    return 1;
+}
+
+int form_has(const char *body, const char *key)
+{
+    return web_param_value(body, key, NULL) != NULL;
 }
 
 void form_get(const char *body, const char *key, char *out, int outsz)
 {
-	if (!out || outsz <= 0) return;
-	out[0] = '\0';
-	if (!body || !key || !*key) return;
-	size_t klen = strlen(key);
-	const char *p = body;
-	while (*p) {
-		if (strncmp(p, key, klen) == 0 && p[klen] == '=') {
-			p += klen + 1;
-			int i = 0;
-			while (*p && *p != '&' && i < outsz - 1)
-				out[i++] = *p++;
-			out[i] = '\0';
-			url_decode(out);
-			return;
-		}
-		while (*p && *p != '&') p++;
-		if (*p == '&') p++;
-	}
+    if (!out || outsz <= 0) return;
+    get_param(body, key, out, outsz);
 }
 
 char *form_get_alloc(const char *body, const char *key)
 {
-	if (!body || !key || !*key) return NULL;
-	size_t      klen = strlen(key);
-	const char *p    = body;
-	while (*p) {
-		if (strncmp(p, key, klen) == 0 && p[klen] == '=') {
-			p += klen + 1;
-			size_t n = 0;
-			while (p[n] && p[n] != '&') n++;
-			char *out = (char *)malloc(n + 1);
-			if (!out) return NULL;
-			memcpy(out, p, n);
-			out[n] = '\0';
-			url_decode(out);
-			return out;
-		}
-		while (*p && *p != '&') p++;
-		if (*p == '&') p++;
-	}
-	return NULL;
+    size_t len = 0;
+    const char *value = web_param_value(body, key, &len);
+    if (!value) return NULL;
+    char *out = (char *)malloc(len + 1);
+    if (!out) return NULL;
+    memcpy(out, value, len);
+    out[len] = '\0';
+    url_decode(out);
+    return out;
 }
 
 int write_file_atomic(const char *path, const char *data, size_t len)
@@ -446,6 +467,7 @@ int write_file_atomic(const char *path, const char *data, size_t len)
 
 int web_valid_text(const char *s)
 {
+	if (!s) return 0;
 	size_t n = strlen(s);
 	if (!n) return 0;
 	if (s[0] == ' ' || s[0] == '\t' || s[n - 1] == ' ' || s[n - 1] == '\t') return 0;
@@ -458,25 +480,41 @@ int web_valid_text(const char *s)
 
 int web_valid_ipv4_or_empty(const char *s)
 {
+	if (!s) return 0;
 	struct in_addr a;
 	return !s[0] || inet_pton(AF_INET, s, &a) == 1;
 }
 
-int html_escape(const char *src, char *dst, int dstsz)
+static size_t html_escape_write(const char *src, size_t len, char *dst, size_t cap)
 {
-	int o = 0;
-	for (const char *p = src; *p && o < dstsz - 7; p++) {
-		switch (*p) {
-		case '<':  memcpy(dst + o, "&lt;",   4); o += 4; break;
-		case '>':  memcpy(dst + o, "&gt;",   4); o += 4; break;
-		case '&':  memcpy(dst + o, "&amp;",  5); o += 5; break;
-		case '"':  memcpy(dst + o, "&quot;", 6); o += 6; break;
-		case '\'': memcpy(dst + o, "&#39;",  5); o += 5; break;
-		default:   dst[o++] = *p; break;
+	if (!dst || cap == 0) return 0;
+	if (!src) len = 0;
+	size_t o = 0;
+	for (size_t i = 0; i < len; i++) {
+		const char *rep = NULL;
+		size_t n = 1;
+		switch ((unsigned char)src[i]) {
+		case '<':  rep = "&lt;";   n = 4; break;
+		case '>':  rep = "&gt;";   n = 4; break;
+		case '&':  rep = "&amp;";  n = 5; break;
+		case '"':  rep = "&quot;"; n = 6; break;
+		case '\'': rep = "&#39;";  n = 5; break;
+		default: break;
 		}
+		if (o + n + 1 > cap) break;
+		if (rep) memcpy(dst + o, rep, n);
+		else dst[o] = src[i];
+		o += n;
 	}
 	dst[o] = '\0';
 	return o;
+}
+
+int html_escape(const char *src, char *dst, int dstsz)
+{
+	if (!dst || dstsz <= 0) return 0;
+	if (!src) src = "";
+	return (int)html_escape_write(src, strlen(src), dst, (size_t)dstsz);
 }
 
 static size_t html_escaped_len(const char *buf, size_t len)
@@ -534,23 +572,13 @@ int buf_html_string(char **dst, int *dstsz, int pos, const char *src)
 		*dst = nb;
 		*dstsz = newsz;
 	}
-	char *o = *dst + pos;
-	for (size_t i = 0; i < n; i++) {
-		switch ((unsigned char)src[i]) {
-		case '<':  memcpy(o, "&lt;",   4); o += 4; break;
-		case '>':  memcpy(o, "&gt;",   4); o += 4; break;
-		case '&':  memcpy(o, "&amp;",  5); o += 5; break;
-		case '"':  memcpy(o, "&quot;", 6); o += 6; break;
-		case '\'': memcpy(o, "&#39;",  5); o += 5; break;
-		default:   *o++ = src[i]; break;
-		}
-	}
-	*o = '\0';
+	if (html_escape_write(src, n, *dst + pos, (size_t)(*dstsz - pos)) != need) return -1;
 	return pos + (int)need;
 }
 
 char *html_escape_alloc(const char *src, int maxbytes, int *truncated)
 {
+	if (!src) src = "";
 	if (maxbytes < 0) maxbytes = 0;
 	size_t srclen = strlen(src);
 	if (truncated) *truncated = srclen > (size_t)maxbytes;
@@ -566,6 +594,7 @@ char *html_escape_alloc(const char *src, int maxbytes, int *truncated)
 char *file_read_escaped(const char *path, int maxbytes, int *truncated)
 {
 	if (truncated) *truncated = 0;
+	if (maxbytes < 0) maxbytes = 0;
 	FILE *fp = fopen(path, "r");
 	if (!fp) {
 		char *empty = (char *)malloc(1);
@@ -607,6 +636,8 @@ char *file_read_escaped(const char *path, int maxbytes, int *truncated)
 
 int json_escape(const char *src, char *dst, int dstsz)
 {
+	if (!dst || dstsz <= 0) return 0;
+	if (!src) src = "";
 	static const char hx[] = "0123456789abcdef";
 	int o = 0;
 	for (const unsigned char *p = (const unsigned char *)src; *p && o < dstsz - 7; p++) {

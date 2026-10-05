@@ -5,6 +5,7 @@
 #include "log/log.h"
 #include "core/utils.h"
 #include "newcamd.h"
+#include "../reader_signature.h"
 #include "proto/newcamd.h"
 
 #define MG_READER_CLIENT_ID 0x7878
@@ -29,27 +30,7 @@ static void mg_reader_init_once(void)
     }
 }
 
-static void mg_signature(const S_READER *r, char *out, size_t out_len)
-{
-    if (!out || out_len == 0) return;
-    out[0] = '\0';
-    char blob[1536];
-    int n = snprintf(blob, sizeof(blob), "%s\x1F%s\x1F%s\x1F%s\x1F%d",
-                     r->device, r->user, r->password, r->protocol, r->inactivitytimeout);
-    if (n < 0 || (size_t)n >= sizeof(blob)) return;
-    uint8_t h[20];
-    sha1_hash((const uint8_t *)blob, (size_t)n, h);
-    if (out_len >= 41) {
-        static const char hex[] = "0123456789ABCDEF";
-        for (size_t i = 0; i < sizeof(h); i++) {
-            out[i * 2] = hex[h[i] >> 4];
-            out[i * 2 + 1] = hex[h[i] & 0x0F];
-        }
-        out[40] = '\0';
-    }
-    secure_zero(h, sizeof(h));
-    secure_zero(blob, sizeof(blob));
-}
+
 
 static void mg_close_locked(S_MG_READER_STATE *s)
 {
@@ -169,7 +150,7 @@ out:
 static int mg_connect_locked(S_MG_READER_STATE *s, const S_READER *r)
 {
     char sig[sizeof(s->signature)];
-    mg_signature(r, sig, sizeof(sig));
+    reader_session_signature(r, sig, sizeof(sig));
     if (s->connected && s->fd >= 0 && strcmp(s->signature, sig) == 0) return 0;
     mg_close_locked(s);
 
@@ -259,10 +240,10 @@ reconnect:
 out:
     pthread_mutex_unlock(&s->mtx);
     if (rc == 0)
-        tcmg_log_dbg(D_READER, "mgcamd reader[%d] ECM success label='%s' caid=%04X sid=%04X",
+        tcmg_log_dbg(D_ECM, "mgcamd reader[%d] ECM success label='%s' caid=%04X sid=%04X",
                      index, reader->label, caid, sid);
     else
-        tcmg_log_dbg(D_READER, "mgcamd reader[%d] ECM failed label='%s' caid=%04X sid=%04X rc=%d",
+        tcmg_log_dbg(D_ECM, "mgcamd reader[%d] ECM failed label='%s' caid=%04X sid=%04X rc=%d",
                      index, reader->label, caid, sid, rc);
     return rc;
 }

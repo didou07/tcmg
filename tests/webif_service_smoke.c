@@ -2,6 +2,9 @@
 #include "core/runtime_state.h"
 #include "config/config.h"
 #include "webif/service/service.h"
+#include "webif/internal/proto.h"
+#include "webif/internal/constants.h"
+#include "webif/server.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -105,17 +108,77 @@ int main(void)
 
     if (!webif_auth_enabled() || !webif_credentials_valid("admin", "secret") ||
         webif_credentials_valid("admin", "wrong") ||
-        !webif_auth_basic_valid("Basic YWRtaW46c2VjcmV0")) return 12;
-    if (webif_port() != 18080 || webif_max_refresh() != 7) return 13;
+        !webif_auth_basic_valid("Basic YWRtaW46c2VjcmV0") ||
+        !webif_auth_basic_valid("  bAsIc\tYWRtaW46c2VjcmV0") ||
+        webif_auth_basic_valid("prefix Basic YWRtaW46c2VjcmV0") ||
+        webif_auth_basic_valid("Basic YWRtaW46c2VjcmV0 garbage")) return 12;
+    {
+        char cookie[WEB_SESSION_LEN + 1] = "";
+        char cookie_buf[WEB_SESSION_LEN + 1] = "";
+        session_create(cookie);
+        char good[128];
+        char embedded[160];
+        snprintf(good, sizeof(good), "foo=bar; tcmg_session=%s; x=y", cookie);
+        snprintf(embedded, sizeof(embedded), "foo=tcmg_session=%s", cookie);
+        if (!cookie_get_session(good, cookie_buf, sizeof(cookie_buf)) || strcmp(cookie_buf, cookie) != 0 ||
+            cookie_get_session(embedded, cookie_buf, sizeof(cookie_buf)) != NULL ||
+            cookie_get_session(good, cookie_buf, 0) != NULL) return 13;
+    }
+    {
+        char form[64] = "";
+        char long_form[64];
+        if (form_get_copy("name=John+Doe&x=%41%42", "name", form, sizeof(form)) != 1 ||
+            strcmp(form, "John Doe") != 0 ||
+            !form_has("name=John+Doe", "name") || form_has("name=John+Doe", "missing")) return 14;
+        memset(long_form, 'A', sizeof(long_form));
+        long_form[sizeof(long_form) - 1] = '\0';
+        if (form_get_copy(long_form, "name", form, 8) != 0) return 15;
+        if (form_get_copy("name=12345678", "name", form, 8) != -1 || form[0] != '\0') return 16;
+    }
+    {
+        s_http_req req;
+        char raw[256];
+        snprintf(raw, sizeof(raw), "POST /save HTTP/1.1\r\nContent-Length: %d\r\n\r\n", WEB_POST_MAX + 1);
+        if (!req_parse(&req, -1, raw, (int)strlen(raw)) || req.status != 413) return 17;
+        req_free(&req);
+        if (req_parse(NULL, -1, raw, (int)strlen(raw)) != 0 || req_parse(&req, -1, NULL, 0) != 0) return 18;
+    }
+    {
+        char out[128] = "x";
+        char *dyn = NULL;
+        int dsz = 0;
+        if (html_escape(NULL, out, sizeof(out)) != 0 || out[0] != '\0' ||
+            html_escape("<&>\"'", out, sizeof(out)) != 24 || strcmp(out, "&lt;&amp;&gt;&quot;&#39;") != 0 ||
+            json_escape(NULL, out, sizeof(out)) != 0 || out[0] != '\0') return 19;
+        url_decode(NULL);
+        if (web_valid_text(NULL) || web_valid_ipv4_or_empty(NULL) || !web_valid_ipv4_or_empty("") ||
+            web_valid_ipv4_or_empty("999.1.1.1")) return 20;
+        b64_encode(NULL, 0, out, sizeof(out));
+        if (out[0] != '\0') return 21;
+        if (buf_json_string(&dyn, &dsz, 0, "a\"b") < 0 || strcmp(dyn, "a\\\"b") != 0) return 22;
+        free(dyn);
+        if (buf_printf(NULL, NULL, 0, "%s", "x") != 0 ||
+            buf_json_string(NULL, NULL, 0, "x") != -1) return 23;
+    }
+    {
+        pthread_rwlock_wrlock(&g_cfg.acc_lock);
+        snprintf(g_cfg.webif_bindaddr, sizeof(g_cfg.webif_bindaddr), "not-an-ip");
+        pthread_rwlock_unlock(&g_cfg.acc_lock);
+        if (webif_start() == 0 || webif_start() == 0) return 24;
+        pthread_rwlock_wrlock(&g_cfg.acc_lock);
+        snprintf(g_cfg.webif_bindaddr, sizeof(g_cfg.webif_bindaddr), "127.0.0.1");
+        pthread_rwlock_unlock(&g_cfg.acc_lock);
+    }
+    if (webif_port() != 18080 || webif_max_refresh() != 7) return 25;
     {
         char bind[64];
         webif_bindaddr(bind, sizeof(bind));
-        if (strcmp(bind, "127.0.0.1") != 0) return 14;
+        if (strcmp(bind, "127.0.0.1") != 0) return 26;
     }
 
     stats = webif_server_stats();
-    if (stats.naccounts != 1 || stats.uptime_s < 120 || stats.uptime_s > 130) return 15;
-    if (webif_pcsc_enabled() != 0) return 16;
+    if (stats.naccounts != 1 || stats.uptime_s < 120 || stats.uptime_s > 130) return 27;
+    if (webif_pcsc_enabled() != 0) return 28;
 
     memset(&edit, 0, sizeof(edit));
     edit.index = index;
@@ -125,7 +188,7 @@ int main(void)
     snprintf(edit.ecmwhitelist, sizeof(edit.ecmwhitelist), "37");
     snprintf(edit.group, sizeof(edit.group), "1x");
     snprintf(edit.caid, sizeof(edit.caid), "0B00");
-    if (webif_reader_save(&edit)) return 17;
+    if (webif_reader_save(&edit)) return 32;
 
     memset(&edit, 0, sizeof(edit));
     edit.index = index;
@@ -136,8 +199,8 @@ int main(void)
     snprintf(edit.group, sizeof(edit.group), "1");
     snprintf(edit.caid, sizeof(edit.caid), "0B00");
     snprintf(edit.ecmkeys, sizeof(edit.ecmkeys), "0B00=00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF");
-    if (!webif_reader_save(&edit)) return 18;
-    if (!webif_reader_get(index, &one_reader) || one_reader.ecm_whitelist != 255) return 19;
+    if (!webif_reader_save(&edit)) return 33;
+    if (!webif_reader_get(index, &one_reader) || one_reader.ecm_whitelist != 255) return 34;
 
     cleanup_global_config();
     unlink("/tmp/tcmg-webif-service-does-not-exist");

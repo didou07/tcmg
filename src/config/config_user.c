@@ -1,18 +1,7 @@
 #define MODULE_LOG_PREFIX "conf"
 #include "config_internal.h"
+#include "account/account.h"
 #include "stats/account_stats.h"
-static void free_account_list(S_ACCOUNT*head)
-{
-    while(head){
-        S_ACCOUNT*next=head->next;
-        account_stats_global_remove(head);
-        account_stats_destroy(&head->stats);
-        pthread_mutex_destroy(&head->as_mtx);
-        secure_zero(head,sizeof(*head));
-        free(head);
-        head=next;
-    }
-}
 S_ACCOUNT*cfg_account_new(S_CONFIG*cfg)
 {
     S_ACCOUNT*a;
@@ -46,7 +35,7 @@ S_ACCOUNT*cfg_account_new(S_CONFIG*cfg)
 void cfg_accounts_free(S_CONFIG*cfg)
 {
     if(!cfg)return;
-    free_account_list(cfg->accounts);
+    account_list_free(cfg->accounts);
     cfg->accounts=NULL;
     cfg->naccounts=0;
 }
@@ -60,11 +49,7 @@ static void cfg_account_remove(S_CONFIG*cfg,S_ACCOUNT*target)
         if(prev)prev->next=a->next;
         else cfg->accounts=a->next;
         a->next=NULL;
-        account_stats_global_remove(a);
-        account_stats_destroy(&a->stats);
-        pthread_mutex_destroy(&a->as_mtx);
-        secure_zero(a,sizeof(*a));
-        free(a);
+        account_destroy(a);
         if(cfg->naccounts>0)cfg->naccounts--;
         return;
     }

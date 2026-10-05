@@ -129,9 +129,13 @@ bool cfg_build_server_text(const S_CONFIG *c, char *buf, size_t cap)
         }
 
         if (reader_protocol_kind(r->protocol) == READER_PROTOCOL_CARD) {
+            const char *maintenance = r->maintenance_mode == TCMG_READER_MAINT_OLD_ECM ? "old_ecm" : "fast_reset";
+            const char *source = r->old_ecm_source == TCMG_OLD_ECM_SOURCE_MANUAL ? "manual" : "auto";
+            const char *trigger = r->old_ecm_trigger == TCMG_OLD_ECM_TRIGGER_SUCCESSES ? "successes" : "interval";
             ok = ok && cfg_appendf(buf, cap, &pos,
-                               "device = %s\nfast_reset = %d\nfast_reset_idle = %d\n",
-                               r->device, r->fast_reset, r->fast_reset_idle);
+                               "device = %s\nmaintenance_mode = %s\nfast_reset = %d\nfast_reset_idle = %d\nold_ecm_source = %s\nold_ecm_trigger = %s\nold_ecm_interval = %d\nold_ecm_successes = %d\nold_ecm = %s\n",
+                               r->device, maintenance, r->fast_reset, r->fast_reset_idle, source, trigger,
+                               r->old_ecm_interval, r->old_ecm_successes, r->old_ecm);
             if (strcasecmp(r->protocol, "pcsc") == 0 ||
                 strcasecmp(r->protocol, "serial") == 0) {
                 ok = ok && cfg_appendf(buf, cap, &pos, "poll_ms = %d\n", r->poll_ms);

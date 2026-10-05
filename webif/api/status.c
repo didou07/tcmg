@@ -32,13 +32,8 @@ void send_api_status(int fd, const char *qs)
     webif_config_snapshot(&cfg);
     time_t now = time(NULL);
 
-    S_WEBIF_CLIENT_VIEW *clients = NULL;
-    int nclients = webif_client_snapshot_alloc(&clients);
-    if (nclients < 0) {
-        free(buf);
-        send_json_error(fd, 503, "Service Unavailable", "out of memory");
-        return;
-    }
+    S_WEBIF_CLIENT_VIEW clients[MAX_ACTIVE_CLIENTS];
+    int nclients = webif_client_snapshot_all(clients, MAX_ACTIVE_CLIENTS);
 
     pos = buf_printf(&buf, &bsz, pos,
         "{"
@@ -92,7 +87,6 @@ void send_api_status(int fd, const char *qs)
 
     pos = buf_printf(&buf, &bsz, pos, "]}");
     send_response(fd, 200, "OK", "application/json", buf, pos);
-    free(clients);
     free(buf);
 }
 

@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "../reader/failure.h"
+#include "reader_backend.h"
 
 #define TCMG_INTERNAL_MAX_ATR 64
 
@@ -16,6 +17,7 @@ typedef struct {
     uint8_t atr[TCMG_INTERNAL_MAX_ATR];
     size_t atr_len;
     int protocol;
+    char backend[32];
 } S_INTERNAL_READER;
 
 int internal_start(void);

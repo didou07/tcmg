@@ -1,7 +1,10 @@
 #ifndef TCMG_CONSTANTS_H_
 #define TCMG_CONSTANTS_H_
 
-#define TCMG_BANNER       "tcmg v" TCMG_VERSION
+#ifndef TCMG_DEVICE_NAME
+#  define TCMG_DEVICE_NAME "native"
+#endif
+#define TCMG_BANNER       "tcmg v" TCMG_VERSION " (" TCMG_DEVICE_NAME ")"
 #ifndef TCMG_BUILD_TIME
 #  define TCMG_BUILD_TIME __DATE__ " " __TIME__
 #endif

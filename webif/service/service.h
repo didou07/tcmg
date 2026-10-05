@@ -34,7 +34,6 @@ bool webif_reader_delete(int index);
 bool webif_reader_toggle(int index, int *enabled);
 
 int webif_client_snapshot_all(S_WEBIF_CLIENT_VIEW *out, size_t cap);
-int webif_client_snapshot_alloc(S_WEBIF_CLIENT_VIEW **out);
 int webif_active_connection_count(void);
 void webif_client_kill_by_tid(uint32_t tid);
 void webif_client_kill_by_user(const char *user);

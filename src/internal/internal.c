@@ -1,12 +1,15 @@
 #define MODULE_LOG_PREFIX "internal"
 #include "internal.h"
 #include "internal_t0.h"
+#include "reader_backend.h"
 #include "../config/runtime_access.h"
 #include "../core/constants.h"
+#include "../reader/card_utils.h"
 #include "../core/utils.h"
 #include "../log/log.h"
 #include "../platform/platform.h"
 #include "../reader/failure.h"
+#include "../reader/old_ecm.h"
 
 #ifndef TCMG_OS_WINDOWS
 
@@ -90,6 +93,7 @@ typedef struct {
     int64_t last_activity_ms;
     int64_t last_activity_seen_ms;
     int fast_reset_paused;
+    S_READER_OLD_ECM_STATE old_ecm;
     uint32_t sci_etu;
     uint32_t sci_fs;
     uint32_t t0_wwt_etu;
@@ -116,6 +120,7 @@ typedef struct {
     pthread_t worker_tid;
     pthread_cond_t cv;
     pthread_mutex_t mtx;
+    S_INTERNAL_BACKEND backend;
 } S_INTERNAL_SLOT;
 
 static S_INTERNAL_SLOT s_slots[MAX_READERS];
@@ -175,6 +180,7 @@ static void slots_init(void)
     if (!s_slots_initialized) {
         for (int i = 0; i < MAX_READERS; i++) {
             s_slots[i].fd = -1;
+            internal_backend_init(&s_slots[i].backend);
             pthread_mutex_init(&s_slots[i].mtx, NULL);
             pthread_cond_init(&s_slots[i].cv, NULL);
         }
@@ -271,9 +277,8 @@ static int queue_waiter_count_locked(const S_INTERNAL_SLOT *s)
 
 static void slot_close_fd(S_INTERNAL_SLOT *s)
 {
-    if (!s || s->fd < 0) return;
-    if (s->exclusive) (void)flock(s->fd, LOCK_UN);
-    close(s->fd);
+    if (!s) return;
+    internal_backend_close(&s->backend);
     s->fd = -1;
     s->exclusive = 0;
 }
@@ -289,6 +294,7 @@ static void slot_clear(S_INTERNAL_SLOT *s)
     s->last_activity_ms = mono_ms();
     s->last_activity_seen_ms = s->last_activity_ms;
     s->fast_reset_paused = 0;
+    memset(&s->old_ecm, 0, sizeof(s->old_ecm));
     s->sci_etu = 0;
     s->sci_fs = 0;
     s->t0_wwt_etu = 0;
@@ -304,6 +310,7 @@ static void slot_clear(S_INTERNAL_SLOT *s)
     s->atr_len = 0;
     memset(s->atr, 0, sizeof(s->atr));
     s->device[0] = '\0';
+    internal_backend_init(&s->backend);
 }
 
 static void slot_reset_state(S_INTERNAL_SLOT *s)
@@ -319,6 +326,7 @@ static void slot_reset_state(S_INTERNAL_SLOT *s)
     s->last_activity_ms = mono_ms();
     s->last_activity_seen_ms = s->last_activity_ms;
     s->fast_reset_paused = 0;
+    memset(&s->old_ecm, 0, sizeof(s->old_ecm));
     s->sci_etu = 0;
     s->sci_fs = 0;
     s->t0_wwt_etu = 0;
@@ -336,33 +344,17 @@ static void slot_reset_state(S_INTERNAL_SLOT *s)
     s->atr_len = 0;
     s->device[0] = '\0';
     s->target_device[0] = '\0';
+    internal_backend_init(&s->backend);
     queue_reset_locked(s);
-}
-
-static int configure_tty(int fd, const char *device)
-{
-    if (device && strncmp(device, "/dev/sci", 8) == 0) return 0;
-
-    struct termios tio;
-    if (tcgetattr(fd, &tio) < 0) return -1;
-    cfmakeraw(&tio);
-    tio.c_cflag |= CLOCAL | CREAD;
-    tio.c_cflag &= ~(CSIZE | CRTSCTS | CSTOPB);
-    tio.c_cflag |= CS8 | PARENB;
-    tio.c_cflag &= (tcflag_t)~PARODD;
-    cfsetispeed(&tio, B9600);
-    cfsetospeed(&tio, B9600);
-    tio.c_cc[VMIN] = 0;
-    tio.c_cc[VTIME] = 1;
-    if (tcsetattr(fd, TCSANOW, &tio) < 0) return -1;
-    (void)write_flush(fd);
-    return 0;
 }
 
 static int slot_open(S_INTERNAL_SLOT *s, const char *device)
 {
-    if (!s || !device || !*device) return -1;
-    if (s->fd >= 0 && strcmp(s->device, device) == 0) return 0;
+    const char *resolved;
+
+    if (!s) return -1;
+    resolved = (device && *device) ? device : "auto";
+    if (internal_backend_is_open(&s->backend) && strcmp(s->target_device, resolved) == 0) return 0;
 
     slot_close_fd(s);
     s->params_applied = 0;
@@ -371,45 +363,36 @@ static int slot_open(S_INTERNAL_SLOT *s, const char *device)
     s->protocol = 0;
     s->atr_len = 0;
 
-    int fd = open(device, O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
-    if (fd < 0) return -1;
-
-    int exclusive = 0;
-#if defined(TIOCEXCL)
-    if (ioctl(fd, TIOCEXCL) == 0) exclusive = 1;
-#endif
-    if (!exclusive && flock(fd, LOCK_EX | LOCK_NB) == 0) exclusive = 1;
-
-    if (configure_tty(fd, device) < 0) {
-        if (exclusive) (void)flock(fd, LOCK_UN);
-        close(fd);
+    if (internal_backend_open(&s->backend, resolved) < 0)
         return -1;
-    }
 
-    s->fd = fd;
-    s->exclusive = exclusive;
-    tcmg_strlcpy(s->device, device, sizeof(s->device));
+    s->fd = internal_backend_get_fd(&s->backend);
+    s->exclusive = s->backend.exclusive;
+    tcmg_strlcpy(s->device, internal_backend_device(&s->backend), sizeof(s->device));
+    if (!s->device[0]) tcmg_strlcpy(s->device, resolved, sizeof(s->device));
+    tcmg_log_force("internal backend detected backend=%s device=%s platform=%s",
+                   internal_backend_name(&s->backend), s->device, internal_backend_platform_name());
     return 0;
 }
 
 static int reader_present(S_INTERNAL_SLOT *s)
 {
-#ifdef __linux__
-    if (!s || s->fd < 0) return 0;
-    uint32_t present = 0;
-    if (ioctl(s->fd, SCI_GET_PRESENT, &present) == 0) {
+    if (!s || !internal_backend_is_open(&s->backend)) return 0;
+    int present = internal_backend_present(&s->backend);
+    if (present >= 0) {
         s->present = present ? 1 : 0;
+        if (!s->present) {
+            s->ready = 0;
+            s->atr_len = 0;
+        }
         return s->present;
     }
     s->present = 0;
     s->ready = 0;
     s->atr_len = 0;
-    tcmg_log_dbg(D_READER, "present poll failed device=%s errno=%d", s->device, errno);
+    tcmg_log_dbg(D_READER, "present poll failed backend=%s device=%s errno=%d",
+                 internal_backend_name(&s->backend), s->device, errno);
     return -1;
-#else
-    (void)s;
-    return 0;
-#endif
 }
 
 static void sci_parameters_defaults(SCI_PARAMETERS *p)
@@ -445,6 +428,98 @@ static void calculate_t0_timing(S_INTERNAL_SLOT *s)
     uint64_t wwt_us = (uint64_t)s->t0_wwt_etu * etu_us;
     uint32_t wwt_ms = (uint32_t)((wwt_us + 999u) / 1000u);
     s->t0_wwt_ms = clamp_u32(wwt_ms, 250, 10000);
+}
+
+static int parse_atr_buffer(S_INTERNAL_SLOT *s, const uint8_t *buffer, size_t length)
+{
+    if (!s || !buffer || length < 2 || length > sizeof(s->atr)) return -1;
+
+    uint8_t raw[TCMG_INTERNAL_MAX_ATR];
+    for (size_t i = 0; i < length; i++) {
+        uint8_t b = buffer[i];
+        if (buffer[0] == 0x03u) {
+            b = (uint8_t)~((((b << 7) & 0x80u) | ((b << 5) & 0x40u) |
+                            ((b << 3) & 0x20u) | ((b << 1) & 0x10u) |
+                            ((b >> 1) & 0x08u) | ((b >> 3) & 0x04u) |
+                            ((b >> 5) & 0x02u) | ((b >> 7) & 0x01u)));
+        }
+        raw[i] = b;
+    }
+
+    size_t n = 0;
+    uint8_t ts = raw[n++];
+    uint8_t t0 = raw[n++];
+    uint8_t y = t0;
+    unsigned first_protocol = 0;
+    unsigned current_protocol = 0;
+    int tck_required = 0;
+    uint8_t fi = 1;
+    uint8_t di = 1;
+    uint8_t d = 1;
+    uint8_t wi = TCMG_INTERNAL_DEFAULT_WI;
+    uint8_t n_extra = 0;
+    uint8_t current_i = 0;
+
+    for (unsigned group = 1; group <= 8; group++) {
+        if (y & 0x10u) {
+            if (n >= length) return -2;
+            uint8_t ta = raw[n++];
+            if (group == 1) { fi = (uint8_t)(ta >> 4); di = (uint8_t)(ta & 0x0Fu); }
+        }
+        if (y & 0x20u) {
+            if (n >= length) return -3;
+            uint8_t tb = raw[n++];
+            if (group == 1) current_i = (uint8_t)((tb & 0x60u) >> 5);
+        }
+        if (y & 0x40u) {
+            if (n >= length) return -4;
+            uint8_t tc = raw[n++];
+            if (group == 1) n_extra = tc;
+            if (group == 2 && current_protocol == 0) wi = tc ? tc : TCMG_INTERNAL_DEFAULT_WI;
+        }
+        if (!(y & 0x80u)) break;
+        if (n >= length) return -5;
+        uint8_t td = raw[n++];
+        current_protocol = td & 0x0Fu;
+        if (group == 1) first_protocol = current_protocol;
+        if (current_protocol != 0) tck_required = 1;
+        y = td;
+    }
+
+    uint8_t historical = (uint8_t)(t0 & 0x0Fu);
+    if (n + historical + (tck_required ? 1u : 0u) > length) return -6;
+    n += historical;
+    if (tck_required) n++;
+    if (n != length) return -7;
+
+    static const uint16_t f_table[16] = { 0, 372, 558, 744, 1116, 1488, 1860, 0, 0, 512, 768, 1024, 1536, 2048, 0, 0 };
+    static const uint8_t d_table[16] = { 0, 1, 2, 4, 8, 16, 32, 64, 12, 20, 0, 0, 0, 0, 0, 0 };
+    if (fi == 0 || fi >= 16 || di == 0 || di >= 16 || !f_table[fi] || !d_table[di]) { fi = 1; di = 1; }
+    d = d_table[di];
+
+    if (first_protocol != 0) {
+        tcmg_log("reader unsupported ATR protocol T=%u backend=%s device=%s",
+                 first_protocol, internal_backend_name(&s->backend), s->device);
+        return -8;
+    }
+
+    s->atr_len = length;
+    memcpy(s->atr, raw, length);
+    s->protocol = 0;
+    s->t0_fi = fi;
+    s->t0_di = di;
+    s->t0_d = d;
+    s->t0_wi = wi ? wi : TCMG_INTERNAL_DEFAULT_WI;
+    s->t0_n = n_extra;
+    s->t0_i = current_i;
+    s->t0_wwt_etu = 960u * (uint32_t)s->t0_d * (uint32_t)s->t0_wi;
+    s->t0_egt_etu = n_extra == 255u ? 0u : n_extra;
+
+    tcmg_log_dbg(D_READER,
+                 "ATR backend=%s TS=%02X T0=%02X proto=T0 FI=%u DI=%u D=%u WI=%u N=%u I=%u WWT=%uETU",
+                 internal_backend_name(&s->backend), ts, t0, fi, di, s->t0_d, s->t0_wi, s->t0_n, s->t0_i, s->t0_wwt_etu);
+    tcmg_dump_dbg(D_READER, s->atr, (int32_t)s->atr_len, "INTERNAL ATR");
+    return 0;
 }
 
 static int parse_atr(S_INTERNAL_SLOT *s, size_t *atr_len_out)
@@ -567,6 +642,7 @@ static int parse_atr(S_INTERNAL_SLOT *s, size_t *atr_len_out)
     (void)protocol_count;
     return 0;
 }
+
 
 static void apply_initial_sci_parameters(S_INTERNAL_SLOT *s, SCI_PARAMETERS *p, uint32_t fs)
 {
@@ -740,6 +816,48 @@ static int sci_reset_card(S_INTERNAL_SLOT *s, const char *reason)
 #endif
 }
 
+static int backend_reset_card(S_INTERNAL_SLOT *s, const char *reason)
+{
+    if (!s || !internal_backend_is_open(&s->backend)) return -1;
+    int64_t reset_t0 = mono_ms();
+    if (reader_present(s) <= 0) { s->ready = 0; return -1; }
+    uint8_t atr[TCMG_INTERNAL_MAX_ATR];
+    size_t atr_len = sizeof(atr);
+    if (internal_backend_reset(&s->backend, atr, &atr_len) < 0) {
+        s->ready = 0;
+        return -1;
+    }
+    if (parse_atr_buffer(s, atr, atr_len) < 0) {
+        s->ready = 0;
+        return -1;
+    }
+    calculate_t0_timing(s);
+    s->present = 1;
+    s->ready = 1;
+    s->params_applied = 0;
+    s->last_reset_ms = mono_ms();
+    tcmg_log_force("card reset ok reason=%s backend=%s device=%s T=%d ATR=%zu ETU=%u WWT=%ums D=%u WI=%u FI=%u elapsed=%lldms",
+                   reason && *reason ? reason : "unknown", internal_backend_name(&s->backend), s->device,
+                   s->protocol, s->atr_len, s->sci_etu, s->t0_wwt_ms, s->t0_d, s->t0_wi, s->t0_fi,
+                   (long long)(mono_ms() - reset_t0));
+    return 0;
+}
+
+static ssize_t t0_backend_read(void *ctx, uint8_t *buf, size_t len, uint32_t timeout_ms)
+{
+    return internal_backend_read((S_INTERNAL_BACKEND *)ctx, buf, len, timeout_ms);
+}
+
+static ssize_t t0_backend_write(void *ctx, const uint8_t *buf, size_t len, uint32_t timeout_ms)
+{
+    return internal_backend_write((S_INTERNAL_BACKEND *)ctx, buf, len, timeout_ms);
+}
+
+static int t0_backend_flush(void *ctx)
+{
+    return internal_backend_flush((S_INTERNAL_BACKEND *)ctx);
+}
+
 static int conax_sct_length(const uint8_t *ecm, size_t ecm_len, size_t *out_len)
 {
     if (!ecm || !out_len || ecm_len < 3) return -1;
@@ -749,36 +867,9 @@ static int conax_sct_length(const uint8_t *ecm, size_t ecm_len, size_t *out_len)
     return 0;
 }
 
-static int parse_conax_cw(const uint8_t *rsp, size_t rsp_len, uint8_t cw[16], int *found_mask)
-{
-    if (!rsp || rsp_len < 2 || !cw || !found_mask) return -1;
-    *found_mask = 0;
-
-    if (rsp_len >= 3 && rsp[0] == 0x81 && ((rsp[2] >> 5) == 2))
-        return -2;
-
-    size_t data_len = rsp_len - 2u;
-    size_t p = 0;
-    while (p + 2 <= data_len) {
-        const uint8_t tag = rsp[p];
-        const uint8_t len = rsp[p + 1];
-        const size_t end = p + 2u + len;
-        if (end > data_len) break;
-
-        if (tag == 0x25 && len >= 0x0D) {
-            const uint8_t n = rsp[p + 4];
-            if (n < 2 && p + 15 <= data_len) {
-                memcpy(cw + ((size_t)n << 3), rsp + p + 7, 8);
-                *found_mask |= (1 << n);
-            }
-        }
-        p = end;
-    }
-    return 0;
-}
 
 static int internal_conax_ecm(S_INTERNAL_SLOT *s, const uint8_t *ecm, size_t ecm_len,
-                              uint8_t cw[16], int *recoverable)
+                              uint8_t cw[16], int *recoverable, int allow_ca)
 {
     if (recoverable) *recoverable = 0;
     if (!s || !ecm || !cw || ecm_len == 0 || ecm_len > 249)
@@ -802,18 +893,30 @@ static int internal_conax_ecm(S_INTERNAL_SLOT *s, const uint8_t *ecm, size_t ecm
     apdu[7] = 0x00;
     memcpy(apdu + 8, ecm, n);
 
-    tcmg_dump_dbg(D_ECM, apdu, (int32_t)apdu_len, "INTERNAL CONAX >> DD A2");
-
     S_INTERNAL_T0_CHANNEL ch = {
         .fd = s->fd,
+        .ctx = &s->backend,
+        .read_fn = t0_backend_read,
+        .write_fn = t0_backend_write,
+        .flush_fn = t0_backend_flush,
         .wwt_ms = s->t0_wwt_ms,
         .io_write_timeout_ms = TCMG_INTERNAL_IO_WRITE_MS,
         .max_nulls = TCMG_INTERNAL_MAX_NULLS
     };
 
-    int t0_rc = internal_t0_exchange(&ch, apdu, apdu_len, rsp, &rsp_len);
+    int t0_rc;
+    if (s->backend.kind == TCMG_INTERNAL_BACKEND_COOLAPI) {
+        const char *trace = allow_ca ? "ecm" : "old-ecm";
+        tcmg_dump_dbg(D_READER, apdu, (int32_t)apdu_len, "INTERNAL COOLAPI >> APDU context=%s", trace);
+        t0_rc = internal_backend_transceive(&s->backend, apdu, apdu_len, rsp, &rsp_len,
+                                            s->t0_wwt_ms ? s->t0_wwt_ms : 4000u);
+        if (t0_rc == 0)
+            tcmg_dump_dbg(D_READER, rsp, (int32_t)rsp_len, "INTERNAL COOLAPI << RESPONSE context=%s", trace);
+    } else {
+        t0_rc = internal_t0_exchange(&ch, apdu, apdu_len, allow_ca ? "ecm" : "old-ecm", rsp, &rsp_len);
+    }
     if (t0_rc < 0) {
-        tcmg_log_dbg(D_ECM, "Conax DD A2 transport failed rc=%d", t0_rc);
+        tcmg_log_dbg(D_READER, "Conax DD A2 transport failed context=%s rc=%d", allow_ca ? "ecm" : "old-ecm", t0_rc);
         if (recoverable) *recoverable = 1;
         return -2;
     }
@@ -834,9 +937,10 @@ static int internal_conax_ecm(S_INTERNAL_SLOT *s, const uint8_t *ecm, size_t ecm
         return -5;
 
     if (sw1 == 0x90 && sw2 == 0x00) {
-        if (parse_conax_cw(rsp, rsp_len, cw, &got) == -2)
+        if (tcmg_parse_conax_cw(rsp, rsp_len, cw, &got) == -2)
             return -6;
     }
+    if (!allow_ca) return got == 3 ? 0 : -13;
 
     unsigned ca_round = 0;
     while (sw1 == 0x98 && sw2 != 0x00 && sw2 != 0xFF) {
@@ -844,8 +948,18 @@ static int internal_conax_ecm(S_INTERNAL_SLOT *s, const uint8_t *ecm, size_t ecm
 
         uint8_t ins_ca[5] = { 0xDD, 0xCA, 0x00, 0x00, sw2 };
         rsp_len = sizeof(rsp);
-        tcmg_dump_dbg(D_ECM, ins_ca, sizeof(ins_ca), "INTERNAL CONAX >> DD CA");
-        if (internal_t0_exchange(&ch, ins_ca, sizeof(ins_ca), rsp, &rsp_len) < 0) {
+        int ca_rc;
+        if (s->backend.kind == TCMG_INTERNAL_BACKEND_COOLAPI) {
+            const char *trace = allow_ca ? "ecm-ca" : "old-ecm-ca";
+            tcmg_dump_dbg(D_READER, ins_ca, sizeof(ins_ca), "INTERNAL COOLAPI >> APDU context=%s", trace);
+            ca_rc = internal_backend_transceive(&s->backend, ins_ca, sizeof(ins_ca), rsp, &rsp_len,
+                                                s->t0_wwt_ms ? s->t0_wwt_ms : 4000u);
+            if (ca_rc == 0)
+                tcmg_dump_dbg(D_READER, rsp, (int32_t)rsp_len, "INTERNAL COOLAPI << RESPONSE context=%s", trace);
+        } else {
+            ca_rc = internal_t0_exchange(&ch, ins_ca, sizeof(ins_ca), allow_ca ? "ecm-ca" : "old-ecm-ca", rsp, &rsp_len);
+        }
+        if (ca_rc < 0) {
             if (recoverable) *recoverable = 1;
             return -8;
         }
@@ -864,7 +978,7 @@ static int internal_conax_ecm(S_INTERNAL_SLOT *s, const uint8_t *ecm, size_t ecm
             return -11;
 
         int part = 0;
-        if (parse_conax_cw(rsp, rsp_len, cw, &part) == -2)
+        if (tcmg_parse_conax_cw(rsp, rsp_len, cw, &part) == -2)
             return -12;
         got |= part;
     }
@@ -900,26 +1014,28 @@ static void *internal_reader_worker(void *arg)
         S_READER cfg;
         if (!cfg_runtime_reader_get(index, &cfg) ||
             !cfg.in_use || !cfg.enabled ||
-            strcasecmp(cfg.protocol, "internal") != 0 || !cfg.device[0])
+            strcasecmp(cfg.protocol, "internal") != 0)
             break;
+
+        const char *target_device = cfg.device[0] ? cfg.device : "auto";
 
         pthread_mutex_lock(&s->mtx);
         if (s->worker_stop) {
             pthread_mutex_unlock(&s->mtx);
             break;
         }
-        tcmg_strlcpy(s->target_device, cfg.device, sizeof(s->target_device));
-        int fd_ready = s->fd >= 0 && strcmp(s->device, cfg.device) == 0;
+        tcmg_strlcpy(s->target_device, target_device, sizeof(s->target_device));
+        int fd_ready = internal_backend_is_open(&s->backend) && strcmp(s->target_device, target_device) == 0;
         pthread_mutex_unlock(&s->mtx);
 
         if (!fd_ready) {
             pthread_mutex_lock(&s->mtx);
-            if (!s->worker_stop && slot_open(s, cfg.device) < 0) {
+            if (!s->worker_stop && slot_open(s, target_device) < 0) {
                 s->present = 0;
                 s->ready = 0;
             }
             pthread_mutex_unlock(&s->mtx);
-            if (s->fd < 0) {
+            if (!internal_backend_is_open(&s->backend)) {
                 worker_wait(s, 1000);
                 continue;
             }
@@ -936,13 +1052,20 @@ static void *internal_reader_worker(void *arg)
             s->ready = 0;
             s->params_applied = 0;
             s->fast_reset_paused = 0;
+            reader_old_ecm_unbind(&s->old_ecm);
         } else {
             const int64_t now_ms = mono_ms();
+            if (s->ready) {
+                reader_old_ecm_sync(&s->old_ecm, &cfg, now_ms);
+                reader_old_ecm_bind(&s->old_ecm, &cfg, s->device, s->atr, s->atr_len, now_ms);
+            } else {
+                reader_old_ecm_unbind(&s->old_ecm);
+            }
+
             int interval_due = 0;
-            if (cfg.fast_reset > 0 && s->ready && s->present) {
+            if (cfg.maintenance_mode == TCMG_READER_MAINT_FAST_RESET && cfg.fast_reset > 0 && s->ready && s->present) {
                 const int idle_enabled = cfg.fast_reset_idle > 0;
-                const int idle = idle_enabled &&
-                                 now_ms - s->last_activity_ms >=
+                const int idle = idle_enabled && now_ms - s->last_activity_ms >=
                                  (int64_t)cfg.fast_reset_idle * 1000LL;
                 if (s->fast_reset_paused) {
                     if (s->last_activity_ms != s->last_activity_seen_ms) {
@@ -960,9 +1083,10 @@ static void *internal_reader_worker(void *arg)
                                s->queue_count == 0 && s->ecm_active == 0 &&
                                s->last_reset_ms > 0 &&
                                now_ms - s->last_reset_ms >= (int64_t)cfg.fast_reset * 1000LL;
-            } else if (cfg.fast_reset <= 0 || !s->ready || !s->present) {
+            } else if (cfg.maintenance_mode != TCMG_READER_MAINT_FAST_RESET) {
                 s->fast_reset_paused = 0;
             }
+
             int need_reset = !s->ready;
             const char *reason = "startup";
             if (interval_due) {
@@ -970,8 +1094,46 @@ static void *internal_reader_worker(void *arg)
                 reason = "periodic";
             }
             if (need_reset) {
-                if (sci_reset_card(s, reason) < 0)
-                    tcmg_log("reader[%d]: %s reset failed device=%s", index + 1, reason, s->device);
+                int reset_rc = (s->backend.kind == TCMG_INTERNAL_BACKEND_SCI)
+                    ? sci_reset_card(s, reason) : backend_reset_card(s, reason);
+                if (reset_rc < 0)
+                    tcmg_log("reader[%d]: %s reset failed backend=%s device=%s", index + 1, reason,
+                             internal_backend_name(&s->backend), s->device);
+                if (s->ready) {
+                    reader_old_ecm_sync(&s->old_ecm, &cfg, mono_ms());
+                    reader_old_ecm_bind(&s->old_ecm, &cfg, s->device, s->atr, s->atr_len, mono_ms());
+                }
+            }
+
+            if (cfg.maintenance_mode == TCMG_READER_MAINT_OLD_ECM && s->ready && s->present &&
+                s->queue_count == 0 && s->ecm_active == 0 &&
+                reader_old_ecm_due(&cfg, &s->old_ecm, now_ms, s->ecm_active != 0)) {
+                const uint8_t *old_ecm = NULL;
+                size_t old_ecm_len = 0;
+                if (reader_old_ecm_get(&s->old_ecm, &old_ecm, &old_ecm_len) == 0) {
+                    uint8_t ecm_copy[TCMG_OLD_ECM_MAX_LEN];
+                    memcpy(ecm_copy, old_ecm, old_ecm_len);
+                    tcmg_log_dbg(D_READER, "OLD ECM start device=%s source=%s trigger=%s len=%zu",
+                                 s->device,
+                                 cfg.old_ecm_source == TCMG_OLD_ECM_SOURCE_MANUAL ? "manual" : "auto",
+                                 cfg.old_ecm_trigger == TCMG_OLD_ECM_TRIGGER_SUCCESSES ? "successes" : "interval",
+                                 old_ecm_len);
+                    reader_old_ecm_note_attempt(&s->old_ecm, now_ms);
+                    s->ecm_active++;
+                    pthread_mutex_unlock(&s->mtx);
+
+                    uint8_t cw[16] = {0};
+                    int recoverable = 0;
+                    int64_t old_t0 = mono_ms();
+                    int old_rc = internal_conax_ecm(s, ecm_copy, old_ecm_len, cw, &recoverable, 0);
+
+                    pthread_mutex_lock(&s->mtx);
+                    if (s->ecm_active > 0) s->ecm_active--;
+                    s->last_activity_ms = mono_ms();
+                    tcmg_log_dbg(D_READER, "OLD ECM result=%s device=%s elapsed=%lldms",
+                                 old_rc == 0 ? "success" : "failed", s->device,
+                                 (long long)(mono_ms() - old_t0));
+                }
             }
         }
 
@@ -994,16 +1156,24 @@ static void *internal_reader_worker(void *arg)
 
             uint8_t cw[16] = {0};
             int recoverable = 0;
-            int rc = internal_conax_ecm(s, ecm, ecm_len, cw, &recoverable);
+            int rc = internal_conax_ecm(s, ecm, ecm_len, cw, &recoverable, 1);
+            if (rc == 0) {
+                int64_t success_now = mono_ms();
+                reader_old_ecm_sync(&s->old_ecm, &cfg, success_now);
+                if (s->ready && s->present)
+                    reader_old_ecm_bind(&s->old_ecm, &cfg, s->device, s->atr, s->atr_len, success_now);
+                reader_old_ecm_note_success(&s->old_ecm, &cfg, ecm, ecm_len, success_now);
+            }
 
             if (rc < 0 && recoverable) {
                 pthread_mutex_lock(&s->mtx);
-                int reset_rc = sci_reset_card(s, "ecm-recovery");
+                int reset_rc = (s->backend.kind == TCMG_INTERNAL_BACKEND_SCI)
+                    ? sci_reset_card(s, "ecm-recovery") : backend_reset_card(s, "ecm-recovery");
                 pthread_mutex_unlock(&s->mtx);
                 if (reset_rc == 0) {
                     memset(cw, 0, sizeof(cw));
                     recoverable = 0;
-                    rc = internal_conax_ecm(s, ecm, ecm_len, cw, &recoverable);
+                    rc = internal_conax_ecm(s, ecm, ecm_len, cw, &recoverable, 1);
                 }
             }
 
@@ -1090,7 +1260,7 @@ static void stop_reader_worker(int index)
     if (join) pthread_join(tid, NULL);
 
     pthread_mutex_lock(&s->mtx);
-    if (s->fd < 0) slot_reset_state(s);
+    if (!internal_backend_is_open(&s->backend)) slot_reset_state(s);
     pthread_mutex_unlock(&s->mtx);
 }
 
@@ -1102,11 +1272,12 @@ static int internal_sync_once(void)
     for (int i = 0; i < MAX_READERS; i++) {
         S_READER *cfg = (i < reader_count) ? &cfg_readers[i] : NULL;
         int want = cfg && cfg->in_use && cfg->enabled &&
-                   strcasecmp(cfg->protocol, "internal") == 0 && cfg->device[0];
+                   strcasecmp(cfg->protocol, "internal") == 0;
+        const char *target_device = want && cfg->device[0] ? cfg->device : (want ? "auto" : "");
 
         pthread_mutex_lock(&s_slots[i].mtx);
         int running = s_slots[i].worker_running;
-        int matches = running && strcmp(s_slots[i].target_device, want ? cfg->device : "") == 0;
+        int matches = running && strcmp(s_slots[i].target_device, target_device) == 0;
         pthread_mutex_unlock(&s_slots[i].mtx);
 
         if (!want) {
@@ -1116,9 +1287,9 @@ static int internal_sync_once(void)
 
         if (!matches) {
             if (running) stop_reader_worker(i);
-            if (start_reader_worker(i, cfg->device) < 0)
+            if (start_reader_worker(i, target_device) < 0)
                 tcmg_log("reader[%d]: failed to start worker device=%s",
-                         i + 1, cfg->device);
+                         i + 1, target_device);
         }
     }
     return 250;
@@ -1161,8 +1332,8 @@ int internal_reader_get(int index, S_INTERNAL_READER *out)
     slots_init();
     pthread_mutex_lock(&s_slots[index].mtx);
     memset(out, 0, sizeof(*out));
-    out->owned = s_slots[index].fd >= 0;
-    out->exclusive = s_slots[index].exclusive;
+    out->owned = internal_backend_is_open(&s_slots[index].backend);
+    out->exclusive = s_slots[index].backend.exclusive;
     tcmg_strlcpy(out->device,
                   s_slots[index].target_device[0] ? s_slots[index].target_device : s_slots[index].device,
                   sizeof(out->device));
@@ -1172,6 +1343,8 @@ int internal_reader_get(int index, S_INTERNAL_READER *out)
     if (out->atr_len > sizeof(out->atr)) out->atr_len = sizeof(out->atr);
     memcpy(out->atr, s_slots[index].atr, out->atr_len);
     out->protocol = s_slots[index].protocol;
+    if (s_slots[index].backend.name[0])
+        tcmg_strlcpy(out->backend, s_slots[index].backend.name, sizeof(out->backend));
     int owned = out->owned;
     pthread_mutex_unlock(&s_slots[index].mtx);
     return owned ? 0 : -1;
@@ -1183,7 +1356,7 @@ int internal_reader_count(void)
     slots_init();
     for (int i = 0; i < MAX_READERS; i++) {
         pthread_mutex_lock(&s_slots[i].mtx);
-        if (s_slots[i].fd >= 0) n++;
+        if (internal_backend_is_open(&s_slots[i].backend)) n++;
         pthread_mutex_unlock(&s_slots[i].mtx);
     }
     return n;
@@ -1206,7 +1379,7 @@ int internal_do_ecm_reader(int index, uint16_t caid,
 
     S_INTERNAL_SLOT *s = &s_slots[index];
     pthread_mutex_lock(&s->mtx);
-    if (!s->worker_running || s->fd < 0 || !s->ready || !s->present) {
+    if (!s->worker_running || !internal_backend_is_open(&s->backend) || !s->ready || !s->present) {
         if (failure) *failure = READER_FAILURE_TRANSPORT_ERROR;
         pthread_mutex_unlock(&s->mtx);
         return -6;

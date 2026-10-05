@@ -23,12 +23,13 @@ static void reset_ecm_window_locked(S_ACCOUNT *acc, int64_t now_ms)
 
 static void sync_channel_count_locked(S_ACCOUNT *acc);
 
-static void purge_channels_locked(S_ACCOUNT *acc, int64_t now_ms)
+static int purge_channels_locked(S_ACCOUNT *acc, int64_t now_ms)
 {
     const int64_t timeout = window_ms(acc->as_channel_timeout_s);
+    uint32_t seen[AS_MAX_CHANNELS];
+    int unique = 0;
     for (int i = 0; i < AS_MAX_CHANNELS; i++) {
         if (!acc->as_channels[i].client_tid) continue;
-
         bool expire = false;
         if (acc->as_channels[i].pending) {
             expire = acc->as_channels[i].pending_since_ms > 0 &&
@@ -36,12 +37,19 @@ static void purge_channels_locked(S_ACCOUNT *acc, int64_t now_ms)
         } else if (acc->as_channels[i].last_success_ms > 0) {
             expire = now_ms - acc->as_channels[i].last_success_ms >= timeout;
         }
-
         if (expire) {
             memset(&acc->as_channels[i], 0, sizeof(acc->as_channels[i]));
+            continue;
         }
+        const uint32_t key = ((uint32_t)acc->as_channels[i].caid << 16) | acc->as_channels[i].sid;
+        bool duplicate = false;
+        for (int j = 0; j < unique; j++) {
+            if (seen[j] == key) { duplicate = true; break; }
+        }
+        if (!duplicate) seen[unique++] = key;
     }
-    sync_channel_count_locked(acc);
+    acc->as_channel_count = unique;
+    return unique;
 }
 
 static int find_channel_locked(const S_ACCOUNT *acc, uint32_t client_tid, uint16_t caid, uint16_t sid)
@@ -55,41 +63,6 @@ static int find_channel_locked(const S_ACCOUNT *acc, uint32_t client_tid, uint16
     return -1;
 }
 
-static int find_client_channel_locked(const S_ACCOUNT *acc, uint32_t client_tid)
-{
-    for (int i = 0; i < AS_MAX_CHANNELS; i++)
-        if (acc->as_channels[i].client_tid == client_tid) return i;
-    return -1;
-}
-
-static int find_any_channel_locked(const S_ACCOUNT *acc, uint16_t caid, uint16_t sid)
-{
-    for (int i = 0; i < AS_MAX_CHANNELS; i++) {
-        if (acc->as_channels[i].client_tid &&
-            acc->as_channels[i].caid == caid &&
-            acc->as_channels[i].sid == sid)
-            return i;
-    }
-    return -1;
-}
-
-static bool channel_has_other_client_locked(const S_ACCOUNT *acc, int channel_idx)
-{
-    if (channel_idx < 0 || channel_idx >= AS_MAX_CHANNELS ||
-        !acc->as_channels[channel_idx].client_tid) return false;
-
-    const uint16_t caid = acc->as_channels[channel_idx].caid;
-    const uint16_t sid = acc->as_channels[channel_idx].sid;
-    const uint32_t client_tid = acc->as_channels[channel_idx].client_tid;
-    for (int i = 0; i < AS_MAX_CHANNELS; i++) {
-        if (i == channel_idx || !acc->as_channels[i].client_tid) continue;
-        if (acc->as_channels[i].client_tid != client_tid &&
-            acc->as_channels[i].caid == caid &&
-            acc->as_channels[i].sid == sid)
-            return true;
-    }
-    return false;
-}
 
 static int count_unique_channels_locked(const S_ACCOUNT *acc)
 {
@@ -113,13 +86,6 @@ static int count_unique_channels_locked(const S_ACCOUNT *acc)
 static void sync_channel_count_locked(S_ACCOUNT *acc)
 {
     acc->as_channel_count = count_unique_channels_locked(acc);
-}
-
-static int find_free_locked(const S_ACCOUNT *acc)
-{
-    for (int i = 0; i < AS_MAX_CHANNELS; i++)
-        if (!acc->as_channels[i].client_tid) return i;
-    return -1;
 }
 
 
@@ -179,18 +145,6 @@ static void record_recent_channel_locked(S_ACCOUNT *acc, uint16_t caid, uint16_t
     acc->as_recent_channels[idx].last_seen_ms = now_ms;
 }
 
-static void recent_behavior_locked(const S_ACCOUNT *acc, int *distinct, int *repeated)
-{
-    int d = 0;
-    int r = 0;
-    for (int i = 0; i < AS_MAX_RECENT_CHANNELS; i++) {
-        if (!acc->as_recent_channels[i].caid || !acc->as_recent_channels[i].sid) continue;
-        d++;
-        if (acc->as_recent_channels[i].hits >= 2) r++;
-    }
-    if (distinct) *distinct = d;
-    if (repeated) *repeated = r;
-}
 
 
 static void decay_suspicion_locked(S_ACCOUNT *acc, int64_t now_ms)
@@ -259,14 +213,34 @@ T_ANTISHARE_STATUS antishare_check_channel(S_ACCOUNT *acc, uint32_t client_tid,
 
     const int64_t now_ms = tcmg_mono_ms();
     pthread_mutex_lock(&acc->as_mtx);
-    purge_channels_locked(acc, now_ms);
+    const int unique_channels = purge_channels_locked(acc, now_ms);
     purge_recent_channels_locked(acc, now_ms);
 
-    int idx = find_channel_locked(acc, client_tid, caid, sid);
-    const int old_idx = find_client_channel_locked(acc, client_tid);
-    const int same_channel_idx = find_any_channel_locked(acc, caid, sid);
+    int idx = -1, old_idx = -1, same_idx = -1, free_idx = -1;
+    bool same_other_client = false;
+    uint32_t seen[AS_MAX_CHANNELS];
+    int seen_count = 0;
+    for (int i = 0; i < AS_MAX_CHANNELS; i++) {
+        const uint32_t tid = acc->as_channels[i].client_tid;
+        if (!tid) {
+            if (free_idx < 0) free_idx = i;
+            continue;
+        }
+        const uint16_t ch_caid = acc->as_channels[i].caid;
+        const uint16_t ch_sid = acc->as_channels[i].sid;
+        if (tid == client_tid && old_idx < 0) old_idx = i;
+        if (tid == client_tid && ch_caid == caid && ch_sid == sid) idx = i;
+        if (same_idx < 0 && ch_caid == caid && ch_sid == sid) same_idx = i;
+        if (ch_caid == caid && ch_sid == sid && tid != client_tid) same_other_client = true;
+        const uint32_t key = ((uint32_t)ch_caid << 16) | ch_sid;
+        bool duplicate = false;
+        for (int j = 0; j < seen_count; j++) {
+            if (seen[j] == key) { duplicate = true; break; }
+        }
+        if (!duplicate && seen_count < AS_MAX_CHANNELS) seen[seen_count++] = key;
+    }
+
     const int max_channels = acc->as_max_sids > 0 ? acc->as_max_sids : 1;
-    const int unique_channels = count_unique_channels_locked(acc);
     const bool switching_channel = old_idx >= 0 &&
         (acc->as_channels[old_idx].caid != caid || acc->as_channels[old_idx].sid != sid);
     const int64_t old_activity_ms = old_idx >= 0
@@ -275,17 +249,35 @@ T_ANTISHARE_STATUS antishare_check_channel(S_ACCOUNT *acc, uint32_t client_tid,
         : 0;
     const bool rapid_switch = switching_channel && old_activity_ms > 0 &&
         now_ms - old_activity_ms <= 3000;
-    int recent_distinct = 0;
-    int recent_repeated = 0;
-    recent_behavior_locked(acc, &recent_distinct, &recent_repeated);
-    const int recent_idx = find_recent_channel_locked(acc, caid, sid);
+    bool old_channel_other_client = false;
+    if (old_idx >= 0) {
+        const uint16_t old_caid = acc->as_channels[old_idx].caid;
+        const uint16_t old_sid = acc->as_channels[old_idx].sid;
+        for (int i = 0; i < AS_MAX_CHANNELS; i++) {
+            if (i != old_idx && acc->as_channels[i].client_tid &&
+                acc->as_channels[i].client_tid != client_tid &&
+                acc->as_channels[i].caid == old_caid &&
+                acc->as_channels[i].sid == old_sid) {
+                old_channel_other_client = true;
+                break;
+            }
+        }
+    }
+
+    int recent_idx = -1, recent_distinct = 0, recent_repeated = 0;
+    for (int i = 0; i < AS_MAX_RECENT_CHANNELS; i++) {
+        if (!acc->as_recent_channels[i].caid || !acc->as_recent_channels[i].sid) continue;
+        recent_distinct++;
+        if (acc->as_recent_channels[i].hits >= 2) recent_repeated++;
+        if (acc->as_recent_channels[i].caid == caid && acc->as_recent_channels[i].sid == sid)
+            recent_idx = i;
+    }
     const bool new_recent_channel = recent_idx < 0;
     const int projected_recent_distinct = recent_distinct + (new_recent_channel ? 1 : 0);
     const int projected_recent_repeated = recent_repeated +
         (recent_idx >= 0 && acc->as_recent_channels[recent_idx].hits == 1 ? 1 : 0);
     int projected_unique = unique_channels;
-    if (same_channel_idx < 0 && (old_idx < 0 || channel_has_other_client_locked(acc, old_idx)))
-        projected_unique++;
+    if (same_idx < 0 && (old_idx < 0 || same_other_client)) projected_unique++;
     const bool suspicious_fanout = projected_recent_repeated >= 2 || projected_unique >= 3 ||
         (rapid_switch && projected_recent_distinct >= 3);
 
@@ -298,21 +290,21 @@ T_ANTISHARE_STATUS antishare_check_channel(S_ACCOUNT *acc, uint32_t client_tid,
         return AS_CHECK_OK;
     }
 
-    if (unique_channels >= max_channels && same_channel_idx < 0) {
-        if (old_idx < 0 || channel_has_other_client_locked(acc, old_idx)) {
-            pthread_mutex_unlock(&acc->as_mtx);
-            return AS_CHECK_CHANNEL_LIMIT;
-        }
+    if (unique_channels >= max_channels && same_idx < 0 &&
+        (old_idx < 0 || old_channel_other_client)) {
+        pthread_mutex_unlock(&acc->as_mtx);
+        return AS_CHECK_CHANNEL_LIMIT;
     }
 
-    idx = old_idx >= 0 && unique_channels >= max_channels ? old_idx : find_free_locked(acc);
+    if (old_idx >= 0 && unique_channels >= max_channels) idx = old_idx;
+    else idx = free_idx;
     if (idx < 0) {
         pthread_mutex_unlock(&acc->as_mtx);
         return AS_CHECK_CHANNEL_LIMIT;
     }
 
-    if (switching_channel || same_channel_idx < 0)
-        update_suspicion_locked(acc, old_idx, same_channel_idx, projected_unique,
+    if (switching_channel || same_idx < 0)
+        update_suspicion_locked(acc, old_idx, same_idx, projected_unique,
                                 projected_recent_distinct, projected_recent_repeated, now_ms);
 
     memset(&acc->as_channels[idx], 0, sizeof(acc->as_channels[idx]));
@@ -321,11 +313,10 @@ T_ANTISHARE_STATUS antishare_check_channel(S_ACCOUNT *acc, uint32_t client_tid,
     acc->as_channels[idx].sid = sid;
     acc->as_channels[idx].pending = 1;
     acc->as_channels[idx].pending_since_ms = now_ms;
-    sync_channel_count_locked(acc);
+    acc->as_channel_count = unique_channels +
+        ((idx == free_idx && same_idx < 0) ? 1 : 0);
     record_recent_channel_locked(acc, caid, sid, now_ms);
-
     if (delay_ms) *delay_ms = suspicion_delay_ms_locked(acc);
-
     pthread_mutex_unlock(&acc->as_mtx);
     return AS_CHECK_OK;
 }

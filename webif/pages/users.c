@@ -106,14 +106,8 @@ void send_page_users(int fd)
 		"</tr></thead><tbody id='usrBody'>");
 #undef TH
 
-	S_WEBIF_CLIENT_VIEW *snaps = NULL;
-	int nsnaps = webif_client_snapshot_alloc(&snaps);
-	if (nsnaps < 0) {
-		free(accounts);
-		free(buf);
-		send_json_error(fd, 503, "Service Unavailable", "out of memory");
-		return;
-	}
+	S_WEBIF_CLIENT_VIEW snaps[MAX_ACTIVE_CLIENTS];
+	int nsnaps = webif_client_snapshot_all(snaps, MAX_ACTIVE_CLIENTS);
 
 	int row = 0;
 
@@ -314,7 +308,6 @@ void send_page_users(int fd)
 			"<button type='button' class='act-b dl' data-a='del' title='Delete' aria-label='Delete user'>" ICON("i-trash-2") "</button>"
 			"</div></td></tr>");
 	}
-	free(snaps);
 	free(accounts);
 
 	pos = buf_printf(&buf, &bsz, pos,
@@ -368,6 +361,7 @@ void send_page_users(int fd)
 		"<input class='fi mono' id='em_as_timeout' type='number' min='1' max='3600' value='15'></div>"
 		"<div class='fg'><label class='fld' for='em_as_delay'>Suspicious activity delay (seconds)</label>"
 		"<input class='fi mono' id='em_as_delay' type='number' min='0' max='30' value='1'></div>"
+		""
 		"</div>"
 
 		"<div class='user-bottom-grid'>"

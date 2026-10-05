@@ -4,6 +4,8 @@
 #include "../../src/config/config_internal.h"
 #include "../../src/core/config_state.h"
 #include "../../src/core/runtime_state.h"
+#include "../../src/reader/protocol.h"
+#include <ctype.h>
 #include "../../src/core/utils.h"
 #include "../../src/platform/platform.h"
 #include "../../src/srvid/srvid.h"
@@ -231,15 +233,70 @@ done:
     return ok;
 }
 
-static bool validate_split_file(const char *tmp_path, bool users, char *err, size_t errsz)
+static bool validate_reader_editor_text(const char *content, char *err, size_t errsz)
+{
+    static const char *const keys[] = {
+        "label", "protocol", "enabled", "device", "user", "password", "group", "caid", "ident",
+        "sid_whitelist", "ecmwhitelist", "inactivitytimeout", "do_ecm", "fast_reset", "fast_reset_idle",
+        "maintenance_mode", "old_ecm_source", "old_ecm_trigger", "old_ecm_interval", "old_ecm_successes",
+        "old_ecm", "poll_ms", "key", "ecmkey"
+    };
+    char *buf = strdup(content ? content : "");
+    if (!buf) { snprintf(err, errsz, "out of memory"); return false; }
+    int section = 0, label_seen = 0, protocol_seen = 0, line_no = 0;
+    bool ok = true;
+    char *save = NULL;
+    for (char *line = strtok_r(buf, "\n", &save); line; line = strtok_r(NULL, "\n", &save)) {
+        line_no++;
+        size_t n = strlen(line);
+        while (n && (line[n - 1] == '\r' || isspace((unsigned char)line[n - 1]))) line[--n] = '\0';
+        char *p = line;
+        while (*p && isspace((unsigned char)*p)) p++;
+        if (!*p || *p == '#') continue;
+        if (*p == '[') {
+            if (!section) {
+                if (strcmp(p, "[reader]") != 0) { snprintf(err, errsz, "line %d: only [reader] sections are allowed", line_no); ok = false; break; }
+            } else {
+                if (!label_seen || !protocol_seen) { snprintf(err, errsz, "line %d: reader requires label and protocol", line_no); ok = false; break; }
+                if (strcmp(p, "[reader]") != 0) { snprintf(err, errsz, "line %d: only [reader] sections are allowed", line_no); ok = false; break; }
+            }
+            section = 1; label_seen = 0; protocol_seen = 0;
+            continue;
+        }
+        if (!section) { snprintf(err, errsz, "line %d: setting outside [reader] section", line_no); ok = false; break; }
+        char *eq = strchr(p, '=');
+        if (!eq) { snprintf(err, errsz, "line %d: invalid reader setting", line_no); ok = false; break; }
+        *eq++ = '\0';
+        while (*eq && isspace((unsigned char)*eq)) eq++;
+        char *ke = p + strlen(p);
+        while (ke > p && isspace((unsigned char)ke[-1])) *--ke = '\0';
+        bool known = false;
+        for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]); i++) if (!strcasecmp(p, keys[i])) { known = true; break; }
+        if (!known) { snprintf(err, errsz, "line %d: unknown reader setting '%s'", line_no, p); ok = false; break; }
+        if (!strcasecmp(p, "label")) {
+            if (!*eq) { snprintf(err, errsz, "line %d: label is required", line_no); ok = false; break; }
+            label_seen = 1;
+        } else if (!strcasecmp(p, "protocol")) {
+            if (!*eq || !reader_protocol_find(eq)) { snprintf(err, errsz, "line %d: invalid reader protocol", line_no); ok = false; break; }
+            protocol_seen = 1;
+        }
+    }
+    if (ok && section && (!label_seen || !protocol_seen)) { snprintf(err, errsz, "reader requires label and protocol"); ok = false; }
+    free(buf);
+    return ok;
+}
+
+static bool validate_split_file(const char *tmp_path, const char *content, bool users, char *err, size_t errsz)
 {
     S_CONFIG parsed;
     memset(&parsed, 0, sizeof(parsed));
     cfg_default_runtime(&parsed);
     err[0] = '\0';
 
-    bool ok = users ? cfg_parse_users(tmp_path, &parsed, err, errsz)
-                    : cfg_parse_readers(tmp_path, &parsed, err, errsz);
+    bool ok = true;
+    if (!users) ok = validate_reader_editor_text(content, err, errsz);
+    if (ok) ok = users ? cfg_parse_users(tmp_path, &parsed, err, errsz)
+                       : cfg_parse_readers(tmp_path, &parsed, err, errsz);
     if (ok && !cfg_validate(&parsed, err, errsz)) ok = false;
     cfg_accounts_free(&parsed);
     return ok;
@@ -271,7 +328,7 @@ static bool save_validated_split_file(const char *content, size_t len,
         return false;
     }
 
-    bool ok = validate_split_file(tmp_path, users, err, errsz);
+    bool ok = validate_split_file(tmp_path, content, users, err, errsz);
     remove(tmp_path);
     if (ok && !write_file_atomic(path, content, len)) {
         ok = false;

@@ -44,14 +44,6 @@ void send_api_config_get(int fd)
 
 typedef struct { const char *body; char err[96]; } fparse;
 
-static int form_has(const char *body, const char *key)
-{
-	char *v = form_get_alloc(body, key);
-	if (!v) return 0;
-	free(v);
-	return 1;
-}
-
 static void fld(fparse *p, const char *key, char *out, size_t sz)
 {
 	out[0] = '\0';

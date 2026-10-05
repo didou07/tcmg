@@ -22,6 +22,16 @@ static inline int64_t tcmg_mono_ms(void)
 }
 #endif
 
+static inline uint32_t tcmg_mono_ms32(void)
+{
+    return (uint32_t)tcmg_mono_ms();
+}
+
+static inline uint32_t tcmg_elapsed_ms32(uint32_t t0_ms)
+{
+    return tcmg_mono_ms32() - t0_ms;
+}
+
 static inline int32_t tcmg_elapsed_ms(int64_t t0_ms)
 {
     return (int32_t)(tcmg_mono_ms() - t0_ms);

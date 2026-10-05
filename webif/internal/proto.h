@@ -24,6 +24,8 @@ int  buf_json_string(char **dst, int *dstsz, int pos, const char *src);
 int  buf_html_string(char **dst, int *dstsz, int pos, const char *src);
 void url_decode(char *s);
 void get_param(const char *qs, const char *key, char *out, int outsz);
+int  form_get_copy(const char *body, const char *key, char *out, size_t outsz);
+int  form_has(const char *body, const char *key);
 void form_get(const char *body, const char *key, char *out, int outsz);
 char *form_get_alloc(const char *body, const char *key);
 const char *web_header_get(const char *raw, const char *name, char *buf, int bufsz);

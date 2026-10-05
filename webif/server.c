@@ -12,9 +12,12 @@
 
 static _Atomic int8_t s_webif_running = 0;
 static int             s_webif_sock    = -1;
-
-static pthread_t s_webif_tid;
-static sem_t     s_webif_sem;
+static pthread_t       s_webif_tid;
+static sem_t           s_webif_sem;
+static pthread_mutex_t s_webif_lifecycle_mtx = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t s_webif_workers_mtx = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t  s_webif_workers_cv = PTHREAD_COND_INITIALIZER;
+static unsigned        s_webif_workers = 0;
 
 #ifndef TCMG_OS_WINDOWS
 
@@ -39,6 +42,10 @@ static void *conn_thread(void *arg)
 	close(c->fd);
 	free(c);
 	sem_post(&s_webif_sem);
+	pthread_mutex_lock(&s_webif_workers_mtx);
+	if (s_webif_workers > 0) s_webif_workers--;
+	if (s_webif_workers == 0) pthread_cond_broadcast(&s_webif_workers_cv);
+	pthread_mutex_unlock(&s_webif_workers_mtx);
 	return NULL;
 }
 
@@ -101,6 +108,29 @@ static int csrf_blocked(const char *raw)
 		if (strcmp(o, host) != 0) return 1;
 	}
 	return 0;
+}
+
+static void discard_oversize_body(int fd, const char *raw, int rawlen)
+{
+	char clbuf[32] = "";
+	if (!web_header_get(raw, "Content-Length", clbuf, sizeof(clbuf))) return;
+	char *end = NULL;
+	errno = 0;
+	long long clen = strtoll(clbuf, &end, 10);
+	if (errno == ERANGE || end == clbuf || *end || clen < 0 || clen > (long long)WEB_POST_MAX * 4LL) return;
+	const char *body = strstr(raw, "\r\n\r\n");
+	if (!body) return;
+	body += 4;
+	long long have = raw + rawlen > body ? (long long)(raw + rawlen - body) : 0;
+	if (have < 0 || have >= clen) return;
+	long long remain = clen - have;
+	char buf[8192];
+	while (remain > 0) {
+		size_t want = remain > (long long)sizeof(buf) ? sizeof(buf) : (size_t)remain;
+		int n = (int)recv(fd, RECV_CAST(buf), want, 0);
+		if (n <= 0) break;
+		remain -= n;
+	}
 }
 
 static void send_json_401(int fd)
@@ -166,6 +196,7 @@ void handle_request(int fd, const char *client_ip)
 	}
 	if (req.status) {
 		int st = req.status;
+		if (st == 413) discard_oversize_body(fd, raw, rlen);
 		req_free(&req);
 		if (raw_heap) free(raw);
 		send_json_error(fd, st,
@@ -388,12 +419,22 @@ static void *http_server_thread(void *arg)
 
 		tcmg_log_dbg(D_HTTP, "HTTP connection from=%s fd=%d", client_ip, cfd);
 
-		s_conn_arg *ca2 = (s_conn_arg *)malloc(sizeof(s_conn_arg));
-		if (ca2 && sem_trywait(&s_webif_sem) == 0) {
-			pthread_t       t;
-			pthread_attr_t  a;
+		if (sem_trywait(&s_webif_sem) == 0) {
+			s_conn_arg *ca2 = (s_conn_arg *)malloc(sizeof(*ca2));
+			if (!ca2) {
+				sem_post(&s_webif_sem);
+				static const char oom[] = "<html><body>WebIF unavailable</body></html>";
+				send_response(cfd, 503, "Service Unavailable", "text/html", oom, (int)strlen(oom));
+				close(cfd);
+				continue;
+			}
+			pthread_t t;
+			pthread_attr_t a;
 			ca2->fd = cfd;
 			tcmg_strlcpy(ca2->ip, client_ip, MAXIPLEN);
+			pthread_mutex_lock(&s_webif_workers_mtx);
+			s_webif_workers++;
+			pthread_mutex_unlock(&s_webif_workers_mtx);
 			pthread_attr_init(&a);
 			pthread_attr_setdetachstate(&a, PTHREAD_CREATE_DETACHED);
 			pthread_attr_setstacksize(&a, 128 * 1024);
@@ -402,10 +443,15 @@ static void *http_server_thread(void *arg)
 				continue;
 			}
 			pthread_attr_destroy(&a);
+			pthread_mutex_lock(&s_webif_workers_mtx);
+			if (s_webif_workers > 0) s_webif_workers--;
+			if (s_webif_workers == 0) pthread_cond_broadcast(&s_webif_workers_cv);
+			pthread_mutex_unlock(&s_webif_workers_mtx);
 			sem_post(&s_webif_sem);
 			free(ca2);
+			static const char busy[] = "<html><body>WebIF busy</body></html>";
+			send_response(cfd, 503, "Service Unavailable", "text/html", busy, (int)strlen(busy));
 		} else {
-			free(ca2);
 			static const char busy[] = "<html><body>WebIF busy</body></html>";
 			send_response(cfd, 503, "Service Unavailable", "text/html", busy, (int)strlen(busy));
 		}
@@ -418,12 +464,22 @@ static void *http_server_thread(void *arg)
 
 int32_t webif_start(void)
 {
+	pthread_mutex_lock(&s_webif_lifecycle_mtx);
+	if (atomic_load_explicit(&s_webif_running, memory_order_acquire)) {
+		pthread_mutex_unlock(&s_webif_lifecycle_mtx);
+		return 0;
+	}
 	S_WEBIF_CONFIG_VIEW cfg;
-	if (!webif_config_snapshot(&cfg) || !cfg.webif_enabled) { tcmg_log_dbg(D_HTTP, "%s", "disabled in config"); return -1; }
+	if (!webif_config_snapshot(&cfg) || !cfg.webif_enabled) {
+		tcmg_log_dbg(D_HTTP, "%s", "disabled in config");
+		pthread_mutex_unlock(&s_webif_lifecycle_mtx);
+		return -1;
+	}
 
 	s_webif_sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (s_webif_sock < 0) {
 		tcmg_log("socket() failed: errno=%d (%s)", errno, strerror(errno));
+		pthread_mutex_unlock(&s_webif_lifecycle_mtx);
 		return -1;
 	}
 
@@ -441,21 +497,33 @@ int32_t webif_start(void)
 		if (inet_pton(AF_INET, cfg.webif_bindaddr, &sa.sin_addr) != 1) {
 			tcmg_log("invalid BINDADDR '%s' -- refusing to listen on all interfaces",
 			         cfg.webif_bindaddr);
-			close(s_webif_sock); s_webif_sock = -1; return -1;
+			close(s_webif_sock); s_webif_sock = -1;
+			pthread_mutex_unlock(&s_webif_lifecycle_mtx);
+			return -1;
 		}
 	} else
 		sa.sin_addr.s_addr = INADDR_ANY;
 
 	if (bind(s_webif_sock, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
 		tcmg_log("bind() failed: port=%d errno=%d (%s)", cfg.webif_port, errno, strerror(errno));
-		close(s_webif_sock); s_webif_sock = -1; return -1;
+		close(s_webif_sock); s_webif_sock = -1;
+		pthread_mutex_unlock(&s_webif_lifecycle_mtx);
+		return -1;
 	}
 	if (listen(s_webif_sock, 128) < 0) {
 		tcmg_log("listen() failed: errno=%d (%s)", errno, strerror(errno));
-		close(s_webif_sock); s_webif_sock = -1; return -1;
+		close(s_webif_sock); s_webif_sock = -1;
+		pthread_mutex_unlock(&s_webif_lifecycle_mtx);
+		return -1;
 	}
 
-	sem_init(&s_webif_sem, 0, WEBIF_MAX_THREADS);
+	if (sem_init(&s_webif_sem, 0, WEBIF_MAX_THREADS) != 0) {
+		tcmg_log("sem_init failed: errno=%d (%s)", errno, strerror(errno));
+		close(s_webif_sock);
+		s_webif_sock = -1;
+		pthread_mutex_unlock(&s_webif_lifecycle_mtx);
+		return -1;
+	}
 #ifndef TCMG_OS_WINDOWS
 	if (pipe(s_webif_wake) != 0) {
 		s_webif_wake[0] = s_webif_wake[1] = -1;
@@ -480,23 +548,33 @@ int32_t webif_start(void)
 #endif
 		close(s_webif_sock); s_webif_sock = -1;
 		pthread_attr_destroy(&attr);
+		pthread_mutex_unlock(&s_webif_lifecycle_mtx);
 		return -1;
 	}
 	pthread_attr_destroy(&attr);
+	pthread_mutex_unlock(&s_webif_lifecycle_mtx);
 	return 0;
 }
 
 void webif_stop(void)
 {
-	if (!s_webif_running) return;
+	pthread_mutex_lock(&s_webif_lifecycle_mtx);
+	if (!atomic_load_explicit(&s_webif_running, memory_order_acquire)) {
+		pthread_mutex_unlock(&s_webif_lifecycle_mtx);
+		return;
+	}
 	atomic_store_explicit(&s_webif_running, 0, memory_order_release);
 #ifndef TCMG_OS_WINDOWS
 	if (s_webif_wake[1] >= 0) { ssize_t wr = write(s_webif_wake[1], "x", 1); (void)wr; }
 #endif
 	pthread_join(s_webif_tid, NULL);
+	pthread_mutex_lock(&s_webif_workers_mtx);
+	while (s_webif_workers != 0) pthread_cond_wait(&s_webif_workers_cv, &s_webif_workers_mtx);
+	pthread_mutex_unlock(&s_webif_workers_mtx);
 #ifndef TCMG_OS_WINDOWS
 	webif_wake_close();
 #endif
 	if (s_webif_sock >= 0) { close(s_webif_sock); s_webif_sock = -1; }
 	sem_destroy(&s_webif_sem);
+	pthread_mutex_unlock(&s_webif_lifecycle_mtx);
 }

@@ -2,6 +2,8 @@
 #include "serial.h"
 #include "../config/runtime_access.h"
 #include "../core/constants.h"
+#include "../reader/card_utils.h"
+#include "../reader/old_ecm.h"
 #include "../core/utils.h"
 #include "../platform/platform.h"
 #include "../log/log.h"
@@ -73,6 +75,7 @@ typedef struct {
     int64_t last_activity_seen_ms;
     int fast_reset_paused;
     int ecm_active;
+    S_READER_OLD_ECM_STATE old_ecm;
     uint8_t atr[TCMG_SERIAL_MAX_ATR];
     size_t atr_len;
     char device[TCMG_SERIAL_PORT_LEN];
@@ -151,6 +154,7 @@ static void slot_clear(S_SERIAL_SLOT *s)
     s->last_activity_seen_ms = s->last_activity_ms;
     s->fast_reset_paused = 0;
     s->ecm_active = 0;
+    memset(&s->old_ecm, 0, sizeof(s->old_ecm));
     s->atr_len = 0;
     memset(s->atr, 0, sizeof(s->atr));
     s->device[0] = '\0';
@@ -774,7 +778,7 @@ static void serial_mark_unavailable(S_SERIAL_SLOT *s)
 }
 
 static int t0_transmit(S_SERIAL_SLOT *s, const uint8_t *apdu, size_t apdu_len,
-                       uint8_t *rsp, size_t *rsp_len)
+                       const char *context, uint8_t *rsp, size_t *rsp_len)
 {
     if (!s || !s->open || !apdu || apdu_len < 5 || apdu_len > 260 || !rsp || !rsp_len || *rsp_len < 2)
         return -1;
@@ -784,6 +788,8 @@ static int t0_transmit(S_SERIAL_SLOT *s, const uint8_t *apdu, size_t apdu_len,
     int case3 = (apdu[4] > 0 && body == (size_t)apdu[4] + 1u);
     if (!case2 && !case3) return -2;
 
+    const char *trace = (context && *context) ? context : "exchange";
+    tcmg_dump_dbg(D_READER, apdu, (int32_t)apdu_len, "SERIAL >> APDU context=%s", trace);
     if (serial_write_all(s, apdu, 5, 1500) < 0) return -3;
     if (serial_drain(s, 5) < 0) return -4;
 
@@ -799,12 +805,14 @@ static int t0_transmit(S_SERIAL_SLOT *s, const uint8_t *apdu, size_t apdu_len,
         if (procedure_timeout > SERIAL_T0_NO_PROCEDURE_MS)
             procedure_timeout = SERIAL_T0_NO_PROCEDURE_MS;
         if (serial_read_byte(s, &p, (int)procedure_timeout) < 0) return -5;
+        tcmg_log_dbg(D_READER, "T0 procedure context=%s ins=%02X byte=%02X", trace, apdu[1], p);
         if (p == 0x60) continue;
         if ((p & 0xF0) == 0x60 || (p & 0xF0) == 0x90) {
             if (out + 2 > *rsp_len) return -6;
             rsp[out++] = p;
             if (serial_read_byte(s, &rsp[out++], (int)(s->t0_wwt_ms ? s->t0_wwt_ms : 2500u)) < 0) return -7;
             *rsp_len = out;
+            tcmg_dump_dbg(D_READER, rsp, (int32_t)*rsp_len, "SERIAL << RESPONSE context=%s", trace);
             return 0;
         }
 
@@ -813,6 +821,7 @@ static int t0_transmit(S_SERIAL_SLOT *s, const uint8_t *apdu, size_t apdu_len,
                 if (le + 2 > *rsp_len) return -8;
                 if (serial_read_n(s, rsp, le + 2, (int)(s->t0_wwt_ms ? s->t0_wwt_ms : 2500u)) < 0) return -9;
                 *rsp_len = le + 2;
+                tcmg_dump_dbg(D_READER, rsp, (int32_t)*rsp_len, "SERIAL << RESPONSE context=%s", trace);
                 return 0;
             }
             if (sent != 0) return -10;
@@ -829,6 +838,7 @@ static int t0_transmit(S_SERIAL_SLOT *s, const uint8_t *apdu, size_t apdu_len,
                     if (serial_read_n(s, rsp + out, 2, (int)(s->t0_wwt_ms ? s->t0_wwt_ms : 2500u)) < 0) return -16;
                     out += 2;
                     *rsp_len = out;
+                    tcmg_dump_dbg(D_READER, rsp, (int32_t)*rsp_len, "SERIAL << RESPONSE context=%s", trace);
                     return 0;
                 }
             } else {
@@ -843,33 +853,10 @@ static int t0_transmit(S_SERIAL_SLOT *s, const uint8_t *apdu, size_t apdu_len,
     return -21;
 }
 
-static int parse_conax_cw(const uint8_t *rsp, size_t rsp_len, uint8_t cw[16], int *found_mask)
-{
-    if (!rsp || rsp_len < 2 || !cw || !found_mask) return -1;
-    *found_mask = 0;
-    if (rsp_len >= 3 && rsp[0] == 0x81 && ((rsp[2] >> 5) == 2)) return -2;
-    size_t data_len = rsp_len - 2;
-    size_t p = 0;
-    while (p + 2 <= data_len) {
-        uint8_t tag = rsp[p];
-        uint8_t len = rsp[p + 1];
-        size_t end = p + 2u + len;
-        if (end > data_len) break;
-        if (tag == 0x25 && len >= 0x0D) {
-            uint8_t n = rsp[p + 4];
-            if (n < 2 && p + 15 <= data_len) {
-                memcpy(cw + ((size_t)n << 3), rsp + p + 7, 8);
-                *found_mask |= (1 << n);
-            }
-        }
-        p = end;
-    }
-    return 0;
-}
 
 #define SERIAL_ECM_NOT_FOUND (-11)
 
-static int conax_ecm(S_SERIAL_SLOT *s, const uint8_t *ecm, size_t ecm_len, uint8_t cw[16])
+static int conax_ecm(S_SERIAL_SLOT *s, const uint8_t *ecm, size_t ecm_len, uint8_t cw[16], int allow_ca)
 {
     uint8_t apdu[260];
     uint8_t rsp[320];
@@ -887,7 +874,7 @@ static int conax_ecm(S_SERIAL_SLOT *s, const uint8_t *ecm, size_t ecm_len, uint8
     apdu[7] = 0x00;
     memcpy(apdu + 8, ecm, ecm_len);
 
-    if (t0_transmit(s, apdu, apdu_len, rsp, &rsp_len) < 0) return -2;
+    if (t0_transmit(s, apdu, apdu_len, allow_ca ? "ecm" : "old-ecm", rsp, &rsp_len) < 0) return -2;
     if (rsp_len < 2) return -3;
 
     uint8_t sw1 = rsp[rsp_len - 2];
@@ -896,19 +883,20 @@ static int conax_ecm(S_SERIAL_SLOT *s, const uint8_t *ecm, size_t ecm_len, uint8
 
     int got = 0;
     if (sw1 == 0x90 && sw2 == 0x00) {
-        if (parse_conax_cw(rsp, rsp_len, cw, &got) == -2) return -6;
+        if (tcmg_parse_conax_cw(rsp, rsp_len, cw, &got) == -2) return -6;
     }
+    if (!allow_ca) return got == 3 ? 0 : SERIAL_ECM_NOT_FOUND;
 
     while (sw1 == 0x98 && sw2 != 0x00 && sw2 != 0xFF) {
         uint8_t ins_ca[5] = {0xDD, 0xCA, 0x00, 0x00, sw2};
         rsp_len = sizeof(rsp);
-        if (t0_transmit(s, ins_ca, sizeof(ins_ca), rsp, &rsp_len) < 0) return -7;
+        if (t0_transmit(s, ins_ca, sizeof(ins_ca), allow_ca ? "ecm-ca" : "old-ecm-ca", rsp, &rsp_len) < 0) return -7;
         if (rsp_len < 2) return -8;
         sw1 = rsp[rsp_len - 2];
         sw2 = rsp[rsp_len - 1];
         if (sw1 == 0x98 || (sw1 == 0x90 && sw2 == 0x00)) {
             int part = 0;
-            if (parse_conax_cw(rsp, rsp_len, cw, &part) == -2) return -9;
+            if (tcmg_parse_conax_cw(rsp, rsp_len, cw, &part) == -2) return -9;
             got |= part;
         } else return -10;
     }
@@ -957,7 +945,43 @@ static void *serial_thread(void *arg)
                     if (serial_quick_probe(&s_slots[i]) < 0)
                         tcmg_log_dbg(D_READER, "reader[%d]: quick probe failed device=%s", i + 1, device);
                 }
-                if (s_slots[i].ready && cfg->fast_reset > 0) {
+                reader_old_ecm_sync(&s_slots[i].old_ecm, cfg, now);
+                if (s_slots[i].ready && s_slots[i].present) {
+                    reader_old_ecm_bind(&s_slots[i].old_ecm, cfg, s_slots[i].device,
+                                        s_slots[i].atr, s_slots[i].atr_len, now);
+                } else {
+                    reader_old_ecm_unbind(&s_slots[i].old_ecm);
+                }
+
+                if (cfg->maintenance_mode == TCMG_READER_MAINT_OLD_ECM &&
+                    s_slots[i].ready && s_slots[i].present && s_slots[i].ecm_active == 0) {
+                    const uint8_t *old_ecm = NULL;
+                    size_t old_ecm_len = 0;
+                    if (reader_old_ecm_due(cfg, &s_slots[i].old_ecm, now, s_slots[i].ecm_active != 0) &&
+                        reader_old_ecm_get(&s_slots[i].old_ecm, &old_ecm, &old_ecm_len) == 0) {
+                        uint8_t ecm_copy[TCMG_OLD_ECM_MAX_LEN];
+                        uint8_t cw[16] = {0};
+                        memcpy(ecm_copy, old_ecm, old_ecm_len);
+                        tcmg_log_dbg(D_READER, "OLD ECM start device=%s source=%s trigger=%s len=%zu",
+                                     s_slots[i].device,
+                                     cfg->old_ecm_source == TCMG_OLD_ECM_SOURCE_MANUAL ? "manual" : "auto",
+                                     cfg->old_ecm_trigger == TCMG_OLD_ECM_TRIGGER_SUCCESSES ? "successes" : "interval",
+                                     old_ecm_len);
+                        reader_old_ecm_note_attempt(&s_slots[i].old_ecm, now);
+                        s_slots[i].ecm_active++;
+                        int old_rc = conax_ecm(&s_slots[i], ecm_copy, old_ecm_len, cw, 0);
+                        if (s_slots[i].ecm_active > 0) s_slots[i].ecm_active--;
+                        s_slots[i].last_activity_ms = mono_ms();
+                        tcmg_log_dbg(D_READER, "OLD ECM result=%s device=%s elapsed=%lldms",
+                                     old_rc == 0 ? "success" : "failed", s_slots[i].device,
+                                     (long long)(mono_ms() - now));
+                    }
+                    s_slots[i].last_poll_ms = now;
+                    pthread_mutex_unlock(&s_slots[i].mtx);
+                    continue;
+                }
+
+                if (cfg->maintenance_mode == TCMG_READER_MAINT_FAST_RESET && cfg->fast_reset > 0) {
                     const int idle_enabled = cfg->fast_reset_idle > 0;
                     const int idle = idle_enabled && now - s_slots[i].last_activity_ms >=
                                      (int64_t)cfg->fast_reset_idle * 1000LL;
@@ -1073,7 +1097,7 @@ int serial_do_ecm_reader(int index, uint16_t caid,
     int64_t ecm_t0 = mono_ms();
     s->last_activity_ms = ecm_t0;
     s->ecm_active++;
-    int rc = conax_ecm(s, ecm, ecm_len, cw);
+    int rc = conax_ecm(s, ecm, ecm_len, cw, 1);
     if (rc < 0 && rc != SERIAL_ECM_NOT_FOUND && (rc == -2 || rc == -7)) {
         serial_mark_unavailable(s);
         int reinitialized = serial_reinitialize(s);
@@ -1081,7 +1105,7 @@ int serial_do_ecm_reader(int index, uint16_t caid,
                      "transport recovery device=%s status=%s",
                      s->device, reinitialized == 0 ? "ready" : "failed");
         if (reinitialized == 0) {
-            int retry_rc = conax_ecm(s, ecm, ecm_len, cw);
+            int retry_rc = conax_ecm(s, ecm, ecm_len, cw, 1);
             tcmg_log_dbg(D_READER,
                          "transport retry device=%s result=%s",
                          s->device, retry_rc == 0 ? "found" :
@@ -1090,6 +1114,13 @@ int serial_do_ecm_reader(int index, uint16_t caid,
         }
     } else if (rc < 0 && rc != SERIAL_ECM_NOT_FOUND) {
         serial_mark_unavailable(s);
+    }
+    if (rc == 0) {
+        int64_t success_now = mono_ms();
+        reader_old_ecm_sync(&s->old_ecm, &cfg, success_now);
+        if (s->ready && s->present)
+            reader_old_ecm_bind(&s->old_ecm, &cfg, s->device, s->atr, s->atr_len, success_now);
+        reader_old_ecm_note_success(&s->old_ecm, &cfg, ecm, ecm_len, success_now);
     }
     if (failure) {
         if (rc == 0) *failure = READER_FAILURE_NONE;
@@ -1105,7 +1136,7 @@ int serial_do_ecm_reader(int index, uint16_t caid,
                      s->device, rc, (long long)ecm_ms,
                      rc == SERIAL_ECM_NOT_FOUND ? "; card returned no CW, keeping reader ready" : "; reader marked unavailable");
     } else {
-        tcmg_log_dbg(D_READER, "ECM ok device=%s elapsed=%lldms", s->device, (long long)ecm_ms);
+        tcmg_log_dbg(D_ECM, "ECM ok device=%s elapsed=%lldms", s->device, (long long)ecm_ms);
     }
     pthread_mutex_unlock(&s->mtx);
     return rc;

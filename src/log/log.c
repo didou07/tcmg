@@ -17,6 +17,7 @@ const S_DBLEVEL_NAME g_dblevel_names[MAX_DEBUG_LEVELS] = {
 	{ D_HTTP,    "http"    },
 	{ D_CONN,    "conn"    },
 	{ D_READER,  "reader"  },
+	{ D_PROTOCOL,"protocol" },
 };
 
 #define LOG_FILE_MAX_BYTES  (10u * 1024u * 1024u)
@@ -273,9 +274,9 @@ static void print_colored(FILE *fp, const char *line)
 		return;
 	}
 
-	fwrite(line, 1, (size_t)(mark - line), fp);
+	(void)fwrite(line, 1, (size_t)(mark - line), fp);
 	fputs(col, fp);
-	fwrite(mark, 1, mark_len, fp);
+	(void)fwrite(mark, 1, mark_len, fp);
 	fputs(ANSI_RESET, fp);
 	fputs(mark + mark_len, fp);
 	fputc('\n', fp);

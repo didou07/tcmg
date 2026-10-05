@@ -23,13 +23,29 @@ static struct s_cw_inflight s_inflight[CW_INFLIGHT_SIZE];
 static pthread_mutex_t s_inflight_mtx[CW_INFLIGHT_SHARDS];
 static pthread_once_t s_inflight_once = PTHREAD_ONCE_INIT;
 
-static inline uint32_t inflight_shard(const uint8_t *md5)
+static inline uint32_t hash16(const uint8_t *md5)
 {
     uint32_t h = 2166136261u;
-    for (size_t i = 0; i < 16; i++)
-        h = (h ^ md5[i]) * 16777619u;
-    return h & (CW_INFLIGHT_SHARDS - 1);
+    for (size_t i = 0; i < 16; i++) h = (h ^ md5[i]) * 16777619u;
+    return h;
 }
+
+static inline uint32_t inflight_shard_hash(uint32_t hash)
+{
+    return hash & (CW_INFLIGHT_SHARDS - 1);
+}
+
+static inline uint32_t inflight_shard(const uint8_t *md5)
+{
+    return inflight_shard_hash(hash16(md5));
+}
+
+static inline uint32_t cw_shard(uint32_t bucket);
+static S_CW_CACHE_ENTRY *cw_cache_find_best_locked(uint32_t bucket,
+                                                   const uint8_t *ecm_md5,
+                                                   const S_ACCOUNT *acc,
+                                                   bool require_group,
+                                                   uint64_t now_ms);
 
 static void inflight_init(void)
 {
@@ -50,6 +66,32 @@ static int inflight_find_locked(uint32_t shard, const uint8_t *ecm_md5)
     return -1;
 }
 
+static bool cw_cache_lookup_bucket(uint32_t bucket, const uint8_t *ecm_md5, uint8_t *cw_out,
+                                   const S_ACCOUNT *acc, bool require_group,
+                                   int32_t *groups_out, int32_t *ngroups_out, uint64_t now_ms)
+{
+    if (!ecm_md5 || !cw_out) return false;
+    if (ngroups_out) *ngroups_out = 0;
+    const uint32_t shard = cw_shard(bucket);
+    pthread_mutex_lock(&g_cw_cache_mtx[shard]);
+    S_CW_CACHE_ENTRY *e = cw_cache_find_best_locked(bucket, ecm_md5, acc, require_group, now_ms);
+    if (!e) {
+        pthread_mutex_unlock(&g_cw_cache_mtx[shard]);
+        return false;
+    }
+    memcpy(cw_out, e->cw, CW_LEN);
+    if (groups_out && ngroups_out) {
+        int32_t n = e->ngroups;
+        if (n < 0) n = 0;
+        if (n > MAX_GROUPS_PER_READER) n = MAX_GROUPS_PER_READER;
+        if (n > 0) memcpy(groups_out, e->groups, (size_t)n * sizeof(groups_out[0]));
+        *ngroups_out = n;
+    }
+    if (now_ms > e->last_used_ms && now_ms - e->last_used_ms >= 1000) e->last_used_ms = now_ms;
+    pthread_mutex_unlock(&g_cw_cache_mtx[shard]);
+    return true;
+}
+
 E_CW_INFLIGHT_BEGIN cw_inflight_begin(const uint8_t *ecm_md5,
                                       uint8_t *cw_out,
                                       const S_ACCOUNT *acc,
@@ -63,12 +105,21 @@ E_CW_INFLIGHT_BEGIN cw_inflight_begin(const uint8_t *ecm_md5,
     if (ngroups_out) *ngroups_out = 0;
     pthread_once(&s_inflight_once, inflight_init);
 
-    if (cw_out && cw_cache_lookup_groups(ecm_md5, cw_out, acc, require_group,
-                                         groups_out, ngroups_out))
+    const uint32_t hash = hash16(ecm_md5);
+    const uint32_t bucket = hash % CW_CACHE_BUCKETS;
+    const uint64_t now_ms = (uint64_t)tcmg_mono_ms();
+    if (cw_out && cw_cache_lookup_bucket(bucket, ecm_md5, cw_out, acc, require_group,
+                                         groups_out, ngroups_out, now_ms))
         return CW_INFLIGHT_HIT;
 
-    const uint32_t shard = inflight_shard(ecm_md5);
+    const uint32_t shard = inflight_shard_hash(hash);
     pthread_mutex_lock(&s_inflight_mtx[shard]);
+
+    if (cw_out && cw_cache_lookup_bucket(bucket, ecm_md5, cw_out, acc, require_group,
+                                         groups_out, ngroups_out, now_ms)) {
+        pthread_mutex_unlock(&s_inflight_mtx[shard]);
+        return CW_INFLIGHT_HIT;
+    }
 
     int existing = inflight_find_locked(shard, ecm_md5);
     if (existing >= 0) {
@@ -80,29 +131,22 @@ E_CW_INFLIGHT_BEGIN cw_inflight_begin(const uint8_t *ecm_md5,
         return CW_INFLIGHT_WAIT;
     }
 
-    int free_slot = -1;
     const int base = (int)(shard * CW_INFLIGHT_WAYS);
     for (int i = 0; i < CW_INFLIGHT_WAYS; i++) {
-        int slot = base + i;
+        const int slot = base + i;
         if (!s_inflight[slot].running && s_inflight[slot].refs == 0) {
-            free_slot = slot;
-            break;
+            struct s_cw_inflight *in = &s_inflight[slot];
+            in->generation++;
+            if (in->generation == 0) in->generation = 1;
+            memcpy(in->ecm_md5, ecm_md5, 16);
+            in->running = 1;
+            in->refs = 1;
+            wait->slot = slot;
+            wait->generation = in->generation;
+            pthread_mutex_unlock(&s_inflight_mtx[shard]);
+            return CW_INFLIGHT_LEADER;
         }
     }
-
-    if (free_slot >= 0) {
-        struct s_cw_inflight *in = &s_inflight[free_slot];
-        in->generation++;
-        if (in->generation == 0) in->generation = 1;
-        memcpy(in->ecm_md5, ecm_md5, 16);
-        in->running = 1;
-        in->refs = 1;
-        wait->slot = free_slot;
-        wait->generation = in->generation;
-        pthread_mutex_unlock(&s_inflight_mtx[shard]);
-        return CW_INFLIGHT_LEADER;
-    }
-
     pthread_mutex_unlock(&s_inflight_mtx[shard]);
     return CW_INFLIGHT_LEADER;
 }
@@ -163,19 +207,21 @@ void cw_inflight_complete(const uint8_t *ecm_md5, bool success)
 }
 
 
-static _Atomic uint64_t s_cache_seq;
+static _Atomic uint32_t s_cache_seq;
 
 static inline uint32_t cw_bucket(const uint8_t *md5)
 {
-    uint32_t h = 2166136261u;
-    for (size_t i = 0; i < 16; i++)
-        h = (h ^ md5[i]) * 16777619u;
-    return h % CW_CACHE_BUCKETS;
+    return hash16(md5) % CW_CACHE_BUCKETS;
 }
 
 static inline uint32_t cw_shard(uint32_t bucket)
 {
     return bucket & (CW_CACHE_SHARDS - 1);
+}
+
+static inline bool seq_newer(uint32_t a, uint32_t b)
+{
+    return (int32_t)(a - b) > 0;
 }
 
 static inline bool cw_cache_entry_expired(const S_CW_CACHE_ENTRY *e, uint64_t now_ms)
@@ -218,12 +264,12 @@ static void merge_groups(S_CW_CACHE_ENTRY *e, const int32_t *groups, int32_t ngr
     }
 }
 
-static S_CW_CACHE_ENTRY *cw_cache_find_best_locked(const uint8_t *ecm_md5,
+static S_CW_CACHE_ENTRY *cw_cache_find_best_locked(uint32_t bucket,
+                                                   const uint8_t *ecm_md5,
                                                    const S_ACCOUNT *acc,
                                                    bool require_group,
                                                    uint64_t now_ms)
 {
-    const uint32_t bucket = cw_bucket(ecm_md5);
     const uint32_t base = bucket * CW_CACHE_WAYS;
     S_CW_CACHE_ENTRY *best = NULL;
     for (uint32_t way = 0; way < CW_CACHE_WAYS; way++) {
@@ -232,7 +278,7 @@ static S_CW_CACHE_ENTRY *cw_cache_find_best_locked(const uint8_t *ecm_md5,
         if (cw_cache_entry_expired(e, now_ms)) { cw_cache_entry_clear(e); continue; }
         if (!ct_memeq(e->ecm_md5, ecm_md5, 16)) continue;
         if (require_group && !account_has_cached_group(acc, e)) continue;
-        if (!best || e->seq > best->seq ||
+        if (!best || seq_newer(e->seq, best->seq) ||
             (e->seq == best->seq && e->last_used_ms > best->last_used_ms))
             best = e;
     }
@@ -244,27 +290,8 @@ bool cw_cache_lookup_groups(const uint8_t *ecm_md5, uint8_t *cw_out,
                             int32_t *groups_out, int32_t *ngroups_out)
 {
     if (!ecm_md5 || !cw_out) return false;
-    if (ngroups_out) *ngroups_out = 0;
-    const uint32_t bucket = cw_bucket(ecm_md5);
-    const uint32_t shard = cw_shard(bucket);
-    const uint64_t now_ms = (uint64_t)tcmg_mono_ms();
-    bool hit = false;
-    pthread_mutex_lock(&g_cw_cache_mtx[shard]);
-    S_CW_CACHE_ENTRY *e = cw_cache_find_best_locked(ecm_md5, acc, require_group, now_ms);
-    if (e) {
-        memcpy(cw_out, e->cw, CW_LEN);
-        if (groups_out && ngroups_out) {
-            int32_t n = e->ngroups;
-            if (n < 0) n = 0;
-            if (n > MAX_GROUPS_PER_READER) n = MAX_GROUPS_PER_READER;
-            if (n > 0) memcpy(groups_out, e->groups, (size_t)n * sizeof(groups_out[0]));
-            *ngroups_out = n;
-        }
-        e->last_used_ms = now_ms;
-        hit = true;
-    }
-    pthread_mutex_unlock(&g_cw_cache_mtx[shard]);
-    return hit;
+    return cw_cache_lookup_bucket(cw_bucket(ecm_md5), ecm_md5, cw_out, acc, require_group,
+                                  groups_out, ngroups_out, (uint64_t)tcmg_mono_ms());
 }
 
 bool cw_cache_lookup(const uint8_t *ecm_md5, uint8_t *cw_out,

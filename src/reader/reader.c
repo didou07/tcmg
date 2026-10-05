@@ -488,8 +488,8 @@ int32_t reader_dispatch_ecm(const S_ECM_REQUEST *request, S_READER_RESULT *resul
             for (int i = 0; i < ctx->jobs_count; i++) {
                 reader_ctx_retain(ctx);
                 if (!reader_pool_submit(&ctx->jobs[i])) {
-                    reader_ctx_release(ctx);
                     reader_job_cancel(&ctx->jobs[i]);
+                    reader_ctx_release(ctx);
                 }
             }
 

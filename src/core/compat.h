@@ -22,7 +22,9 @@
 #  include <sys/stat.h>
 #  define close(fd)    closesocket(fd)
 #  define MSG_NOSIGNAL 0
-#  define ssize_t      int
+#  if !defined(__MINGW32__) && !defined(__MINGW64__)
+#    define ssize_t int
+#  endif
 #  define socklen_t    int
 #  if !defined(__MINGW32__) && !defined(__MINGW64__)
      static inline struct tm *localtime_r(const time_t *t, struct tm *s)

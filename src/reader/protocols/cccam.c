@@ -5,6 +5,7 @@
 #include "core/utils.h"
 #include "cccam.h"
 #include "proto/cccam.h"
+#include "proto/cccam_crypto.h"
 
 #define CC_READER_MAX_MSG 1024
 #define CC_READER_CARD_MAX 64
@@ -31,46 +32,6 @@ static void cc_reader_init_once(void)
     for (int i = 0; i < MAX_READERS; i++) {
         pthread_mutex_init(&s_cc[i].mtx, NULL);
         s_cc[i].fd = -1;
-    }
-}
-
-static void cc_rc4_init(S_CC_CRYPT *b, const uint8_t *key, int klen)
-{
-    uint8_t j = 0, tmp;
-    for (int i = 0; i < 256; i++) b->keytable[i] = (uint8_t)i;
-    for (int i = 0; i < 256; i++) {
-        j = (uint8_t)(j + key[i % klen] + b->keytable[i]);
-        tmp = b->keytable[i];
-        b->keytable[i] = b->keytable[j];
-        b->keytable[j] = tmp;
-    }
-    b->state = key[0];
-    b->counter = 0;
-    b->sum = 0;
-}
-
-static void cc_crypt(S_CC_CRYPT *b, uint8_t *data, int len, int encrypt)
-{
-    uint8_t z, tmp;
-    for (int i = 0; i < len; i++) {
-        b->counter++;
-        b->sum = (uint8_t)(b->sum + b->keytable[b->counter]);
-        tmp = b->keytable[b->counter];
-        b->keytable[b->counter] = b->keytable[b->sum];
-        b->keytable[b->sum] = tmp;
-        z = data[i];
-        data[i] = z ^ b->keytable[(b->keytable[b->counter] + b->keytable[b->sum]) & 0xFF] ^ b->state;
-        if (encrypt) b->state ^= z;
-        else b->state ^= data[i];
-    }
-}
-
-static void cc_seed_xor(uint8_t *buf)
-{
-    static const uint8_t ccstr[6] = {'C','C','c','a','m',0};
-    for (uint8_t i = 0; i < 8; i++) {
-        buf[i + 8] = (uint8_t)(i * buf[i]);
-        if (i <= 5) buf[i] ^= ccstr[i];
     }
 }
 
@@ -141,7 +102,7 @@ static int cc_send_raw(S_CC_READER_STATE *s, const uint8_t *buf, int len)
     uint8_t tmp[CC_READER_MAX_MSG + 32];
     if (len < 0 || len > (int)sizeof(tmp)) return -1;
     memcpy(tmp, buf, (size_t)len);
-    cc_crypt(&s->send_block, tmp, len, 1);
+    cccam_crypto_crypt(&s->send_block, tmp, (size_t)len, true);
     int rc = net_send_all(s->fd, tmp, len);
     secure_zero(tmp, sizeof(tmp));
     return rc == len ? 0 : -1;
@@ -163,7 +124,7 @@ static int cc_recv_raw(S_CC_READER_STATE *s, uint8_t *buf, int len)
 {
     if (len <= 0 || len > CC_READER_MAX_MSG + 32) return -1;
     if (net_recv_all(s->fd, buf, len) != len) return -1;
-    cc_crypt(&s->recv_block, buf, len, 0);
+    cccam_crypto_crypt(&s->recv_block, buf, (size_t)len, false);
     return 0;
 }
 
@@ -182,21 +143,7 @@ static int cc_recv_msg(S_CC_READER_STATE *s, uint8_t *cmd, uint8_t *buf, uint16_
 
 static void cc_cw_crypt(S_CC_READER_STATE *s, uint8_t *cw, uint32_t card_id)
 {
-    uint8_t nod[8], n, tmp;
-
-    for (int i = 0; i < 8; i++) nod[i] = s->node_id[7 - i];
-    for (int i = 0; i < 16; i++) {
-        int j = i >> 1;
-        if (i & 1) {
-            if (i != 15) {
-                uint16_t merged = (uint16_t)(((uint16_t)nod[j] >> 4) | ((uint16_t)nod[j + 1] << 4));
-                n = (uint8_t)merged;
-            } else n = (uint8_t)(nod[j] >> 4);
-        } else n = nod[j];
-        tmp = (uint8_t)(cw[i] ^ n);
-        if (i & 1) tmp = (uint8_t)~tmp;
-        cw[i] = (uint8_t)(((card_id >> (2 * i)) ^ tmp) & 0xFF);
-    }
+    cccam_crypto_cw(cw, card_id, s->node_id);
 }
 
 static void add_card(S_CC_READER_STATE *s, uint32_t card_id, uint16_t caid)
@@ -284,16 +231,16 @@ static int cc_connect_locked(S_CC_READER_STATE *s, const S_READER *r, int index)
     uint8_t seed[16], xseed[16], hash[20], dec_seed[16], hash_buf[20];
     if (net_recv_all(s->fd, seed, sizeof(seed)) != (int)sizeof(seed)) goto fail;
     memcpy(xseed, seed, sizeof(xseed));
-    cc_seed_xor(xseed);
+    cccam_crypto_seed_xor(xseed);
     sha1_hash(xseed, sizeof(xseed), hash);
 
-    cc_rc4_init(&s->recv_block, hash, 20);
+    cccam_crypto_init(&s->recv_block, hash, 20);
     memcpy(dec_seed, xseed, sizeof(dec_seed));
-    cc_crypt(&s->recv_block, dec_seed, sizeof(dec_seed), 0);
-    cc_rc4_init(&s->send_block, dec_seed, 16);
+    cccam_crypto_crypt(&s->recv_block, dec_seed, sizeof(dec_seed), false);
+    cccam_crypto_init(&s->send_block, dec_seed, 16);
 
     memcpy(hash_buf, hash, sizeof(hash_buf));
-    cc_crypt(&s->send_block, hash_buf, sizeof(hash_buf), 0);
+    cccam_crypto_crypt(&s->send_block, hash_buf, sizeof(hash_buf), false);
     if (cc_send_raw(s, hash_buf, 20) < 0) goto fail;
 
     uint8_t user[20];
@@ -309,7 +256,7 @@ static int cc_connect_locked(S_CC_READER_STATE *s, const S_READER *r, int index)
         uint8_t pw[CFGKEY_LEN]; size_t pwlen = strlen(r->password);
         if (pwlen > sizeof(pw)) pwlen = sizeof(pw);
         memcpy(pw, r->password, pwlen);
-        cc_crypt(&s->send_block, pw, (int)pwlen, 1);
+        cccam_crypto_crypt(&s->send_block, pw, pwlen, true);
         secure_zero(pw, sizeof(pw));
     }
 
@@ -318,7 +265,7 @@ static int cc_connect_locked(S_CC_READER_STATE *s, const S_READER *r, int index)
 
     uint8_t ack[20];
     if (net_recv_all(s->fd, ack, sizeof(ack)) != (int)sizeof(ack)) goto fail;
-    cc_crypt(&s->recv_block, ack, sizeof(ack), 0);
+    cccam_crypto_crypt(&s->recv_block, ack, sizeof(ack), false);
     if (memcmp(ack, "CCcam", 5) != 0) goto fail;
 
     csprng(s->node_id, sizeof(s->node_id));
@@ -343,9 +290,9 @@ static int cc_connect_locked(S_CC_READER_STATE *s, const S_READER *r, int index)
 
     (void)pump_cards(s, 150);
     tcmg_strlcpy(s->signature, sig, sizeof(s->signature));
-    tcmg_dump_dbg(D_READER, s->node_id, 8, "reader[%d] local node", index);
-    tcmg_dump_dbg(D_READER, s->peer_node_id, 8, "reader[%d] server node", index);
-    tcmg_log_dbg(D_READER, "reader[%d] connected label='%s' server=%s", index, r->label, r->device);
+    tcmg_dump_dbg(D_CCCAM, s->node_id, 8, "reader[%d] local node", index);
+    tcmg_dump_dbg(D_CCCAM, s->peer_node_id, 8, "reader[%d] server node", index);
+    tcmg_log_dbg(D_CCCAM, "reader[%d] connected label='%s' server=%s", index, r->label, r->device);
     secure_zero(seed, sizeof(seed)); secure_zero(xseed, sizeof(xseed)); secure_zero(hash, sizeof(hash));
     secure_zero(dec_seed, sizeof(dec_seed)); secure_zero(hash_buf, sizeof(hash_buf)); secure_zero(user, sizeof(user));
     secure_zero(ack, sizeof(ack)); secure_zero(cli, sizeof(cli));
@@ -426,17 +373,17 @@ int32_t cccam_reader_do_ecm(int index, const S_READER *reader,
         pthread_mutex_unlock(&s->mtx);
         return -8;
     }
-    tcmg_dump_dbg(D_READER, rsp, CW_LEN, "reader[%d] wire-decoded CW card=%08X", index, card_id);
+    tcmg_dump_dbg(D_CCCAM, rsp, CW_LEN, "reader[%d] wire-decoded CW card=%08X", index, card_id);
     memcpy(cw, rsp, CW_LEN);
     cc_cw_crypt(s, cw, card_id);
-    tcmg_dump_dbg(D_READER, cw, CW_LEN, "reader[%d] after cw_crypt card=%08X", index, card_id);
+    tcmg_dump_dbg(D_CCCAM, cw, CW_LEN, "reader[%d] after cw_crypt card=%08X", index, card_id);
 
     uint8_t state_step[CW_LEN];
     memcpy(state_step, cw, CW_LEN);
-    cc_crypt(&s->recv_block, state_step, CW_LEN, 1);
+    cccam_crypto_crypt(&s->recv_block, state_step, CW_LEN, true);
     secure_zero(state_step, sizeof(state_step));
     pthread_mutex_unlock(&s->mtx);
-    tcmg_log_dbg(D_READER, "reader[%d] ECM success label='%s' caid=%04X sid=%04X", index, reader->label, caid, sid);
+    tcmg_log_dbg(D_ECM, "reader[%d] ECM success label='%s' caid=%04X sid=%04X", index, reader->label, caid, sid);
     return 0;
 }
 

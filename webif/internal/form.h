@@ -4,26 +4,16 @@
 #include "proto.h"
 #include "../../src/core/utils.h"
 #include <ctype.h>
-#include <stdlib.h>
 #include <string.h>
 
 static inline int webif_form_copy(const char *body, const char *key, char *out, size_t outsz)
 {
-    out[0] = '\0';
-    char *value = form_get_alloc(body, key);
-    if (!value) return 0;
-    int too_long = strlen(value) >= outsz;
-    if (!too_long) tcmg_strlcpy(out, value, outsz);
-    free(value);
-    return too_long ? -1 : 0;
+    return form_get_copy(body, key, out, outsz) < 0 ? -1 : 0;
 }
 
 static inline int webif_form_present(const char *body, const char *key)
 {
-    char *value = form_get_alloc(body, key);
-    if (!value) return 0;
-    free(value);
-    return 1;
+    return form_has(body, key);
 }
 
 static inline void webif_trim(char *s)

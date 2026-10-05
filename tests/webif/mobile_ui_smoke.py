@@ -2,6 +2,12 @@ import os, requests, shutil, re
 from playwright.sync_api import sync_playwright
 
 BASE = os.environ.get('TCMG_WEBIF_URL', 'http://127.0.0.1:18080')
+WEBIF_USER = os.environ.get('TCMG_WEBIF_USER', 'admin')
+WEBIF_PASS = os.environ.get('TCMG_WEBIF_PASS', 'secret')
+S = requests.Session()
+LOGIN = S.post(BASE + '/login', data={'u': WEBIF_USER, 'p': WEBIF_PASS}, timeout=10, allow_redirects=False)
+if LOGIN.status_code not in (200, 302):
+    raise SystemExit(f'WebIF login failed: HTTP {LOGIN.status_code}')
 PAGES = ['/status','/users','/readers','/config','/livelog','/failban','/files','/tvcas','/power']
 WIDTHS = (320, 360, 390, 430)
 FAILS = []
@@ -12,17 +18,31 @@ def ok(name, cond, detail=''):
         FAILS.append(name)
 
 def inline_page(path):
-    html = requests.get(BASE + path, timeout=10).text
-    css = requests.get(BASE + "/assets/app.css", timeout=10).text
-    js_names = ("app.js","livelog.js","users.js","readers.js","config.js","files.js","tvcas.js","power.js")
-    html = re.sub(r"<link[^>]+href=['\"]/assets/app\.css[^>]*>", lambda m: "<style>" + css + "</style>", html)
-    for name in js_names:
-        try:
-            body = requests.get(BASE + "/assets/" + name, timeout=10).text
-        except Exception:
-            continue
-        html = re.sub(r"<script[^>]+src=['\"]/assets/" + re.escape(name) + r"(?:\?[^'\"]*)?['\"][^>]*></script>", lambda m: "<script>" + body + "</script>", html)
+    html = S.get(BASE + path, timeout=10)
+    if html.status_code != 200:
+        raise RuntimeError(f'page {path}: HTTP {html.status_code}')
+    html = html.text
+    css = S.get(BASE + '/assets/app.css', timeout=10)
+    if css.status_code != 200:
+        raise RuntimeError(f'asset app.css: HTTP {css.status_code}')
+    html = re.sub(
+        r"<link[^>]+href=['\"](/assets/app\.css(?:\?[^'\"]*)?)['\"][^>]*>",
+        lambda m: '<style>' + css.text + '</style>',
+        html, count=1, flags=re.I)
+    refs = []
+    for src in re.findall(r"<script[^>]+src=['\"](/assets/[^'\"]+)['\"][^>]*></script>", html, flags=re.I):
+        src = src.split('?', 1)[0]
+        if src not in refs:
+            refs.append(src)
+    for src in refs:
+        body = S.get(BASE + src, timeout=10)
+        if body.status_code != 200:
+            raise RuntimeError(f'asset {src}: HTTP {body.status_code}')
+        js = body.content.decode('utf-8', errors='strict')
+        tag_re = re.compile(r"<script[^>]+src=['\"]" + re.escape(src) + r"(?:\?[^'\"]*)?['\"][^>]*></script>", re.I)
+        html = tag_re.sub(lambda m: '<script>' + js + '</script>', html, count=1)
     return html
+
 
 def sample_user_row():
     return """<tr class='urow'><td class='c-en'><button class='pw-btn on'></button></td><td class='c-user'><button class='ulink'>alice</button></td><td class='c-conn'>1/2</td><td class='c-ip'>10.0.0.4</td><td class='c-country'>DZ</td><td class='c-caid'>0B00</td><td class='c-ok tg'>124</td><td class='c-nok dim'>2</td><td class='c-proto'><span class='badge'>NC</span></td><td class='c-idle'>4s</td><td class='c-last60 tg'>18</td><td class='c-last'>4s</td><td class='c-exp'>2027-09-01</td><td class='c-btn'><div class='ba'><button class='act-b ed'></button><button class='act-b rs'></button><button class='act-b dl'></button></div></td></tr>"""
@@ -31,7 +51,7 @@ def sample_reader_row():
     return """<tr class='rrow'><td class='c-rstate'><button class='pw-btn on'></button></td><td class='c-rlabel'><button class='rlink'>local-reader</button></td><td class='c-rproto'><span class='badge'>PCSC</span></td><td class='c-rdev mono'>/dev/ttyUSB0</td><td class='c-rgroup'>1</td><td class='c-rcaid'>0B00</td><td class='c-rstat-ok'>127</td><td class='c-rstat-nok'>1</td><td class='c-btn'><div class='ba'><button class='act-b ed'></button><button class='act-b dl'></button></div></td></tr>"""
 
 for path in PAGES:
-    r = requests.get(BASE + path, timeout=10)
+    r = S.get(BASE + path, timeout=10)
     ok('HTTP ' + path, r.status_code == 200 and len(r.text) > 500, r.status_code)
 
 with sync_playwright() as p:
@@ -39,7 +59,9 @@ with sync_playwright() as p:
     b = p.chromium.launch(executable_path=exe) if exe else p.chromium.launch()
     for width in WIDTHS:
         for path in PAGES:
-            page = b.new_page(viewport={'width': width, 'height': 844}, reduced_motion='reduce')
+            page = b.new_page()
+            page.set_viewport_size({'width': width, 'height': 844})
+            page.emulate_media(reduced_motion='reduce')
             page.set_content(inline_page(path), wait_until='domcontentloaded')
             page.wait_for_timeout(120)
             dims = page.evaluate("""() => ({

@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 from pathlib import Path
 import re
+from asset_utils import embedded_asset
 
 root = Path(__file__).resolve().parents[2]
-css = (root / 'webif/assets/css.h').read_text()
+css = embedded_asset(root, 'css.h', 'TCMG_CSS')
 core = (root / 'webif/core.c').read_text()
 config = (root / 'webif/pages/config.c').read_text()
 power = (root / 'webif/pages/power.c').read_text()
 files = (root / 'webif/pages/config.c').read_text()
 livelog = (root / 'webif/pages/files.c').read_text()
 readers = (root / 'webif/pages/readers.c').read_text()
-readers_js = (root / 'webif/assets/js_readers.h').read_text()
+readers_js = embedded_asset(root, 'js_readers.h', 'TCMG_READERS_JS')
 users = (root / 'webif/pages/users.c').read_text()
-users_js = (root / 'webif/assets/js_users.h').read_text()
+users_js = embedded_asset(root, 'js_users.h', 'TCMG_USERS_JS')
 
 checks = []
 def check(name, cond):
@@ -27,15 +28,15 @@ check('Live Log has collapsible settings', "class='ll-settings'" in livelog and 
 check('Users has no pagination footer', "id='uCount'" not in users and "id='limit'" not in users and 'per page' not in users)
 check('Readers bottom totals removed', 'rCount' not in readers and 'rViewStat' not in readers and 'rSync' not in readers)
 check('Users expiry status dot removed', 'sdot' not in users and 'sdot.' not in css)
-check("Dashboard kill icon uses user-x", "id='i-user-x'" in (root / 'webif/icons.h').read_text() and 'i-user-x' in (root / 'webif/assets/js_common.h').read_text())
-check('Dashboard CAID is plain', 'badge bbl c-caid' not in (root / 'webif/assets/js_common.h').read_text())
+check('Dashboard kill icon uses user-x', 'i-user-x' in embedded_asset(root, 'icons.h', 'GLOBAL_ICON_SPRITE') and 'i-user-x' in embedded_asset(root, 'js_common.h', 'TCMG_JS'))
+check('Dashboard CAID is plain', 'badge bbl c-caid' not in embedded_asset(root, 'js_common.h', 'TCMG_JS'))
 check('FailBan duration is human-readable', 'fmt_ban_duration' in (root / 'webif/pages/system.c').read_text())
 check('FailBan duration max is one week', 'max=\'604800\'' in config and 'Math.min(604800' in config)
 
 check('Mobile menu wiring is singular', core.count("id='mnuBtn'") == 1 and core.count("id='mobile-nav'") == 1 and core.count('function toggleMobileNav') == 1)
 
 check('portrait mode has no width gate', '@media(orientation:portrait){' in css and not re.search(r'@media\([^)]*(?:max|min)-width', css))
-check('landscape uses desktop base without pointer gate', 'orientation:landscape' not in css and 'pointer:coarse' not in css)
+check('landscape keeps desktop base without width/pointer gate', 'orientation:landscape' in css and not re.search(r'@media\([^)]*(?:max|min)-width|pointer:coarse', css))
 check('no legacy mobile patch markers', not re.search(r'6\.0\.[23]|chocolate-box|mobile card pass|status-card system', css))
 check('single Users card root rule', len(re.findall(r'body\.pg-users \.ut \.urow\{display:grid', css)) == 1)
 check('single Readers card root rule', len(re.findall(r'body\.pg-readers \.rt \.rrow\{display:grid', css)) == 1)
@@ -58,8 +59,8 @@ check('Modals stack on narrow screens', '.reader-topgrid,.reader-cccam-grid,.rea
 check('Mobile menu overlay is below menu', 'body.nav-open #mn::before{content:\'\';position:fixed;z-index:1035' in css and '.tnav{display:none;position:fixed' in css and 'z-index:1065' in css)
 check('Desktop modal base remains intact', '.reader-modal{width:640px;max-width:calc(100vw - 24px)}' in css)
 check('Desktop Users page keeps document scrolling enabled', 'body.pg-users{height:auto;min-height:100vh;overflow-x:clip;overflow-y:visible;padding-top:var(--tbh)}' in css)
-check('Desktop Readers table grows with content and stays centered', '#rTable{flex:0 1 auto;width:100%;max-width:920px;min-width:0;min-height:0;height:auto;max-height:calc(100vh - 190px)' in css)
-check('Readers desktop wrapper stays centered and capped like its table', '#rTable{flex:0 1 auto;width:100%;max-width:920px;min-width:0;min-height:0' in css and '#rTable table{width:100%;max-width:920px;min-width:700px;table-layout:fixed}' in css)
+check('Desktop Readers table is capped and centered', '#rTable{flex:0 1 auto;width:920px;max-width:100%;min-width:0;min-height:0;height:auto;max-height:none;margin:0 auto' in css)
+check('Readers desktop table fills capped wrapper', '#rTable table{width:100%;max-width:none;min-width:700px;table-layout:fixed}' in css)
 check('Hidden Users and Readers rows remain hidden in card mode', 'body.pg-users .ut .urow[hidden],body.pg-readers .rt .rrow[hidden]{display:none!important}' in css)
 check('Mobile Readers table does not reserve empty viewport space', 'body.pg-readers #rTable{flex:none;width:100%;max-width:100%;min-width:0;max-height:none;height:auto' in css)
 

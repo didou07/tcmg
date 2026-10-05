@@ -3,6 +3,7 @@
 
 #include "../../src/core/constants.h"
 #include "../../src/core/ident_types.h"
+#include "../../src/core/reader_types.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <time.h>
@@ -63,6 +64,7 @@ typedef struct {
     char label[READER_LABEL_LEN];
     char protocol[READER_PROTOCOL_LEN];
     char device[CFGVAL_LEN];
+    char backend[32];
     char user[CFGKEY_LEN];
     char password[CFGKEY_LEN];
     char key[32];
@@ -78,6 +80,12 @@ typedef struct {
     int fast_reset;
     int fast_reset_idle;
     int poll_ms;
+    int maintenance_mode;
+    int old_ecm_source;
+    int old_ecm_trigger;
+    int old_ecm_interval;
+    int old_ecm_successes;
+    char old_ecm[TCMG_OLD_ECM_HEX_LEN + 1];
     int64_t cw_ok;
     int64_t cw_nok;
     int active;
@@ -247,6 +255,12 @@ typedef struct {
     char fast_reset[16];
     char fast_reset_idle[16];
     char poll_ms[16];
+    char maintenance_mode[24];
+    char old_ecm_source[16];
+    char old_ecm_trigger[16];
+    char old_ecm_interval[16];
+    char old_ecm_successes[16];
+    char old_ecm[TCMG_OLD_ECM_HEX_LEN + 1];
     int index;
 } S_WEBIF_READER_EDIT;
 

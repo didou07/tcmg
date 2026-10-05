@@ -6,8 +6,8 @@
 #include <time.h>
 #include <stdatomic.h>
 
-static _Atomic int64_t s_global_cw_found = 0;
-static _Atomic int64_t s_global_cw_not = 0;
+static _Atomic uint32_t s_global_cw_found = 0;
+static _Atomic uint32_t s_global_cw_not = 0;
 
 bool account_stats_init(S_ACCOUNT_STATS *stats)
 {

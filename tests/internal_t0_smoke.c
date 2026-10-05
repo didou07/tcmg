@@ -97,13 +97,13 @@ static int run_case(int mode)
     if (mode == 3) {
         memcpy(apdu, (uint8_t[]){0xDD,0xCA,0x00,0x00,0x03}, 5);
         apdu_len = 5;
-        rc = internal_t0_exchange(&ch, apdu, apdu_len, rsp, &rsp_len);
+        rc = internal_t0_exchange(&ch, apdu, apdu_len, "test", rsp, &rsp_len);
         if (rc != 0 || rsp_len != 5 || memcmp(rsp, (uint8_t[]){0x11,0x22,0x33,0x90,0x00}, 5) != 0)
             card.rc = 20;
     } else {
         memcpy(apdu, (uint8_t[]){0xDD,0xA2,0x00,0x00,0x06,0x14,0x04,0x00,0x80,0x01,0x02}, 11);
         apdu_len = 11;
-        rc = internal_t0_exchange(&ch, apdu, apdu_len, rsp, &rsp_len);
+        rc = internal_t0_exchange(&ch, apdu, apdu_len, "test", rsp, &rsp_len);
         if (rc != 0 || rsp_len != 2 || memcmp(rsp, (uint8_t[]){0x90,0x00}, 2) != 0)
             card.rc = 20;
     }

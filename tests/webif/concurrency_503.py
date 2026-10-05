@@ -95,7 +95,19 @@ def main():
             if not wait_for_code(port, 200):
                 raise SystemExit("WebIF did not recover after releasing worker slots")
 
-            print(f"WEBIF_503_CONCURRENCY: PASS ({workers} workers saturated)")
+            for _ in range(workers):
+                s = socket.create_connection(("127.0.0.1", port), timeout=3)
+                s.sendall(b"GET /status HTTP/1.1\r\nHost: 127.0.0.1\r\n")
+                held.append(s)
+            time.sleep(0.1)
+            stop_started = time.monotonic()
+            p.send_signal(signal.SIGTERM)
+            p.wait(timeout=6)
+            stop_elapsed = time.monotonic() - stop_started
+            if stop_elapsed > 5.5:
+                raise SystemExit(f"WebIF shutdown with active workers took too long: {stop_elapsed:.2f}s")
+            held.clear()
+            print(f"WEBIF_503_CONCURRENCY: PASS ({workers} workers saturated, shutdown {stop_elapsed:.2f}s)")
         finally:
             for s in held:
                 try:

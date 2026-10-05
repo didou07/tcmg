@@ -11,6 +11,29 @@
 #include <termios.h>
 #include <unistd.h>
 
+static int wait_fd(int fd, int writable, uint32_t timeout_ms);
+static int drain(int fd);
+
+static ssize_t channel_read(const S_INTERNAL_T0_CHANNEL *ch, uint8_t *buf, size_t len, uint32_t timeout_ms)
+{
+    if (ch->read_fn) return ch->read_fn(ch->ctx, buf, len, timeout_ms);
+    if (wait_fd(ch->fd, 0, timeout_ms) < 0) return -1;
+    return read(ch->fd, buf, len);
+}
+
+static ssize_t channel_write(const S_INTERNAL_T0_CHANNEL *ch, const uint8_t *buf, size_t len, uint32_t timeout_ms)
+{
+    if (ch->write_fn) return ch->write_fn(ch->ctx, buf, len, timeout_ms);
+    if (wait_fd(ch->fd, 1, timeout_ms) < 0) return -1;
+    return write(ch->fd, buf, len);
+}
+
+static int channel_flush(const S_INTERNAL_T0_CHANNEL *ch)
+{
+    if (ch->flush_fn) return ch->flush_fn(ch->ctx);
+    return drain(ch->fd);
+}
+
 static int wait_fd(int fd, int writable, uint32_t timeout_ms)
 {
     if (fd < 0) return -1;
@@ -34,13 +57,11 @@ static int wait_fd(int fd, int writable, uint32_t timeout_ms)
     return rc > 0 ? 0 : -1;
 }
 
-static int write_all(int fd, const uint8_t *buf, size_t len, uint32_t timeout_ms)
+static int write_all(const S_INTERNAL_T0_CHANNEL *ch, const uint8_t *buf, size_t len, uint32_t timeout_ms)
 {
     size_t off = 0;
     while (off < len) {
-        if (wait_fd(fd, 1, timeout_ms) < 0) return -1;
-
-        ssize_t n = write(fd, buf + off, len - off);
+        ssize_t n = channel_write(ch, buf + off, len - off, timeout_ms);
         if (n > 0) {
             off += (size_t)n;
             continue;
@@ -52,13 +73,11 @@ static int write_all(int fd, const uint8_t *buf, size_t len, uint32_t timeout_ms
     return 0;
 }
 
-static int read_exact(int fd, uint8_t *buf, size_t len, uint32_t timeout_ms)
+static int read_exact(const S_INTERNAL_T0_CHANNEL *ch, uint8_t *buf, size_t len, uint32_t timeout_ms)
 {
     size_t off = 0;
     while (off < len) {
-        if (wait_fd(fd, 0, timeout_ms) < 0) return -1;
-
-        ssize_t n = read(fd, buf + off, len - off);
+        ssize_t n = channel_read(ch, buf + off, len - off, timeout_ms);
         if (n > 0) {
             off += (size_t)n;
             continue;
@@ -97,9 +116,10 @@ static int is_not_ack(uint8_t b, uint8_t ins)
 
 int internal_t0_exchange(const S_INTERNAL_T0_CHANNEL *ch,
                          const uint8_t *apdu, size_t apdu_len,
+                         const char *context,
                          uint8_t *rsp, size_t *rsp_len)
 {
-    if (!ch || ch->fd < 0 || !apdu || !rsp || !rsp_len)
+    if (!ch || (!ch->read_fn && !ch->write_fn && ch->fd < 0) || !apdu || !rsp || !rsp_len)
         return -1;
     if (apdu_len < 5 || apdu_len > 260 || *rsp_len < 2)
         return -2;
@@ -121,27 +141,30 @@ int internal_t0_exchange(const S_INTERNAL_T0_CHANNEL *ch,
     size_t sent = 0;
     unsigned nulls = 0;
 
-    tcmg_dump_dbg(D_ECM, apdu, (int32_t)apdu_len, "INTERNAL T0 >> APDU");
+    const char *trace = (context && *context) ? context : "exchange";
+    tcmg_dump_dbg(D_READER, apdu, (int32_t)apdu_len, "INTERNAL T0 >> APDU context=%s", trace);
 
-    if (write_all(ch->fd, apdu, 5, write_ms) < 0)
+    if (write_all(ch, apdu, 5, write_ms) < 0)
         return -10;
-    if (drain(ch->fd) < 0)
+    if (channel_flush(ch) < 0)
         return -11;
 
     for (unsigned guard = 0; guard < 2048; guard++) {
         uint8_t procedure = 0;
-        if (read_exact(ch->fd, &procedure, 1, wait_ms) < 0) {
-            tcmg_log_dbg(D_ECM, "T0 procedure timeout ins=%02X wait=%ums",
+        if (read_exact(ch, &procedure, 1, wait_ms) < 0) {
+            tcmg_log_dbg(D_READER, "T0 procedure timeout context=%s ins=%02X wait=%ums",
+                         trace,
+
                          ins, wait_ms);
             return -12;
         }
 
-        tcmg_log_dbg(D_ECM, "T0 procedure ins=%02X byte=%02X", ins, procedure);
+        tcmg_log_dbg(D_READER, "T0 procedure context=%s ins=%02X byte=%02X", trace, ins, procedure);
 
         if (procedure == 0x60) {
             if (++nulls >= max_nulls) {
-                tcmg_log_dbg(D_ECM, "T0 too many NULL bytes ins=%02X count=%u",
-                             ins, nulls);
+                tcmg_log_dbg(D_READER, "T0 too many NULL bytes context=%s ins=%02X count=%u",
+                             trace, ins, nulls);
                 return -13;
             }
             continue;
@@ -151,11 +174,11 @@ int internal_t0_exchange(const S_INTERNAL_T0_CHANNEL *ch,
             if (out + 2 > *rsp_len)
                 return -14;
             rsp[out++] = procedure;
-            if (read_exact(ch->fd, &rsp[out], 1, wait_ms) < 0)
+            if (read_exact(ch, &rsp[out], 1, wait_ms) < 0)
                 return -15;
             out++;
             *rsp_len = out;
-            tcmg_dump_dbg(D_ECM, rsp, (int32_t)*rsp_len, "INTERNAL T0 << SW");
+            tcmg_dump_dbg(D_READER, rsp, (int32_t)*rsp_len, "INTERNAL T0 << RESPONSE context=%s", trace);
             return 0;
         }
 
@@ -164,9 +187,9 @@ int internal_t0_exchange(const S_INTERNAL_T0_CHANNEL *ch,
             if (case3) {
                 if (sent != 0 || lc == 0)
                     return -16;
-                if (write_all(ch->fd, apdu + 5, lc, write_ms) < 0)
+                if (write_all(ch, apdu + 5, lc, write_ms) < 0)
                     return -17;
-                if (drain(ch->fd) < 0)
+                if (channel_flush(ch) < 0)
                     return -18;
                 sent = lc;
                 continue;
@@ -174,7 +197,7 @@ int internal_t0_exchange(const S_INTERNAL_T0_CHANNEL *ch,
 
             if (out + le + 2 > *rsp_len)
                 return -19;
-            if (read_exact(ch->fd, rsp + out, le, wait_ms) < 0)
+            if (read_exact(ch, rsp + out, le, wait_ms) < 0)
                 return -20;
             out += le;
             continue;
@@ -185,9 +208,9 @@ int internal_t0_exchange(const S_INTERNAL_T0_CHANNEL *ch,
             if (case3) {
                 if (sent >= lc)
                     return -21;
-                if (write_all(ch->fd, apdu + 5 + sent, 1, write_ms) < 0)
+                if (write_all(ch, apdu + 5 + sent, 1, write_ms) < 0)
                     return -22;
-                if (drain(ch->fd) < 0)
+                if (channel_flush(ch) < 0)
                     return -23;
                 sent++;
                 continue;
@@ -197,14 +220,14 @@ int internal_t0_exchange(const S_INTERNAL_T0_CHANNEL *ch,
                 return -24;
             if (out + 1 > *rsp_len)
                 return -25;
-            if (read_exact(ch->fd, &rsp[out], 1, wait_ms) < 0)
+            if (read_exact(ch, &rsp[out], 1, wait_ms) < 0)
                 return -26;
             out++;
             continue;
         }
 
-        tcmg_log_dbg(D_ECM, "T0 unexpected procedure ins=%02X byte=%02X",
-                     ins, procedure);
+        tcmg_log_dbg(D_READER, "T0 unexpected procedure context=%s ins=%02X byte=%02X",
+                     trace, ins, procedure);
         return -27;
     }
 
@@ -215,11 +238,13 @@ int internal_t0_exchange(const S_INTERNAL_T0_CHANNEL *ch,
 
 int internal_t0_exchange(const S_INTERNAL_T0_CHANNEL *ch,
                          const uint8_t *apdu, size_t apdu_len,
+                         const char *context,
                          uint8_t *rsp, size_t *rsp_len)
 {
     (void)ch;
     (void)apdu;
     (void)apdu_len;
+    (void)context;
     (void)rsp;
     (void)rsp_len;
     return -100;

@@ -58,7 +58,8 @@ static void print_usage(const char *prog)
 	       "  -d <level>  Debug bitmask (hex or decimal)\n"
 	       "                0x0001=wire    0x0002=ecm     0x0004=emu\n"
 	       "                0x0008=newcamd 0x0010=cccam   0x0020=http\n"
-	       "                0x0040=conn    0x0080=reader  0xFFFF=all\n"
+	       "                0x0040=conn    0x0080=reader  0x0100=protocol\n"
+	       "                0xFFFF=all\n"
 	       "  -v          Show version and exit\n"
 	       "  -h          Show this help\n\n",
 	       prog, CS_CONFDIR);

@@ -11,15 +11,22 @@
 static S_ACCOUNT *s_retired_accounts;
 static pthread_mutex_t s_retired_mtx = PTHREAD_MUTEX_INITIALIZER;
 
-static void free_account_list(S_ACCOUNT *head)
+void account_destroy(S_ACCOUNT *account)
+{
+    if (!account) return;
+    account_stats_global_remove(account);
+    account_stats_destroy(&account->stats);
+    pthread_mutex_destroy(&account->as_mtx);
+    secure_zero(account, sizeof(*account));
+    free(account);
+}
+
+void account_list_free(S_ACCOUNT *head)
 {
     while (head) {
         S_ACCOUNT *next = head->next;
-        account_stats_global_remove(head);
-        account_stats_destroy(&head->stats);
-        pthread_mutex_destroy(&head->as_mtx);
-        secure_zero(head, sizeof(*head));
-        free(head);
+        head->next = NULL;
+        account_destroy(head);
         head = next;
     }
 }
@@ -123,10 +130,7 @@ void account_reap_retired(void)
         if (atomic_load(&account->active) == 0 && atomic_load(&account->refs) == 0) {
             *pp = account->next;
             account->next = NULL;
-            account_stats_destroy(&account->stats);
-            pthread_mutex_destroy(&account->as_mtx);
-            secure_zero(account, sizeof(*account));
-            free(account);
+            account_destroy(account);
             continue;
         }
         pp = &account->next;
@@ -138,7 +142,7 @@ void account_reap_retired(void)
 void account_retired_free(void)
 {
     pthread_mutex_lock(&s_retired_mtx);
-    free_account_list(s_retired_accounts);
+    account_list_free(s_retired_accounts);
     s_retired_accounts = NULL;
     pthread_mutex_unlock(&s_retired_mtx);
 }

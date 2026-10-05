@@ -4,6 +4,7 @@
 #include "log/log.h"
 #include "core/utils.h"
 #include "cs378x.h"
+#include "../reader_signature.h"
 #include "proto/camd35.h"
 
 #define CS378X_READER_MAX_FRAME (CS378X_UCRC_LEN + CS378X_MAX_CRYPT)
@@ -29,27 +30,7 @@ static void cs_reader_init_once(void)
     }
 }
 
-static void cs_signature(const S_READER *r, char *out, size_t out_len)
-{
-    if (!out || out_len == 0) return;
-    out[0] = '\0';
-    char blob[1536];
-    int n = snprintf(blob, sizeof(blob), "%s\x1F%s\x1F%s\x1F%s\x1F%d",
-                     r->device, r->user, r->password, r->protocol, r->inactivitytimeout);
-    if (n < 0 || (size_t)n >= sizeof(blob)) return;
-    uint8_t h[20];
-    sha1_hash((const uint8_t *)blob, (size_t)n, h);
-    if (out_len >= 41) {
-        static const char hex[] = "0123456789ABCDEF";
-        for (size_t i = 0; i < sizeof(h); i++) {
-            out[i * 2] = hex[h[i] >> 4];
-            out[i * 2 + 1] = hex[h[i] & 0x0F];
-        }
-        out[40] = '\0';
-    }
-    secure_zero(h, sizeof(h));
-    secure_zero(blob, sizeof(blob));
-}
+
 
 static void cs_close_locked(S_CS378X_READER_STATE *s)
 {
@@ -90,7 +71,7 @@ static int cs_connect_locked(S_CS378X_READER_STATE *s, const S_READER *r, int in
 {
     char sig[sizeof(s->signature)], host[CFGVAL_LEN];
     uint16_t port;
-    cs_signature(r, sig, sizeof(sig));
+    reader_session_signature(r, sig, sizeof(sig));
     if (s->connected && s->fd >= 0 && strcmp(s->signature, sig) == 0) return 0;
 
     cs_close_locked(s);
@@ -105,7 +86,7 @@ static int cs_connect_locked(S_CS378X_READER_STATE *s, const S_READER *r, int in
     tcmg_strlcpy(s->signature, sig, sizeof(s->signature));
     s->connected = 1;
     s->msg_id = 0;
-    tcmg_log_dbg(D_READER, "reader[%d] connected label='%s' server=%s user='%s'",
+    tcmg_log_dbg(D_PROTOCOL, "reader[%d] connected label='%s' server=%s user='%s'",
                  index, r->label, r->device, r->user);
     return 0;
 }
@@ -197,7 +178,7 @@ int32_t cs378x_reader_do_ecm(int index, const S_READER *reader,
             }
             memcpy(cw, rsp + CS378X_HEADER_LEN, CW_LEN);
             pthread_mutex_unlock(&s->mtx);
-            tcmg_log_dbg(D_READER, "reader[%d] ECM success label='%s' caid=%04X sid=%04X",
+            tcmg_log_dbg(D_ECM, "reader[%d] ECM success label='%s' caid=%04X sid=%04X",
                          index, reader->label, caid, sid);
             return 0;
         }

@@ -59,10 +59,10 @@ static int cs378x_handle_ecm(S_CLIENT *cl, const uint8_t *plain, size_t plain_le
     access = ecm_access(cl, caid, sid, provid, false, true, false);
     if (access != ECM_ACCESS_OK) {
         if (access == ECM_ACCESS_CAID_DENIED)
-            tcmg_log_dbg(D_READER, "%s ECM denied: CAID %04X not allowed user='%s'",
+            tcmg_log_dbg(D_ECM, "%s ECM denied: CAID %04X not allowed user='%s'",
                          cl->identity.ip, caid, cl->identity.user);
         else if (access == ECM_ACCESS_ANTISHARE)
-            tcmg_log_dbg(D_READER, "%s ECM denied: anti-share user='%s' sid=%04X",
+            tcmg_log_dbg(D_ECM, "%s ECM denied: anti-share user='%s' sid=%04X",
                          cl->identity.ip, cl->identity.user, sid);
         return 1;
     }

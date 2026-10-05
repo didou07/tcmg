@@ -19,6 +19,8 @@ void account_retain(S_ACCOUNT *account);
 void account_release(S_ACCOUNT *account);
 void account_retire(S_ACCOUNT *account);
 void account_reap_retired(void);
+void account_destroy(S_ACCOUNT *account);
+void account_list_free(S_ACCOUNT *head);
 void account_retired_free(void);
 S_ACCOUNT *account_clone_config(const S_ACCOUNT *src);
 S_ACCOUNT *account_session_acquire(S_CLIENT *client);

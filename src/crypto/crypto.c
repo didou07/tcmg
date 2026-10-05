@@ -221,7 +221,7 @@ void crypt_key_spread(const uint8_t *k, uint8_t *s)
 	s[4]  = ((k[3]  << 4) | (k[4]  >> 4)) & 0xfe;
 	s[5]  = ((k[4]  << 3) | (k[5]  >> 5)) & 0xfe;
 	s[6]  = ((k[5]  << 2) | (k[6]  >> 6)) & 0xfe;
-	s[7]  =  k[6]  << 1;
+	s[7]  = (uint8_t)(k[6]  << 1);
 	s[8]  = k[7] & 0xfe;
 	s[9]  = ((k[7]  << 7) | (k[8]  >> 1)) & 0xfe;
 	s[10] = ((k[8]  << 6) | (k[9]  >> 2)) & 0xfe;
@@ -229,7 +229,7 @@ void crypt_key_spread(const uint8_t *k, uint8_t *s)
 	s[12] = ((k[10] << 4) | (k[11] >> 4)) & 0xfe;
 	s[13] = ((k[11] << 3) | (k[12] >> 5)) & 0xfe;
 	s[14] = ((k[12] << 2) | (k[13] >> 6)) & 0xfe;
-	s[15] =  k[13] << 1;
+	s[15] = (uint8_t)(k[13] << 1);
 		crypt_des_key_parity_adjust(s, 16);
 }
 

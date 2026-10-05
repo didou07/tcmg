@@ -136,15 +136,20 @@ bool webif_auth_basic_valid(const char *header)
     S_WEBIF_CONFIG_VIEW c;
     if (!webif_config_snapshot(&c)) return false;
 
-    const char *p = strstr(header, "Basic ");
-    if (!p) return false;
-    p += 6;
+    const char *p = header;
+    while (*p == ' ' || *p == '\t') p++;
+    static const char scheme[] = "Basic";
+    if (strncasecmp(p, scheme, sizeof(scheme) - 1) != 0) return false;
+    p += sizeof(scheme) - 1;
+    if (*p != ' ' && *p != '\t') return false;
+    while (*p == ' ' || *p == '\t') p++;
 
     char got[512];
     size_t n = 0;
-    while (*p && *p != '\r' && *p != '\n' && *p != ' ' && n + 1 < sizeof(got))
+    while (*p && *p != '\r' && *p != '\n' && *p != ' ' && *p != '\t' && n + 1 < sizeof(got))
         got[n++] = *p++;
     got[n] = '\0';
+    if (!got[0] || *p == ' ' || *p == '\t') return false;
 
     char creds[256];
     char expected[512];
